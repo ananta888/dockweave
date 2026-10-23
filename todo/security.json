@@ -7,55 +7,87 @@
       "title": "Daemon-Härtung und Socket-AuthZ",
       "description": "dockweaved als root, Unix-Socket 0660 root:dockweave, SO_PEERCRED-Prüfung, Capability-Erkennung beim Start.",
       "priority": "critical",
-      "dependencies": ["arch-004"],
-      "components": ["cmd/dockweaved", "internal/api"],
+      "dependencies": [
+        "arch-004"
+      ],
+      "components": [
+        "cmd/dockweaved",
+        "internal/api"
+      ],
       "acceptance": "Nicht autorisierte UIDs erhalten 403; Socket-Berechtigungen geprüft; fehlende Capabilities => klarer Startfehler.",
-      "tests": ["Integration: peercred-Auth"],
-      "status": "pending"
+      "tests": [
+        "Integration: peercred-Auth"
+      ],
+      "status": "done"
     },
     {
       "id": "sec-002",
       "title": "Container-Hardening",
       "description": "Agent-Container: non-root Option, keine Cap_SYS_ADMIN, seccomp default, kein docker.sock, Netzwerk-Profile, Ressourcenlimits.",
       "priority": "critical",
-      "dependencies": ["arch-005"],
-      "components": ["internal/dockerclient", "internal/agents"],
+      "dependencies": [
+        "arch-005"
+      ],
+      "components": [
+        "internal/dockerclient",
+        "internal/agents"
+      ],
       "acceptance": "Inspect zeigt: kein Privileged, keine CAP_SYS_ADMIN, kein docker.sock-Mount; Limits gesetzt.",
-      "tests": ["Integration: Container-Inspect-Assertions"],
-      "status": "pending"
+      "tests": [
+        "Integration: Container-Inspect-Assertions"
+      ],
+      "status": "done"
     },
     {
       "id": "sec-003",
       "title": "Audit-Log",
       "description": "Append-only Audit-Ereignisse in SQLite für alle Mutationen (grant/revoke/mount/agent lifecycle), integritätsgeschützt (Hash-Kette).",
       "priority": "high",
-      "dependencies": ["arch-004"],
-      "components": ["internal/persistence", "internal/api"],
+      "dependencies": [
+        "arch-004"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api"
+      ],
       "acceptance": "Jede Mutation erzeugt Audit-Event mit Akteur, Zeit, Hash-Vorgänger.",
-      "tests": ["Unit: Hash-Kette verifizieren/manipulieren"],
-      "status": "pending"
+      "tests": [
+        "Unit: Hash-Kette verifizieren/manipulieren"
+      ],
+      "status": "done"
     },
     {
       "id": "sec-004",
       "title": "Bedrohungsmodell-Dokumentation",
       "description": "docs/security-model.md: Angreifer (kompromittierter Agent, böser lokaler User), Annahmen, Grenzen (kein FD-Entzug, kein verlustfreies Monitoring).",
       "priority": "high",
-      "dependencies": ["arch-001"],
-      "components": ["docs"],
+      "dependencies": [
+        "arch-001"
+      ],
+      "components": [
+        "docs"
+      ],
       "acceptance": "SECURITY.md + docs/security-model.md (de+en) vollständig.",
       "tests": [],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "sec-005",
       "title": "Secrets-Handling",
       "description": "API-Schlüssel nur als Env/File-Referenz, nie in DB/CLI-Args; Dokumentation.",
       "priority": "medium",
-      "dependencies": ["arch-005"],
-      "components": ["internal/agents", "docs"],
+      "dependencies": [
+        "arch-005"
+      ],
+      "components": [
+        "internal/agents",
+        "docs"
+      ],
       "acceptance": "Env-Injektion aus Datei; keine Secrets in inspect-Ausgaben.",
-      "tests": ["Unit"],
-      "status": "pending"
+      "tests": [
+        "Unit"
+      ],
+      "status": "done"
     }
   ]
 }

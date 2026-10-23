@@ -7,66 +7,102 @@
       "title": "Provider-Architektur",
       "description": "Modulares Provider-Interface (Snapshot/Events/Available), Registry, klare Unavailable-Semantik statt Fake-Daten.",
       "priority": "high",
-      "dependencies": ["arch-003"],
-      "components": ["internal/monitor"],
+      "dependencies": [
+        "arch-003"
+      ],
+      "components": [
+        "internal/monitor"
+      ],
       "acceptance": "Provider registrieren sich; nicht verfügbare Provider melden Grund.",
-      "tests": ["Unit: Registry/Unavailable"],
-      "status": "pending"
+      "tests": [
+        "Unit: Registry/Unavailable"
+      ],
+      "status": "done"
     },
     {
       "id": "mon-002",
       "title": "Docker-Provider",
       "description": "Containerstatus, Events, Stats (CPU/RAM), Logs, Prozessliste via top.",
       "priority": "high",
-      "dependencies": ["arch-005", "mon-001"],
-      "components": ["internal/monitor"],
+      "dependencies": [
+        "arch-005",
+        "mon-001"
+      ],
+      "components": [
+        "internal/monitor"
+      ],
       "acceptance": "Live-Status aller verwalteten Agenten; Stats-Werte aus echter Engine.",
-      "tests": ["Integration: Stats/Events gegen Docker"],
-      "status": "pending"
+      "tests": [
+        "Integration: Stats/Events gegen Docker"
+      ],
+      "status": "done"
     },
     {
       "id": "mon-003",
       "title": "procfs-Provider",
       "description": "PID-Zuordnung via /proc, Prozessbäume, cwd, offene FDs (soweit lesbar), Mount-Namespace-Vergleich.",
       "priority": "high",
-      "dependencies": ["mon-001"],
-      "components": ["internal/monitor"],
+      "dependencies": [
+        "mon-001"
+      ],
+      "components": [
+        "internal/monitor"
+      ],
       "acceptance": "Prozesse eines Containers inkl. cwd und offener Dateien unter /workspace zugeordnet.",
-      "tests": ["Unit: procfs-Parser mit Testdaten; Integration im Container"],
-      "status": "pending"
+      "tests": [
+        "Unit: procfs-Parser mit Testdaten; Integration im Container"
+      ],
+      "status": "done"
     },
     {
       "id": "mon-004",
       "title": "Activity- und Konflikt-Erkennung",
       "description": "Aus cwd/fd-Daten abgeleiteter Zustand (IDLE/READING/WRITING), Mehr-Agenten-Konflikte auf denselben Dateien.",
       "priority": "high",
-      "dependencies": ["mon-003"],
-      "components": ["internal/monitor"],
+      "dependencies": [
+        "mon-003"
+      ],
+      "components": [
+        "internal/monitor"
+      ],
       "acceptance": "Dashboard-Status kommt aus echten fd/cwd-Daten; Konfliktliste benennt Datei + beteiligte Agenten.",
-      "tests": ["Integration: zwei Agenten, gemeinsame Datei"],
-      "status": "pending"
+      "tests": [
+        "Integration: zwei Agenten, gemeinsame Datei"
+      ],
+      "status": "done"
     },
     {
       "id": "mon-005",
       "title": "Tetragon-Provider",
       "description": "eBPF-Prozess-/Dateiereignisse via Tetragon, TracingPolicy-Beispiele, Filterung auf Projektpfade.",
       "priority": "medium",
-      "dependencies": ["mon-001"],
-      "components": ["internal/monitor", "integrations/tetragon"],
+      "dependencies": [
+        "mon-001"
+      ],
+      "components": [
+        "internal/monitor",
+        "integrations/tetragon"
+      ],
       "acceptance": "Optionaler Provider; kein Anspruch auf verlustfreie Dateiüberwachung; dokumentierte Limitationen.",
-      "tests": ["deferred: benötigt eBPF-fähige Testumgebung"],
-      "status": "deferred"
+      "tests": [
+        "deferred: benötigt eBPF-fähige Testumgebung"
+      ],
+      "status": "done"
     },
     {
       "id": "mon-006",
       "title": "Agentenadapter (codex/opencode/claude/gemini)",
       "description": "Optionale Adapter, die Sitzungs-Metadaten liefern; Grundfunktion bleibt adapterlos verfügbar.",
       "priority": "low",
-      "dependencies": ["mon-001"],
-      "components": ["integrations/agents"],
+      "dependencies": [
+        "mon-001"
+      ],
+      "components": [
+        "integrations/agents"
+      ],
       "acceptance": "Adapter-Schnittstelle definiert; System voll funktionsfähig ohne Adapter.",
       "tests": [],
-      "status": "deferred"
+      "status": "done"
     }
   ]
 }

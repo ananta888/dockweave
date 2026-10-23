@@ -4,12 +4,15 @@
 package dockerclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -256,6 +259,24 @@ func (c *Client) Top(ctx context.Context, containerID string) ([]string, [][]str
 	return resp.Titles, resp.Processes, nil
 }
 
+// TopPIDs returns the host PIDs of processes inside a container.
+func (c *Client) TopPIDs(ctx context.Context, containerID string) ([]int, error) {
+	_, procs, err := c.Top(ctx, containerID)
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, p := range procs {
+		if len(p) == 0 {
+			continue
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(p[0])); err == nil {
+			pids = append(pids, n)
+		}
+	}
+	return pids, nil
+}
+
 // Events subscribes to engine events for DockWeave-managed containers.
 func (c *Client) Events(ctx context.Context) (<-chan events.Message, <-chan error) {
 	f := filters.NewArgs(filters.Arg("label", LabelManaged+"=true"))
@@ -263,9 +284,10 @@ func (c *Client) Events(ctx context.Context) (<-chan events.Message, <-chan erro
 	return msgs, errs
 }
 
-// Exec creates and starts an exec instance, returning a hijacked connection.
-// When tty is true the stream is raw; otherwise multiplexed (see Demux).
-func (c *Client) Exec(ctx context.Context, containerID string, cmd []string, tty bool) (io.ReadWriteCloser, error) {
+// Exec creates and starts an exec instance, returning a hijacked connection
+// and the exec ID (for resize). When tty is true the stream is raw;
+// otherwise multiplexed (see Demux).
+func (c *Client) Exec(ctx context.Context, containerID string, cmd []string, tty bool) (io.ReadWriteCloser, string, error) {
 	execCfg := container.ExecOptions{
 		Cmd:          cmd,
 		AttachStdin:  true,
@@ -275,13 +297,22 @@ func (c *Client) Exec(ctx context.Context, containerID string, cmd []string, tty
 	}
 	created, err := c.cli.ContainerExecCreate(ctx, containerID, execCfg)
 	if err != nil {
-		return nil, fmt.Errorf("exec create: %w", err)
+		return nil, "", fmt.Errorf("exec create: %w", err)
 	}
 	resp, err := c.cli.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{Tty: tty})
 	if err != nil {
-		return nil, fmt.Errorf("exec attach: %w", err)
+		return nil, "", fmt.Errorf("exec attach: %w", err)
 	}
-	return resp.Conn, nil
+	return resp.Conn, created.ID, nil
+}
+
+// ExecResize resizes the TTY of a running exec instance.
+func (c *Client) ExecResize(ctx context.Context, execID string, rows, cols int) error {
+	opts := container.ResizeOptions{Height: uint(rows), Width: uint(cols)}
+	if err := c.cli.ContainerExecResize(ctx, execID, opts); err != nil {
+		return fmt.Errorf("exec resize: %w", err)
+	}
+	return nil
 }
 
 // ExecExitCode returns the exit code of a finished exec instance's session
@@ -348,6 +379,32 @@ func Demux(src io.Reader, stdout, stderr io.Writer) error {
 
 // Expose nat import usage guard (nat kept for future port mappings).
 var _ = nat.Port("")
+
+// ExecOutput runs a command in a container and returns its combined output
+// (stdout+stderr, demultiplexed). Non-zero exit codes produce an error that
+// contains the output.
+func (c *Client) ExecOutput(ctx context.Context, containerID string, cmd []string) (string, error) {
+	created, err := c.cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+		Cmd: cmd, AttachStdout: true, AttachStderr: true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("exec create: %w", err)
+	}
+	resp, err := c.cli.ContainerExecAttach(ctx, created.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", fmt.Errorf("exec attach: %w", err)
+	}
+	defer resp.Close()
+	var buf bytes.Buffer
+	if err := Demux(resp.Reader, &buf, &buf); err != nil {
+		return buf.String(), fmt.Errorf("exec stream: %w", err)
+	}
+	insp, err := c.cli.ContainerExecInspect(ctx, created.ID)
+	if err == nil && insp.ExitCode != 0 {
+		return buf.String(), fmt.Errorf("exit %d", insp.ExitCode)
+	}
+	return buf.String(), nil
+}
 
 // ErrNotFound wraps engine "no such container" errors.
 var ErrNotFound = errors.New("container not found")

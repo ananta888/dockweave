@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	agentadapters "github.com/ananta888/dockweave/integrations/agents"
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
@@ -22,6 +24,123 @@ type Service struct {
 	Store  *persistence.Store
 	Mounts *mounts.Manager
 	Docker *dockerclient.Client
+	// Memory performs snapshot/restore on agent memory directories.
+	// Optional: if nil, memory operations return an error.
+	Memory *memory.Manager
+}
+
+// ErrMemoryUnavailable is returned when memory snapshotting is not configured.
+var ErrMemoryUnavailable = errors.New("memory snapshotting not configured on daemon")
+
+// SnapshotMemory creates a memory snapshot for an agent and applies the
+// retention policy afterwards.
+func (s *Service) SnapshotMemory(ctx context.Context, idOrName, actor string) (*memory.Snapshot, error) {
+	if s.Memory == nil {
+		return nil, ErrMemoryUnavailable
+	}
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := s.Memory.Create(a.ID)
+	if err != nil {
+		return nil, err
+	}
+	// Default retention: keep the 10 newest snapshots.
+	if _, err := s.Memory.ApplyRetention(a.ID, memory.RetentionPolicy{MaxCount: 10}); err != nil {
+		// Retention failure does not fail the snapshot; report via event.
+		s.event(ctx, "memory.retention_failed", actor, a.ID, "retention after snapshot failed: "+err.Error())
+	}
+	s.event(ctx, "memory.snapshot", actor, a.ID, "snapshot "+snap.Name)
+	return snap, nil
+}
+
+// ListMemorySnapshots lists snapshots of an agent.
+func (s *Service) ListMemorySnapshots(ctx context.Context, idOrName string) ([]memory.Snapshot, error) {
+	if s.Memory == nil {
+		return nil, ErrMemoryUnavailable
+	}
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	return s.Memory.List(a.ID)
+}
+
+// RestoreMemorySnapshot restores a snapshot. Refuses while the agent runs
+// (restoring under a live SQLite writer corrupts state).
+func (s *Service) RestoreMemorySnapshot(ctx context.Context, idOrName, name, actor string) error {
+	if s.Memory == nil {
+		return ErrMemoryUnavailable
+	}
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	cid, err := s.Docker.FindByAgent(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if cid != "" {
+		if st, err := s.Docker.State(ctx, cid); err == nil && st == "running" {
+			return memory.ErrBusy
+		}
+	}
+	if err := s.Memory.Restore(a.ID, name); err != nil {
+		return err
+	}
+	s.event(ctx, "memory.restore", actor, a.ID, "restored "+name)
+	return nil
+}
+
+// DeleteMemorySnapshot removes one snapshot (audited).
+func (s *Service) DeleteMemorySnapshot(ctx context.Context, idOrName, name, actor string) error {
+	if s.Memory == nil {
+		return ErrMemoryUnavailable
+	}
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	if err := s.Memory.Delete(a.ID, name); err != nil {
+		return err
+	}
+	s.event(ctx, "memory.snapshot_delete", actor, a.ID, "deleted "+name)
+	return nil
+}
+
+// SessionInfo probes optional agent adapters (codex/opencode/claude/gemini)
+// via docker exec and returns enriched session metadata. Without adapters
+// configured or when the container is not running, a not-detected result
+// is returned — never fabricated data.
+func (s *Service) SessionInfo(ctx context.Context, idOrName string) (*agentadapters.SessionInfo, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	cid, err := s.Docker.FindByAgent(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	if cid == "" {
+		return &agentadapters.SessionInfo{Detected: false}, nil
+	}
+	st, err := s.Docker.State(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	if st != "running" {
+		return &agentadapters.SessionInfo{Detected: false}, nil
+	}
+	exec := func(ctx context.Context, cmd []string) (string, error) {
+		return s.Docker.ExecOutput(ctx, cid, cmd)
+	}
+	reg := agentadapters.NewRegistry()
+	adapter, ok := reg.DetectAll(ctx, exec)
+	if !ok {
+		return &agentadapters.SessionInfo{Detected: false}, nil
+	}
+	return adapter.SessionInfo(ctx, exec)
 }
 
 // Eventf appends an audit event; failures are logged to stderr implicitly by callers.

@@ -7,44 +7,68 @@
       "title": "REST-API v1 über Unix-Socket",
       "description": "Versionierte Endpunkte /api/v1/{agents,workspaces,grants,mounts,activity,events,health}; strukturierte JSON-Fehler; Idempotenz; SSE-Eventstream; SO_PEERCRED-AuthZ.",
       "priority": "critical",
-      "dependencies": ["arch-004", "sec-001"],
-      "components": ["internal/api"],
+      "dependencies": [
+        "arch-004",
+        "sec-001"
+      ],
+      "components": [
+        "internal/api"
+      ],
       "acceptance": "Alle Endpunkte aus dem Pflichtenheft; Fehlerformat {error:{code,message,details}}; OpenAPI 3.1 Spec in docs/api/openapi.yaml.",
-      "tests": ["httptest-basierte Handler-Tests + Socket-Auth"],
-      "status": "pending"
+      "tests": [
+        "httptest-basierte Handler-Tests + Socket-Auth"
+      ],
+      "status": "done"
     },
     {
       "id": "api-002",
       "title": "CLI auf gemeinsamer Fachlogik",
       "description": "cmd/dockweave nutzt ausschließlich pkg/sdk gegen die API; keine Logik-Duplikation; JSON-Ausgabeoption.",
       "priority": "high",
-      "dependencies": ["api-001"],
-      "components": ["cmd/dockweave", "pkg/sdk"],
+      "dependencies": [
+        "api-001"
+      ],
+      "components": [
+        "cmd/dockweave",
+        "pkg/sdk"
+      ],
       "acceptance": "Alle Befehle aus Pflichtenheft §5/§4/§6 verfügbar; --json global.",
-      "tests": ["E2E: CLI gegen Test-Daemon"],
-      "status": "pending"
+      "tests": [
+        "E2E: CLI gegen Test-Daemon"
+      ],
+      "status": "done"
     },
     {
       "id": "api-003",
       "title": "MCP-Server (begrenzte Rechte)",
       "description": "Optionaler MCP-Endpunkt mit read-only Monitoring-Werkzeugen.",
       "priority": "low",
-      "dependencies": ["api-001", "mon-004"],
-      "components": ["internal/api/mcp"],
+      "dependencies": [
+        "api-001",
+        "mon-004"
+      ],
+      "components": [
+        "internal/api/mcp"
+      ],
       "acceptance": "Nur Lese-Werkzeuge; kein Mount-/Grant-Zugriff.",
       "tests": [],
-      "status": "deferred"
+      "status": "done"
     },
     {
       "id": "api-004",
       "title": "KI-Monitor-Agent (optional, eingeschränkte API)",
       "description": "Eigenständiger optionaler Dienst auf der Read-only-Monitoring-API; keine Schreibrechte.",
       "priority": "low",
-      "dependencies": ["api-001", "mon-004"],
-      "components": ["integrations/ai-monitor"],
+      "dependencies": [
+        "api-001",
+        "mon-004"
+      ],
+      "components": [
+        "integrations/ai-monitor"
+      ],
       "acceptance": "System voll funktionsfähig ohne Komponente; Berichte als Events.",
       "tests": [],
-      "status": "deferred"
+      "status": "done"
     }
   ]
 }

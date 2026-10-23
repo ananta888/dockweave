@@ -8,9 +8,14 @@
       "description": "rslave-Propagation, RO-Staging, Unmount-EBUSY und Namespace-Grenzen praktisch verifizieren und dokumentieren.",
       "priority": "critical",
       "dependencies": [],
-      "components": ["docs/validation", "tests/integration"],
+      "components": [
+        "docs/validation",
+        "tests/integration"
+      ],
       "acceptance": "Alle 10 Semantik-Tests dokumentiert; RO-Staging-Regel als verbindliche Architekturentscheidung festgehalten.",
-      "tests": ["tests/integration/testdata/mount-semantics.sh"],
+      "tests": [
+        "tests/integration/testdata/mount-semantics.sh"
+      ],
       "status": "done"
     },
     {
@@ -18,8 +23,12 @@
       "title": "Projektgerüst und Konventionen",
       "description": "go.mod, Verzeichnisstruktur, AGENTS.md, TODO-JSONs, Lizenz, gitignore, GitHub-Repo.",
       "priority": "critical",
-      "dependencies": ["arch-001"],
-      "components": ["repo"],
+      "dependencies": [
+        "arch-001"
+      ],
+      "components": [
+        "repo"
+      ],
       "acceptance": "go build ./... läuft auf leerem Gerüst; Repo public auf GitHub.",
       "tests": [],
       "status": "done"
@@ -29,44 +38,69 @@
       "title": "Datenmodelle",
       "description": "Agent, Workspace, Grant, MountState, Event als zentrale Typen in internal/model.",
       "priority": "high",
-      "dependencies": ["arch-002"],
-      "components": ["internal/model"],
+      "dependencies": [
+        "arch-002"
+      ],
+      "components": [
+        "internal/model"
+      ],
       "acceptance": "Typsichere Modelle mit Validierung; JSON-Tags stabil (API-Vertrag).",
-      "tests": ["internal/model/*_test.go"],
-      "status": "in_progress"
+      "tests": [
+        "internal/model/*_test.go"
+      ],
+      "status": "done"
     },
     {
       "id": "arch-004",
       "title": "SQLite-Persistenz mit Migrationen",
       "description": "internal/persistence auf modernc.org/sqlite (pure Go), WAL, versionierte Migrationen, Transaktionen.",
       "priority": "high",
-      "dependencies": ["arch-003"],
-      "components": ["internal/persistence"],
+      "dependencies": [
+        "arch-003"
+      ],
+      "components": [
+        "internal/persistence"
+      ],
       "acceptance": "CRUD für alle Modelle; Migrations-Tabelle; Crash-sichere Transaktionen.",
-      "tests": ["internal/persistence/*_test.go (tempdir, WAL, Konkurrenz)"],
-      "status": "pending"
+      "tests": [
+        "internal/persistence/*_test.go (tempdir, WAL, Konkurrenz)"
+      ],
+      "status": "done"
     },
     {
       "id": "arch-005",
       "title": "Docker-Integration",
       "description": "internal/dockerclient: Engine-API-Wrapper, Label-Konvention, Container-Lifecycle, Events, Stats.",
       "priority": "high",
-      "dependencies": ["arch-003"],
-      "components": ["internal/dockerclient"],
+      "dependencies": [
+        "arch-003"
+      ],
+      "components": [
+        "internal/dockerclient"
+      ],
       "acceptance": "Create/Start/Stop/Remove/Inspect/Logs/Exec mit dockweave-Labels; Fehler strukturiert.",
-      "tests": ["Unit: Request-Aufbau; Integration: gegen echte Engine"],
-      "status": "pending"
+      "tests": [
+        "Unit: Request-Aufbau; Integration: gegen echte Engine"
+      ],
+      "status": "done"
     },
     {
       "id": "arch-006",
       "title": "Sicherer Mount-Manager",
       "description": "internal/mounts: Pfadkanonisierung, Allowlist, openat2-TOCTOU-Schutz, RO-Staging, Add/Remove/List/Reconcile, Locking, Rollback.",
       "priority": "critical",
-      "dependencies": ["arch-003", "arch-001"],
-      "components": ["internal/mounts"],
+      "dependencies": [
+        "arch-003",
+        "arch-001"
+      ],
+      "components": [
+        "internal/mounts"
+      ],
       "acceptance": "Alle 17 Mount-Anforderungen des Pflichtenhefts; Sicherheitsregeln 2-4 aus AGENTS.md implementiert.",
-      "tests": ["Unit: Validierung/Pfade; Integration privilegiert: RO/RW/EBUSY/Doppel-Mount/Symlink"],
-      "status": "pending"
+      "tests": [
+        "Unit: Validierung/Pfade; Integration privilegiert: RO/RW/EBUSY/Doppel-Mount/Symlink"
+      ],
+      "status": "done"
     }
   ]
 }

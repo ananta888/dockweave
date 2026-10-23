@@ -19,7 +19,8 @@ import (
 
 // Client calls the DockWeave API.
 type Client struct {
-	hc  *http.Client
+	hc   *http.Client
+	base string // optional http base URL (tests, proxies)
 }
 
 // New creates a client for the daemon socket at socketPath.
@@ -36,6 +37,12 @@ func New(socketPath string) *Client {
 	return &Client{hc: hc}
 }
 
+// NewHTTP creates a client for a plain HTTP base URL (used by tests and
+// by deployments that front the daemon with an authenticated proxy).
+func NewHTTP(baseURL string) *Client {
+	return &Client{hc: &http.Client{Timeout: 60 * time.Second}, base: strings.TrimSuffix(baseURL, "/")}
+}
+
 // APIError mirrors the daemon's structured error.
 type APIError struct {
 	Code    string `json:"code"`
@@ -43,6 +50,13 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string { return e.Code + ": " + e.Message }
+
+func (c *Client) url(path string) string {
+	if c.base != "" {
+		return c.base + path
+	}
+	return "http://dockweaved" + path
+}
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	var rdr io.Reader
@@ -53,7 +67,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		}
 		rdr = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://dockweaved"+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, c.url(path), rdr)
 	if err != nil {
 		return err
 	}
@@ -248,6 +262,69 @@ func (c *Client) Providers(ctx context.Context) (map[string]string, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// ---- memory snapshots ----
+
+// SnapshotInfo describes a memory snapshot archive (API shape).
+type SnapshotInfo struct {
+	AgentID   string `json:"agent_id"`
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes"`
+	CreatedAt string `json:"created_at"`
+}
+
+// SnapshotMemory triggers a memory snapshot for an agent.
+func (c *Client) SnapshotMemory(ctx context.Context, agentID string) (*SnapshotInfo, error) {
+	var out SnapshotInfo
+	if err := c.do(ctx, "POST", "/api/v1/agents/"+agentID+"/memory/snapshot", map[string]string{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListMemorySnapshots lists an agent's snapshots.
+func (c *Client) ListMemorySnapshots(ctx context.Context, agentID string) ([]SnapshotInfo, error) {
+	var out []SnapshotInfo
+	if err := c.do(ctx, "GET", "/api/v1/agents/"+agentID+"/memory/snapshots", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RestoreMemorySnapshot restores a snapshot into an agent's memory.
+func (c *Client) RestoreMemorySnapshot(ctx context.Context, agentID, snapshot string) error {
+	return c.do(ctx, "POST", "/api/v1/agents/"+agentID+"/memory/restore",
+		map[string]string{"snapshot": snapshot}, nil)
+}
+
+// DeleteMemorySnapshot deletes one snapshot.
+func (c *Client) DeleteMemorySnapshot(ctx context.Context, agentID, name string) error {
+	return c.do(ctx, "DELETE", "/api/v1/agents/"+agentID+"/memory/snapshots/"+name, nil, nil)
+}
+
+// SessionInfo is the adapter-reported session metadata (API shape).
+type SessionInfo struct {
+	Adapter       string            `json:"adapter"`
+	Detected      bool              `json:"detected"`
+	ActiveProject string            `json:"active_project,omitempty"`
+	Sessions      []string          `json:"sessions,omitempty"`
+	Details       map[string]string `json:"details,omitempty"`
+}
+
+// AgentSession fetches optional adapter session metadata.
+func (c *Client) AgentSession(ctx context.Context, agentID string) (*SessionInfo, error) {
+	var out SessionInfo
+	if err := c.do(ctx, "GET", "/api/v1/agents/"+agentID+"/session", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SubmitMonitorReport submits an AI-monitor analysis report to the
+// restricted monitoring API (the only write operation it may perform).
+func (c *Client) SubmitMonitorReport(ctx context.Context, rep any) error {
+	return c.do(ctx, "POST", "/api/v1/monitor/reports", rep, nil)
 }
 
 // StreamEvents subscribes to the SSE event stream and invokes fn per event.

@@ -10,6 +10,7 @@ require (
 	github.com/docker/go-connections v0.8.2
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.49.0
+	golang.org/x/term v0.47.0
 	modernc.org/sqlite v1.61.0
 )
 

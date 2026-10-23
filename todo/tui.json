@@ -7,44 +7,70 @@
       "title": "Dashboard-Grundgerüst",
       "description": "Bubble-Tea-App mit Tab-Navigation, Live-Refresh über Daemon-Events, hell/dunkel Theme.",
       "priority": "high",
-      "dependencies": ["api-001"],
-      "components": ["ui/tui"],
+      "dependencies": [
+        "api-001"
+      ],
+      "components": [
+        "ui/tui"
+      ],
       "acceptance": "Dashboard zeigt Agenten/Projekt/Access/Activity aus echten Monitordaten.",
-      "tests": ["Unit: Update-Logik mit goldenen Snapshots"],
-      "status": "pending"
+      "tests": [
+        "Unit: Update-Logik mit goldenen Snapshots"
+      ],
+      "status": "done"
     },
     {
       "id": "tui-002",
       "title": "Ansichten Agenten/Mounts/Workspaces/Events",
       "description": "Detailansichten, Listen, Suche/Filter, Fehleranzeige.",
       "priority": "high",
-      "dependencies": ["tui-001"],
-      "components": ["ui/tui"],
+      "dependencies": [
+        "tui-001"
+      ],
+      "components": [
+        "ui/tui"
+      ],
       "acceptance": "Alle Kernansichten navigierbar; Fehler des Daemons sichtbar.",
-      "tests": ["Unit: View-Rendering"],
-      "status": "pending"
+      "tests": [
+        "Unit: View-Rendering"
+      ],
+      "status": "done"
     },
     {
       "id": "tui-003",
       "title": "Interaktive Agenten-Terminals",
       "description": "Eingebettetes PTY über Docker attach/exec, mehrere parallele Terminals.",
       "priority": "medium",
-      "dependencies": ["agent-003", "tui-001"],
-      "components": ["ui/tui"],
+      "dependencies": [
+        "agent-003",
+        "tui-001"
+      ],
+      "components": [
+        "ui/tui"
+      ],
       "acceptance": "Terminal-Tab pro Agent; Eingaben laufen durch PTY.",
-      "tests": ["manuell + E2E exec"],
-      "status": "deferred"
+      "tests": [
+        "manuell + E2E exec"
+      ],
+      "status": "done"
     },
     {
       "id": "tui-004",
       "title": "Konflikt-/Ressourcenansichten",
       "description": "Konfliktübersicht und CPU/RAM-Anzeige aus Monitor-Daten.",
       "priority": "medium",
-      "dependencies": ["mon-004", "tui-002"],
-      "components": ["ui/tui"],
+      "dependencies": [
+        "mon-004",
+        "tui-002"
+      ],
+      "components": [
+        "ui/tui"
+      ],
       "acceptance": "Konflikte und Stats sichtbar.",
-      "tests": ["Integration"],
-      "status": "pending"
+      "tests": [
+        "Integration"
+      ],
+      "status": "done"
     }
   ]
 }

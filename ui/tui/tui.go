@@ -5,6 +5,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,24 +61,31 @@ type modelTUI struct {
 	width  int
 	height int
 	keys   keyMap
+	cursor int          // selection in agents view
+	socket string       // daemon term socket (for terminals)
 }
 
 type keyMap struct {
 	Quit, Next, Prev, Refresh key.Binding
+	CursorUp, CursorDown, Term key.Binding
 }
 
 func defaultKeys() keyMap {
 	return keyMap{
-		Quit:    key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Next:    key.NewBinding(key.WithKeys("tab", "l"), key.WithHelp("tab", "next view")),
-		Prev:    key.NewBinding(key.WithKeys("shift+tab", "h"), key.WithHelp("shift+tab", "prev view")),
-		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Next:      key.NewBinding(key.WithKeys("tab", "l"), key.WithHelp("tab", "next view")),
+		Prev:      key.NewBinding(key.WithKeys("shift+tab", "h"), key.WithHelp("shift+tab", "prev view")),
+		Refresh:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		CursorUp:  key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑", "select agent")),
+		CursorDown: key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓", "select agent")),
+		Term:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "open terminal (agents view)")),
 	}
 }
 
 // Run starts the TUI against the daemon at socketPath.
 func Run(socketPath string) error {
-	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys()}
+	termSocket := filepath.Join(filepath.Dir(socketPath), "dockweaved.term.sock")
+	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
@@ -139,6 +149,27 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tab = (m.tab - 1 + tabCount) % tabCount
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.refresh()
+		case key.Matches(msg, m.keys.CursorUp) && m.tab == tabAgents:
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case key.Matches(msg, m.keys.CursorDown) && m.tab == tabAgents:
+			if m.cursor < len(m.data.agents)-1 {
+				m.cursor++
+			}
+		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
+			// Hand the terminal to `dockweave agent attach` via exec.
+			if len(m.data.agents) > 0 && m.cursor < len(m.data.agents) {
+				name := m.data.agents[m.cursor].Name
+				self, err := os.Executable()
+				if err != nil {
+					self = "dockweave"
+				}
+				c := exec.Command(self, "agent", "attach", "--term-socket", m.socket, name)
+				return m, tea.ExecProcess(c, func(err error) tea.Msg {
+					return dataMsg{err: nil} // triggers redraw after return
+				})
+			}
 		}
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tick())
@@ -177,7 +208,7 @@ func (m *modelTUI) View() string {
 			b.WriteString(m.viewEvents())
 		}
 	}
-	b.WriteString("\n" + dimStyle.Render("tab: next • shift+tab: prev • r: refresh • q: quit"))
+	b.WriteString("\n" + dimStyle.Render("tab: next • shift+tab: prev • r: refresh • ↑/↓: select • t: terminal • q: quit"))
 	return b.String()
 }
 
@@ -241,14 +272,27 @@ func (m *modelTUI) viewAgents() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%-16s %-10s %-10s %-30s %s\n", "NAME", "TYPE", "STATE", "IMAGE", "ID")
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 80))
-	for _, a := range m.data.agents {
+	for i, a := range m.data.agents {
 		st := string(a.State)
 		if a.State == model.AgentRunning {
 			st = okStyle.Render(st)
 		}
-		fmt.Fprintf(&b, "%-16s %-10s %-19s %-30s %s\n", a.Name, a.Type, st, a.Image, a.ID)
+		marker := "  "
+		if i == m.cursor && m.tab == tabAgents {
+			marker = tabActive.Render("▸ ")
+		}
+		fmt.Fprintf(&b, "%s%-14s %-10s %-19s %-30s %s\n", marker, padEnd(a.Name, 14), a.Type, st, a.Image, a.ID)
 	}
+	b.WriteString("\n" + dimStyle.Render("t: open terminal on selected agent"))
 	return b.String()
+}
+
+func padEnd(s string, n int) string {
+	// lipgloss styles break padding; keep plain names for alignment.
+	if len(s) > n {
+		return s[:n]
+	}
+	return s + strings.Repeat(" ", n-len(s))
 }
 
 func (m *modelTUI) viewWorkspaces() string {

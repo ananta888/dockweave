@@ -24,6 +24,8 @@ import (
 	"github.com/ananta888/dockweave/internal/api"
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/memory"
+	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
@@ -88,7 +90,14 @@ func run(cfgPath string) error {
 		}
 	}
 
-	agentSvc := &agents.Service{Store: store, Mounts: mountMgr, Docker: docker}
+	memoryMgr, err := memory.New(cfg.Root, func(agentID string) string {
+		return mountMgr.MemoryDir(agentID)
+	})
+	if err != nil {
+		return err
+	}
+
+	agentSvc := &agents.Service{Store: store, Mounts: mountMgr, Docker: docker, Memory: memoryMgr}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
 
 	lookup := &containerLookup{store: store, docker: docker}
@@ -96,7 +105,19 @@ func run(cfgPath string) error {
 	procfsProv := monitor.NewProcfsProvider(func() map[string]string {
 		return workspaceRoots(store)
 	})
-	mon := monitor.New(dockerProv, procfsProv)
+	provs := []monitor.Provider{dockerProv, procfsProv}
+	// Optional Tetragon eBPF provider (JSONL export stream).
+	if tetraPath := os.Getenv("DOCKWEAVE_TETRAGON_EVENTS"); tetraPath != "" {
+		tetra := monitor.NewTetragonProvider(tetraPath, func() map[string]string {
+			return workspaceRoots(store)
+		})
+		tetra.PIDResolver = func(ctx context.Context) map[int]string {
+			return monitor.BuildPIDMap(lookup, docker)
+		}
+		provs = append(provs, tetra)
+		log.Printf("tetragon provider enabled (events: %s)", tetraPath)
+	}
+	mon := monitor.New(provs...)
 	mon.DetectorRoots(func() map[string]string { return workspaceRoots(store) })
 
 	// Startup recovery: refresh container states, re-prepare trees, reconcile mounts.
@@ -123,6 +144,37 @@ func run(cfgPath string) error {
 
 	handler := api.PeerAuthMiddleware(api.NewServer(agentSvc, wsSvc, mon, store))
 	srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}
+
+	// Terminal stream server (interactive PTY sessions; separate raw socket).
+	termSock := filepath.Join(filepath.Dir(cfg.SocketPath), "dockweaved.term.sock")
+	termSrv := api.NewTermServer(api.TermConfig{
+		SocketPath: termSock,
+		Docker:     docker,
+		FindContainer: func(ctx context.Context, idOrName string) (string, error) {
+			a, err := store.GetAgent(ctx, idOrName)
+			if err != nil {
+				return "", err
+			}
+			cid, err := docker.FindByAgent(ctx, a.ID)
+			if err != nil || cid == "" {
+				return "", err
+			}
+			st, err := docker.State(ctx, cid)
+			if err == nil && st != "running" {
+				return "", fmt.Errorf("agent %q not running", a.Name)
+			}
+			return cid, nil
+		},
+	})
+	if err := termSrv.Listen(); err != nil {
+		return err
+	}
+	go func() {
+		if err := termSrv.Serve(); err != nil {
+			log.Printf("term server: %v", err)
+		}
+	}()
+	defer termSrv.Close()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -159,6 +211,11 @@ func (l *containerLookup) ContainerID(ctx context.Context, agentID string) (stri
 		return a.ContainerID, nil
 	}
 	return l.docker.FindByAgent(ctx, a.ID)
+}
+
+// Agents implements monitor.AgentLookupExtended.
+func (l *containerLookup) Agents(ctx context.Context) ([]*model.Agent, error) {
+	return l.store.ListAgents(ctx)
 }
 
 func workspaceRoots(store *persistence.Store) map[string]string {

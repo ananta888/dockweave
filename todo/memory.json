@@ -7,33 +7,52 @@
       "title": "Memory-Provisioning und 1:1-Bindung",
       "description": "Memory-Verzeichnis pro Agenten-ID, Rechte/UID-Handling, Schutz vor Mehrfachzuordnung.",
       "priority": "high",
-      "dependencies": ["agent-002"],
-      "components": ["internal/agents"],
+      "dependencies": [
+        "agent-002"
+      ],
+      "components": [
+        "internal/agents"
+      ],
       "acceptance": "Zwei Agenten können nicht dasselbe Memory-Verzeichnis erhalten (DB-Constraint + Laufzeitprüfung).",
-      "tests": ["Unit + E2E Persistenz"],
-      "status": "pending"
+      "tests": [
+        "Unit + E2E Persistenz"
+      ],
+      "status": "done"
     },
     {
       "id": "mem-002",
       "title": "Snapshots und Wiederherstellung",
       "description": "Tar-basierte Snapshots des Memory-Verzeichnisses, Restore in neue Agentenidentität möglich.",
       "priority": "medium",
-      "dependencies": ["mem-001"],
-      "components": ["internal/agents", "cmd/dockweave"],
+      "dependencies": [
+        "mem-001"
+      ],
+      "components": [
+        "internal/agents",
+        "cmd/dockweave"
+      ],
       "acceptance": "memory snapshot/restore CLI; Restore auf neuem Agent funktioniert.",
-      "tests": ["E2E"],
-      "status": "deferred"
+      "tests": [
+        "E2E"
+      ],
+      "status": "done"
     },
     {
       "id": "mem-003",
       "title": "Backups und Retention",
       "description": "Retention-Regeln (max. Snapshots/Alter), Backup-Ziel konfigurierbar.",
       "priority": "low",
-      "dependencies": ["mem-002"],
-      "components": ["internal/agents"],
+      "dependencies": [
+        "mem-002"
+      ],
+      "components": [
+        "internal/agents"
+      ],
       "acceptance": "Retention räumt nach Regel auf.",
-      "tests": ["Unit"],
-      "status": "deferred"
+      "tests": [
+        "Unit"
+      ],
+      "status": "done"
     }
   ]
 }

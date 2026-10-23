@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/ananta888/dockweave/internal/agents"
+	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
@@ -48,12 +49,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func classify(err error) (int, string) {
 	switch {
-	case errors.Is(err, persistence.ErrNotFound):
+	case errors.Is(err, persistence.ErrNotFound), errors.Is(err, memory.ErrNotFound):
 		return http.StatusNotFound, "not_found"
 	case errors.Is(err, persistence.ErrConflict), errors.Is(err, workspaces.ErrConflict):
 		return http.StatusConflict, "conflict"
-	case errors.Is(err, mounts.ErrBusy):
+	case errors.Is(err, mounts.ErrBusy), errors.Is(err, memory.ErrBusy):
 		return http.StatusConflict, "busy"
+	case errors.Is(err, agents.ErrMemoryUnavailable):
+		return http.StatusServiceUnavailable, "memory_unavailable"
 	default:
 		if isValidation(err) {
 			return http.StatusBadRequest, "invalid"
@@ -93,6 +96,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/start", s.agentAction(s.Agents.Start))
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/stop", s.stopAgent)
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/restart", s.agentAction(s.Agents.Restart))
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/snapshot", s.snapshotMemory)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/memory/snapshots", s.listMemorySnapshots)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/restore", s.restoreMemory)
+	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/memory/snapshots/{name}", s.deleteMemorySnapshot)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/session", s.agentSession)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
 	s.mux.HandleFunc("DELETE /api/v1/workspaces/{id}", s.unregisterWorkspace)
@@ -105,6 +113,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)
+	s.mux.HandleFunc("POST /api/v1/monitor/reports", s.submitReport)
 }
 
 // ServeHTTP implements http.Handler.
@@ -416,6 +425,107 @@ func (s *Server) eventStream(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) providers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Monitor.Providers(r.Context()))
+}
+
+// ---- memory snapshots ----
+
+func (s *Server) snapshotMemory(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.Agents.SnapshotMemory(r.Context(), r.PathValue("id"), actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, snap)
+}
+
+func (s *Server) listMemorySnapshots(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListMemorySnapshots(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) restoreMemory(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Snapshot string `json:"snapshot"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Snapshot == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain snapshot name"))
+		return
+	}
+	if err := s.Agents.RestoreMemorySnapshot(r.Context(), r.PathValue("id"), req.Snapshot, actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
+}
+
+func (s *Server) deleteMemorySnapshot(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agents.DeleteMemorySnapshot(r.Context(), r.PathValue("id"), r.PathValue("name"), actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) agentSession(w http.ResponseWriter, r *http.Request) {
+	info, err := s.Agents.SessionInfo(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+// monitorReport is the ONLY write surface of the restricted monitoring API:
+// the AI monitor agent may submit analysis reports. Payload is strictly
+// validated; no grants, mounts or agent state can be influenced.
+type monitorReport struct {
+	Title    string `json:"title"`
+	Summary  string `json:"summary"`
+	Findings []struct {
+		Kind     string `json:"kind"`
+		Severity string `json:"severity"`
+		Message  string `json:"message"`
+	} `json:"findings"`
+	GeneratedAt string `json:"generated_at"`
+}
+
+func (s *Server) submitReport(w http.ResponseWriter, r *http.Request) {
+	var rep monitorReport
+	if err := json.NewDecoder(r.Body).Decode(&rep); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode body: %w", err))
+		return
+	}
+	if len(rep.Title) > 200 || len(rep.Summary) > 4000 || len(rep.Findings) > 200 {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("report exceeds size limits"))
+		return
+	}
+	// Serialize findings into a bounded message.
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s — %s", rep.Title, rep.Summary)
+	for i, f := range rep.Findings {
+		if i >= 20 {
+			fmt.Fprintf(&b, " … (%d more)", len(rep.Findings)-i)
+			break
+		}
+		msg := f.Message
+		if len(msg) > 300 {
+			msg = msg[:300]
+		}
+		fmt.Fprintf(&b, "\n[%s/%s] %s", f.Kind, f.Severity, msg)
+	}
+	ev := &model.Event{
+		ID: model.NewID("ev"), Type: model.EventType("monitor.report"),
+		Actor: actor(r), Message: b.String(), Timestamp: time.Now(),
+	}
+	if err := s.Store.AppendEvent(r.Context(), ev); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"event_id": ev.ID})
 }
 
 // fail maps service errors to structured API errors.

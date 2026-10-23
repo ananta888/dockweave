@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/mcp"
 	"github.com/ananta888/dockweave/pkg/sdk"
 	"github.com/ananta888/dockweave/ui/tui"
 )
@@ -33,7 +34,7 @@ func main() {
 	root.PersistentFlags().StringVar(&socketPath, "socket", envOr("DOCKWEAVE_SOCKET", "/run/dockweave/dockweaved.sock"), "daemon socket")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")
 
-	root.AddCommand(agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd())
+	root.AddCommand(agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -161,7 +162,50 @@ func agentCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect)
+	session := &cobra.Command{
+		Use: "session NAME|ID", Short: "Show adapter session metadata (if any)", Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			info, err := client().AgentSession(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			if !info.Detected {
+				fmt.Println("no agent adapter detected (container running?)")
+				return
+			}
+			out(info, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "ADAPTER\t%s\n", info.Adapter)
+				if info.ActiveProject != "" {
+					fmt.Fprintf(w, "ACTIVE PROJECT\t%s\n", info.ActiveProject)
+				}
+				for _, s := range info.Sessions {
+					fmt.Fprintf(w, "SESSION\t%s\n", s)
+				}
+			})
+		},
+	}
+
+	var attachTermSocket string
+	attach := &cobra.Command{
+		Use:   "attach NAME|ID [-- CMD...]",
+		Short: "Open an interactive terminal in the agent container",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var extra []string
+			if i := cmd.ArgsLenAtDash(); i >= 0 && i < len(args) {
+				extra = args[i:]
+				args = args[:i]
+			}
+			if err := attachAgent(attachTermSocket, args[0], extra); err != nil {
+				fail(err)
+			}
+		},
+	}
+	attach.Flags().StringVar(&attachTermSocket, "term-socket",
+		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
+	attach.Flags().SetInterspersed(false)
+
+	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, attach)
 	return cmd
 }
 
@@ -404,4 +448,83 @@ func out(v any, table func(w *tabwriter.Writer)) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	table(w)
 	_ = w.Flush()
+}
+
+// ---- memory ----
+
+func memoryCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "memory", Short: "Manage agent memory snapshots"}
+	snapshot := &cobra.Command{
+		Use:   "snapshot NAME|ID",
+		Short: "Create a memory snapshot",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			snap, err := client().SnapshotMemory(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			out(snap, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "SNAPSHOT\t%s\nSIZE\t%d bytes\nCREATED\t%s\n", snap.Name, snap.SizeBytes, snap.CreatedAt)
+			})
+		},
+	}
+	list := &cobra.Command{
+		Use:   "list NAME|ID",
+		Short: "List memory snapshots",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			list, err := client().ListMemorySnapshots(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			out(list, func(w *tabwriter.Writer) {
+				fmt.Fprintln(w, "SNAPSHOT\tSIZE\tCREATED")
+				for _, s := range list {
+					fmt.Fprintf(w, "%s\t%d\t%s\n", s.Name, s.SizeBytes, s.CreatedAt)
+				}
+			})
+		},
+	}
+	restore := &cobra.Command{
+		Use:   "restore NAME|ID SNAPSHOT",
+		Short: "Restore a memory snapshot (agent must be stopped)",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := client().RestoreMemorySnapshot(ctx(), args[0], args[1]); err != nil {
+				fail(err)
+			}
+			fmt.Println("restored")
+		},
+	}
+	del := &cobra.Command{
+		Use:   "delete NAME|ID SNAPSHOT",
+		Short: "Delete a memory snapshot",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := client().DeleteMemorySnapshot(ctx(), args[0], args[1]); err != nil {
+				fail(err)
+			}
+			fmt.Println("deleted")
+		},
+	}
+	cmd.AddCommand(snapshot, list, restore, del)
+	return cmd
+}
+
+// ---- mcp ----
+
+func mcpCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "mcp",
+		Short: "Run the MCP stdio server (read-only monitoring tools)",
+		Long: "Expose read-only DockWeave tools via the Model Context Protocol\n" +
+			"over stdio. Intended as an MCP server entrypoint for AI assistants;\n" +
+			"it never exposes mutating operations (no mounts, grants, lifecycle).",
+		Run: func(cmd *cobra.Command, args []string) {
+			srv := &mcp.Server{Client: sdk.New(socketPath), In: os.Stdin, Out: os.Stdout}
+			if err := srv.Serve(context.Background()); err != nil {
+				fail(err)
+			}
+		},
+	}
 }

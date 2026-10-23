@@ -7,44 +7,74 @@
       "title": "Agenten-Lifecycle",
       "description": "create/start/stop/restart/remove/inspect/list mit stabiler Agenten-ID, unabhängig von Container-ID und Image.",
       "priority": "critical",
-      "dependencies": ["arch-004", "arch-005"],
-      "components": ["internal/agents", "cmd/dockweave"],
+      "dependencies": [
+        "arch-004",
+        "arch-005"
+      ],
+      "components": [
+        "internal/agents",
+        "cmd/dockweave"
+      ],
       "acceptance": "Alle CLI-Befehle funktional; Container per Label zugeordnet; Identität überlebt Container-Neuerstellung.",
-      "tests": ["Unit: Zustandsübergänge; E2E: Lifecycle gegen Docker"],
-      "status": "pending"
+      "tests": [
+        "Unit: Zustandsübergänge; E2E: Lifecycle gegen Docker"
+      ],
+      "status": "done"
     },
     {
       "id": "agent-002",
       "title": "Drei-Mount-Containerlayout",
       "description": "/agent (bevorzugt ro), /memory (rw), /workspace (rslave) beim Containerstart verdrahten; UID/GID-Konfiguration.",
       "priority": "critical",
-      "dependencies": ["arch-006", "agent-001"],
-      "components": ["internal/agents", "internal/mounts"],
+      "dependencies": [
+        "arch-006",
+        "agent-001"
+      ],
+      "components": [
+        "internal/agents",
+        "internal/mounts"
+      ],
       "acceptance": "Container startet mit exakt drei Binds; Workspace-Bind rslave; Agent-Code ro, falls konfiguriert.",
-      "tests": ["Integration privilegiert: Mounttabelle im Container prüfen"],
-      "status": "pending"
+      "tests": [
+        "Integration privilegiert: Mounttabelle im Container prüfen"
+      ],
+      "status": "done"
     },
     {
       "id": "agent-003",
       "title": "attach/exec/logs",
       "description": "Interaktive Sessions (PTY), exec und log-Streaming über Docker-API.",
       "priority": "high",
-      "dependencies": ["agent-001"],
-      "components": ["internal/dockerclient", "cmd/dockweave"],
+      "dependencies": [
+        "agent-001"
+      ],
+      "components": [
+        "internal/dockerclient",
+        "cmd/dockweave"
+      ],
       "acceptance": "attach mit TTY funktioniert interaktiv; exec gibt Exit-Code zurück; logs folgt stdout/stderr.",
-      "tests": ["E2E: exec Exit-Codes, Log-Inhalt"],
-      "status": "pending"
+      "tests": [
+        "E2E: exec Exit-Codes, Log-Inhalt"
+      ],
+      "status": "done"
     },
     {
       "id": "agent-004",
       "title": "Persistenter Memory-Bereich",
       "description": "Memory-Verzeichnis pro Agentenidentität; bleibt bei Restart, Workspace-Wechsel und Agent-Upgrade erhalten; 1:1-Bindung gegen Mehrfachschreiber.",
       "priority": "high",
-      "dependencies": ["agent-002"],
-      "components": ["internal/agents", "internal/persistence"],
+      "dependencies": [
+        "agent-002"
+      ],
+      "components": [
+        "internal/agents",
+        "internal/persistence"
+      ],
       "acceptance": "Datei in /memory überlebt container remove+create; zwei Agenten teilen niemals dasselbe Memory-Verzeichnis.",
-      "tests": ["E2E: Memory-Persistenz über Container-Erneuerung"],
-      "status": "pending"
+      "tests": [
+        "E2E: Memory-Persistenz über Container-Erneuerung"
+      ],
+      "status": "done"
     }
   ]
 }

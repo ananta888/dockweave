@@ -1,0 +1,35 @@
+# DockWeave TracingPolicy for Tetragon
+#
+# Captures file-open events on agent hosts. Deploy with:
+#   kubectl apply -f tracing-policy.yaml          (Kubernetes)
+#   tetra tracingpolicy enable tracing-policy.yaml (standalone)
+#
+# Export events as JSON lines for the DockWeave daemon:
+#   tetra getevents --follow > /var/lib/dockweave/tetragon-events.jsonl
+# and start dockweaved with DOCKWEAVE_TETRAGON_EVENTS=/var/lib/dockweave/tetragon-events.jsonl
+#
+# Limitations: eBPF event delivery is best-effort; only security_file_open
+# is captured here (not every read/write syscall).
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: dockweave-file-open
+spec:
+  kprobes:
+    - call: "__x64_sys_open"
+      syscall: true
+      args:
+        - index: 0
+          type: "string"
+      returnArgAction: "Save"
+    - call: "__x64_sys_openat"
+      syscall: true
+      args:
+        - index: 0
+          type: "int"
+        - index: 1
+          type: "string"
+        - index: 2
+          type: "int"
+      returnArgAction: "Save"
+  podSelector: {} # all pods/containers on the host

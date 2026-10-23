@@ -100,6 +100,11 @@ See [docs/api/](docs/api/) for the OpenAPI specification.
 - [Phase-1 mount semantics validation](docs/validation/phase1-mounts.de.md)
 - [Security model](SECURITY.md)
 - [CLI reference](docs/cli.md)
+- [Memory snapshots & backup](docs/memory-backup.md)
+- [Interactive terminals](docs/terminals.md)
+- [Tetragon eBPF monitoring](docs/tetragon.md)
+- [MCP server](docs/mcp.md)
+- [AI monitor agent](docs/ai-monitor.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
 ## Development
