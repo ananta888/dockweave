@@ -1,0 +1,61 @@
+{
+  "domain": "mounts",
+  "updated": "2026-10-23",
+  "tasks": [
+    {
+      "id": "mount-001",
+      "title": "Pfad-Validierung und Allowlist",
+      "description": "Kanonisierung via EvalSymlinks, Allowlist registrierter Wurzeln, openat2 RESOLVE_BENEATH|NO_MAGICLINKS, Traversal-Schutz.",
+      "priority": "critical",
+      "dependencies": ["arch-002"],
+      "components": ["internal/mounts"],
+      "acceptance": "Symlink-Angriffe, ../-Traversal und Pfade außerhalb der Allowlist werden abgelehnt.",
+      "tests": ["Unit: Symlink/Traversal/Allowlist-Tabelle"],
+      "status": "pending"
+    },
+    {
+      "id": "mount-002",
+      "title": "Add/Remove mit RO-Staging und Rollback",
+      "description": "Dynamisches Mounten (RO-Staging-Sequenz), sicheres Unmount (EBUSY-Fehler, Force nur auditiert), Rollback bei Teilschritten.",
+      "priority": "critical",
+      "dependencies": ["mount-001", "arch-001"],
+      "components": ["internal/mounts"],
+      "acceptance": "RO ist im Agent-Namespace erzwungen (Phase-1-Sequenz); Fehler hinterlassen keinen halben Zustand.",
+      "tests": ["Integration privilegiert: RO/RW/EBUSY/Rollback"],
+      "status": "pending"
+    },
+    {
+      "id": "mount-003",
+      "title": "List/Inspect/Check + Doppel-Mount-Schutz",
+      "description": "Ist-Zustand aus /proc/self/mounts, Erkennung bestehender Mounts, Idempotenz, Submount-Auflistung (Nested-Validierung).",
+      "priority": "high",
+      "dependencies": ["mount-002"],
+      "components": ["internal/mounts"],
+      "acceptance": "mount list zeigt realen Kernel-Zustand; doppeltes Add ist no-op/Fehler ohne Nebenwirkung.",
+      "tests": ["Unit: mounts-Parser; Integration: Doppel-Add"],
+      "status": "pending"
+    },
+    {
+      "id": "mount-004",
+      "title": "Reconcile / Soll-Ist-Abgleich",
+      "description": "Vergleich DB-Soll mit Kernel-Ist, Wiederherstellung nach Neustart, Erkennung verwaister Mounts, kein blindes Entfernen fremder Mounts.",
+      "priority": "high",
+      "dependencies": ["mount-003", "arch-004"],
+      "components": ["internal/mounts", "internal/supervisor"],
+      "acceptance": "Nach Daemon-Neustart werden fehlende Freigaben wiederhergestellt; fremde Mounts bleiben unangetastet und werden gemeldet.",
+      "tests": ["Integration: Daemon-Restart-Szenario"],
+      "status": "pending"
+    },
+    {
+      "id": "mount-005",
+      "title": "Nebenläufigkeit",
+      "description": "Pro-Agent-Locking und globale Serialisierung kritischer Abschnitte; Race-Detector-sauber.",
+      "priority": "high",
+      "dependencies": ["mount-002"],
+      "components": ["internal/mounts"],
+      "acceptance": "Parallele Add/Remove auf verschiedene Agenten laufen; auf denselben Agenten serialisiert.",
+      "tests": ["go test -race mit parallelen Operationen"],
+      "status": "pending"
+    }
+  ]
+}

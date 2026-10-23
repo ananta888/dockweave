@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: DockWeave Management API
+  version: v1
+  description: |
+    Versioned REST API for DockWeave agent/workspace/mount management.
+    Served over a Unix domain socket with SO_PEERCRED authentication.
+  license:
+    name: BSD-3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+
+paths:
+  /api/v1/health:
+    get:
+      summary: Daemon health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string }
+                  time: { type: string, format: date-time }
+
+  /api/v1/agents:
+    get:
+      summary: List agents
+      responses:
+        "200":
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Agent" }
+    post:
+      summary: Create an agent identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentSpec" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/agents/{id}:
+    get:
+      summary: Get agent by ID or name
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Remove an agent
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: prune, in: query, schema: { type: boolean } }
+      responses:
+        "204": { description: Removed }
+
+  /api/v1/agents/{id}/start:
+    post:
+      summary: Start (or create) the agent container
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+
+  /api/v1/agents/{id}/stop:
+    post:
+      summary: Stop the agent container
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Stopped }
+
+  /api/v1/agents/{id}/restart:
+    post:
+      summary: Restart the agent
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Restarted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Agent" }
+
+  /api/v1/workspaces:
+    get:
+      summary: List workspaces
+      responses:
+        "200":
+          description: Workspace list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Workspace" }
+    post:
+      summary: Register a workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                path: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+
+  /api/v1/workspaces/{id}:
+    delete:
+      summary: Unregister a workspace (active grants must be revoked first)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: Unregistered }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/grants:
+    get:
+      summary: List grants
+      parameters:
+        - { name: workspace, in: query, schema: { type: string } }
+        - { name: agent, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Grant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Grant" }
+    post:
+      summary: Create a grant and apply the mount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workspace: { type: string }
+                agent: { type: string }
+                mode: { type: string, enum: [ro, rw] }
+                exclusive: { type: boolean }
+                ttl: { type: string, example: 2h }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Grant" }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/grants/{id}:
+    delete:
+      summary: Revoke a grant and unmount
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: force, in: query, schema: { type: boolean } }
+      responses:
+        "204": { description: Revoked }
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/mounts:
+    get:
+      summary: List mount states
+      parameters:
+        - { name: agent, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Mount list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MountState" }
+
+  /api/v1/activity:
+    get:
+      summary: Live agent activity snapshot
+      responses:
+        "200":
+          description: Activity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentActivity" }
+
+  /api/v1/conflicts:
+    get:
+      summary: Multi-agent file conflicts
+      responses:
+        "200":
+          description: Conflict list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FileConflict" }
+
+  /api/v1/events:
+    get:
+      summary: Recent audit events
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 200 } }
+      responses:
+        "200":
+          description: Event list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Event" }
+
+  /api/v1/events/stream:
+    get:
+      summary: Stream audit events (Server-Sent Events)
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream: {}
+
+  /api/v1/monitor/providers:
+    get:
+      summary: Monitoring provider availability
+      responses:
+        "200":
+          description: Provider status map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: string }
+
+components:
+  responses:
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+    Agent:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        image: { type: string }
+        command: { type: array, items: { type: string } }
+        env_file: { type: string }
+        agent_ro: { type: boolean }
+        uid: { type: integer }
+        gid: { type: integer }
+        cpu_limit: { type: number }
+        memory_mb: { type: integer }
+        network_mode: { type: string }
+        state: { type: string, enum: [created, running, stopped, exited, error] }
+        container_id: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    AgentSpec:
+      type: object
+      required: [name, image]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [codex, opencode, claude, gemini, custom] }
+        image: { type: string }
+        command: { type: array, items: { type: string } }
+        env_file: { type: string }
+        agent_ro: { type: boolean, default: true }
+        uid: { type: integer }
+        gid: { type: integer }
+        cpu_limit: { type: number }
+        memory_mb: { type: integer }
+        network_mode: { type: string, enum: [bridge, none], default: bridge }
+
+    Workspace:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        host_path: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Grant:
+      type: object
+      properties:
+        id: { type: string }
+        workspace_id: { type: string }
+        agent_id: { type: string }
+        mode: { type: string, enum: [ro, rw] }
+        exclusive: { type: boolean }
+        expires_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        created_by: { type: string }
+        revoked_at: { type: string, format: date-time, nullable: true }
+
+    MountState:
+      type: object
+      properties:
+        id: { type: string }
+        agent_id: { type: string }
+        grant_id: { type: string }
+        host_path: { type: string }
+        target_path: { type: string }
+        mode: { type: string, enum: [ro, rw] }
+        status: { type: string, enum: [desired, mounted, failed, gone] }
+        last_error: { type: string }
+        updated_at: { type: string, format: date-time }
+
+    AgentActivity:
+      type: object
+      properties:
+        agent_id: { type: string }
+        state: { type: string }
+        activity: { type: string, enum: [UNKNOWN, IDLE, READING, WRITING] }
+        cpu_percent: { type: number }
+        memory_bytes: { type: integer }
+        workspace: { type: string }
+        open_files: { type: array, items: { type: string } }
+        processes: { type: integer }
+        available: { type: boolean }
+        unavailable_reason: { type: string }
+        timestamp: { type: string, format: date-time }
+
+    FileConflict:
+      type: object
+      properties:
+        path: { type: string }
+        agent_ids: { type: array, items: { type: string } }
+        writers: { type: array, items: { type: string } }
+        detected_at: { type: string, format: date-time }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        actor: { type: string }
+        agent_id: { type: string }
+        workspace_id: { type: string }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        prev_hash: { type: string }
+        hash: { type: string }

@@ -1,0 +1,39 @@
+{
+  "domain": "testing",
+  "updated": "2026-10-23",
+  "tasks": [
+    {
+      "id": "test-001",
+      "title": "Unit-Testabdeckung Kernpakete",
+      "description": "model, persistence, mounts (Parser/Validierung), workspaces, monitor-Parser.",
+      "priority": "high",
+      "dependencies": ["arch-006"],
+      "components": ["internal/..."],
+      "acceptance": "go test ./... grün ohne Root; go test -race grün.",
+      "tests": ["siehe Pakete"],
+      "status": "pending"
+    },
+    {
+      "id": "test-002",
+      "title": "Privilegierte Integrationstests",
+      "description": "tests/integration hinter Build-Tag + EUID-Check; Ausführung ausschließlich im dedizierten Privileged-Container (make test-integration).",
+      "priority": "critical",
+      "dependencies": ["mount-002", "agent-002"],
+      "components": ["tests/integration"],
+      "acceptance": "Szenarien: RO/RW, Doppel-Mount, Symlink-Angriff, EBUSY, Neustart-Recovery, zwei Agenten ein Projekt.",
+      "tests": ["tests/integration/*_test.go"],
+      "status": "pending"
+    },
+    {
+      "id": "test-003",
+      "title": "CI/CD",
+      "description": "GitHub Actions: build/test/vet/govulncheck, Integration im dind-Service, Release-Workflow (amd64/arm64, SBOM, cosign optional).",
+      "priority": "high",
+      "dependencies": ["arch-002"],
+      "components": [".github/workflows"],
+      "acceptance": "PR-Checks grün; Tag-Release erzeugt Binaries + SBOM.",
+      "tests": [],
+      "status": "pending"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+/tmp/
+/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.vscode/
+.idea/

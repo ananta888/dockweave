@@ -1,0 +1,7 @@
+{
+  "opencode-go/kimi-k3": {
+    "blockedUntil": 1792808340555,
+    "failures": 1,
+    "reason": "{\"type\":\"retry\",\"attempt\":1,\"message\":\"5 hour usage limit reached. It will reset in 4 hours 42 minutes. To continue using this model now, enable usage from your available balance - https://opencode.ai/workspace/wrk_01M2BXGVNNHXFK1HWX375NE065/go\",\"act"
+  }
+}
