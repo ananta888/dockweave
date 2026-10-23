@@ -170,6 +170,32 @@ func (m *Manager) Check(agentID string) error {
 	return fmt.Errorf("workspace tree %q is not a mountpoint (run PrepareAgentTree / agent start)", tree)
 }
 
+// TeardownAgentTree unmounts everything beneath the agent workspace tree
+// and the tree's self-bind. Used by tests and agent pruning; never touches
+// mounts outside the tree.
+func (m *Manager) TeardownAgentTree(agentID string) error {
+	tree := m.WorkspaceTree(agentID)
+	infos, err := ReadMountinfo(m.cfg.MountinfoPath)
+	if err != nil {
+		return err
+	}
+	subs := MountsUnder(infos, tree)
+	// Deepest first (submounts before their parents).
+	for i := len(subs) - 1; i >= 0; i-- {
+		mi := subs[i]
+		if mi.MountPoint == tree {
+			continue
+		}
+		if err := unix.Unmount(mi.MountPoint, unix.MNT_DETACH); err != nil {
+			return fmt.Errorf("teardown submount %q: %w", mi.MountPoint, err)
+		}
+	}
+	if err := unix.Unmount(tree, unix.MNT_DETACH); err != nil && !errors.Is(err, unix.EINVAL) {
+		return fmt.Errorf("teardown tree %q: %w", tree, err)
+	}
+	return nil
+}
+
 // List returns the kernel-verified mounts beneath the agent workspace tree,
 // excluding the tree root itself.
 func (m *Manager) List(agentID string) ([]model.MountState, error) {

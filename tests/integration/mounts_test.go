@@ -45,6 +45,18 @@ func newManager(t *testing.T) (*mounts.Manager, string) {
 	return m, allowed
 }
 
+// prepareTree prepares the tree and registers teardown so t.TempDir cleanup
+// does not fail on the standing self-bind mount.
+func prepareTree(t *testing.T, m *mounts.Manager, agentID string) {
+	t.Helper()
+	if err := m.PrepareAgentTree(agentID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = m.TeardownAgentTree(agentID)
+	})
+}
+
 func TestPropagationProbe(t *testing.T) {
 	requireRoot(t)
 	m, _ := newManager(t)
@@ -59,6 +71,7 @@ func TestPrepareAgentTreeShared(t *testing.T) {
 	if err := m.PrepareAgentTree("ag_test"); err != nil {
 		t.Fatalf("prepare tree: %v", err)
 	}
+	t.Cleanup(func() { _ = m.TeardownAgentTree("ag_test") })
 	if err := m.Check("ag_test"); err != nil {
 		t.Fatalf("check after prepare: %v", err)
 	}
@@ -71,9 +84,7 @@ func TestPrepareAgentTreeShared(t *testing.T) {
 func TestAddRemoveRW(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_rw"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_rw")
 	src := filepath.Join(allowed, "proj")
 	os.MkdirAll(src, 0o755)
 	os.WriteFile(filepath.Join(src, "f.txt"), []byte("hello"), 0o644)
@@ -107,9 +118,7 @@ func TestAddRemoveRW(t *testing.T) {
 func TestAddRemoveRO(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_ro"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_ro")
 	src := filepath.Join(allowed, "ro-proj")
 	os.MkdirAll(src, 0o755)
 	os.WriteFile(filepath.Join(src, "f.txt"), []byte("data"), 0o644)
@@ -135,9 +144,7 @@ func TestAddRemoveRO(t *testing.T) {
 func TestDoubleAddIdempotent(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_dup"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_dup")
 	src := filepath.Join(allowed, "dup")
 	os.MkdirAll(src, 0o755)
 
@@ -159,9 +166,7 @@ func TestDoubleAddIdempotent(t *testing.T) {
 func TestAddSourceOutsideAllowlist(t *testing.T) {
 	requireRoot(t)
 	m, _ := newManager(t)
-	if err := m.PrepareAgentTree("ag_sec"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_sec")
 	// /etc is not in the allowlist.
 	if _, err := m.Add("ag_sec", "/etc", "evil", model.ModeRW); !errors.Is(err, mounts.ErrNotAllowed) {
 		t.Fatalf("expected ErrNotAllowed, got %v", err)
@@ -171,9 +176,7 @@ func TestAddSourceOutsideAllowlist(t *testing.T) {
 func TestAddSymlinkEscape(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_sym"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_sym")
 	evil := t.TempDir()
 	link := filepath.Join(allowed, "evil-link")
 	if err := os.Symlink(evil, link); err != nil {
@@ -187,9 +190,7 @@ func TestAddSymlinkEscape(t *testing.T) {
 func TestRemoveBusyReturnsEBUSY(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_busy"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_busy")
 	src := filepath.Join(allowed, "busy")
 	os.MkdirAll(src, 0o755)
 	os.WriteFile(filepath.Join(src, "f"), []byte("x"), 0o644)
@@ -220,9 +221,7 @@ func TestRemoveBusyReturnsEBUSY(t *testing.T) {
 func TestReconcileRestoresAndReportsOrphans(t *testing.T) {
 	requireRoot(t)
 	m, allowed := newManager(t)
-	if err := m.PrepareAgentTree("ag_rec"); err != nil {
-		t.Fatal(err)
-	}
+	prepareTree(t, m, "ag_rec")
 	src := filepath.Join(allowed, "proj")
 	os.MkdirAll(src, 0o755)
 
