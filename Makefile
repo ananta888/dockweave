@@ -1,5 +1,5 @@
 # DockWeave — Makefile
-# Requires: Go >= 1.24, Docker Engine
+# Requires: Go >= 1.27, Docker Engine
 
 GO        ?= go
 GOFLAGS   ?=
@@ -25,7 +25,7 @@ test-integration:
 		-v "$(CURDIR):/src" \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-w /src \
-		golang:1.24 \
+		golang:1.27 \
 		bash -c "go test -tags integration -v ./tests/integration/..."
 
 vet:
