@@ -11,3 +11,4 @@ coverage.*
 *.db-shm
 .vscode/
 .idea/
+.opencode/
