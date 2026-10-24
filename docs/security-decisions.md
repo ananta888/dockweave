@@ -115,3 +115,16 @@ creation now assigns the configured non-root identity (`AGENT_UID`/
 root requires `ALLOW_ROOT_CONTAINER=true` and is audited
 (`agent.identity` event). The Docker client always sets an explicit
 `user` identity.
+
+## SD-010 — Recursive read-only enforcement via mount_setattr (review-007)
+
+The privileged integration suite found that
+`MS_REMOUNT|MS_BIND|MS_RDONLY|MS_REC` does not flip the read-only flag of
+*nested submounts* of a recursive bind on current kernels: a rw bind nested
+inside a staged source stayed rw and would have leaked write access through
+the "read-only" share. The staging sequence now additionally calls
+`mount_setattr(AT_RECURSIVE, MOUNT_ATTR_RDONLY)` on the staged subtree
+(Linux >= 5.12). On kernels without mount_setattr the existing defensive
+rw-submount check refuses the mount — failing closed, never leaking rw.
+Verified by `TestROPropagationIntoSlaveNamespace` (nested submount must be
+ro inside an rslave namespace; writes must fail).

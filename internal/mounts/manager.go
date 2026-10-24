@@ -2,9 +2,11 @@
 //
 // Security contract (see docs/validation/phase1-mounts.de.md):
 //   - Only the daemon (root, CAP_SYS_ADMIN) may use this package.
-//   - Read-only binds are staged privately, remounted ro, then moved into the
-//     shared tree. Remount flags do not propagate, so direct `bind -o ro`
-//     into the shared tree would leak RW clones into slave namespaces.
+//   - Read-only binds are staged privately, remounted ro (recursively
+//     enforced via mount_setattr(AT_RECURSIVE) where available), then moved
+//     into the shared tree. Remount flags do not propagate, so direct
+//     `bind -o ro` into the shared tree would leak RW clones into slave
+//     namespaces.
 //   - Unmount uses umount(2) without flags; EBUSY is returned as a typed
 //     error. MNT_DETACH (lazy) is only used when force is explicitly set.
 //   - Source paths are canonicalized, allowlisted and re-verified with
@@ -349,6 +351,18 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	if err := unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC, ""); err != nil {
 		cleanup()
 		return "", fmt.Errorf("remount ro on staging %q: %w", staging, err)
+	}
+	// MS_REMOUNT does not reach submounts of a recursive bind on all
+	// kernels. mount_setattr(AT_RECURSIVE) enforces read-only on the whole
+	// staged subtree (Linux >= 5.12); on older kernels the defensive
+	// rw-submount check below refuses the mount instead of leaking writes.
+	if err := unix.MountSetattr(unix.AT_FDCWD, staging, unix.AT_RECURSIVE,
+		&unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY}); err != nil {
+		if !errors.Is(err, unix.ENOSYS) && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EPERM) {
+			cleanup()
+			return "", fmt.Errorf("recursive ro enforcement on %q: %w", staging, err)
+		}
+		// fall through: submount check decides
 	}
 	// Defensive submount check: ensure no rw submount survived the remount.
 	if rw, err := m.rwSubmounts(staging); err == nil && len(rw) > 0 {

@@ -179,7 +179,7 @@
         "Integration: Reconcile nach Daemon-Neustart stellt Mounts wieder her / meldet Orphans",
         "Integration: Crash-Mittendrin (Grant ohne Mount) wird beim Start bereinigt"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-008",
