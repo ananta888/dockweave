@@ -37,10 +37,11 @@ const (
 	tabWorkspaces
 	tabMounts
 	tabEvents
+	tabSetup
 	tabCount
 )
 
-var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events"}
+var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events", "Setup"}
 
 type dataMsg struct {
 	agents     []*model.Agent
@@ -49,6 +50,7 @@ type dataMsg struct {
 	mounts     []*model.MountState
 	events     []*model.Event
 	conflicts  []model.FileConflict
+	grants     []*model.Grant
 	memories   []sdk.MemoryInfo
 	paths      map[string]sdk.AgentPathsInfo // agent id -> folder assignments
 	err        error
@@ -79,6 +81,8 @@ type modelTUI struct {
 	expanded bool
 	// status is a transient message line (e.g. terminal attach errors).
 	status string
+	// form state of the Setup tab.
+	form setupForm
 	// menubar mode: only the menu bar is rendered (tmux hosts the
 	// agent terminal below; see tmux.go).
 	menubar bool
@@ -118,7 +122,7 @@ func defaultKeys() keyMap {
 func Run(socketPath string, embedded bool) error {
 	termSocket := filepath.Join(filepath.Dir(socketPath), "dockweaved.term.sock")
 	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket,
-		tmux: &realTmux{}, embedded: embedded}
+		tmux: &realTmux{}, embedded: embedded, form: newSetupForm()}
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
@@ -252,6 +256,9 @@ func (m *modelTUI) refresh() tea.Cmd {
 		if mems, err := m.client.ListMemories(ctx); err == nil {
 			d.memories = mems
 		}
+		if gs, err := m.client.ListGrants(ctx); err == nil {
+			d.grants = gs
+		}
 		d.paths = map[string]sdk.AgentPathsInfo{}
 		for _, a := range d.agents {
 			if p, err := m.client.AgentPaths(ctx, a.ID); err == nil {
@@ -277,6 +284,24 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		// Setup tab: keys go to the form (typing, focus cycling).
+		if m.tab == tabSetup {
+			if msg.String() == "esc" && m.form.focusedInput() != nil {
+				m.form.applyFocus("")
+				return m, nil
+			}
+			if m.form.focusedInput() != nil {
+				return m.updateSetup(msg)
+			}
+			switch msg.String() {
+			case "up", "down", "enter", "left", "right", "tab", "shift+tab":
+				if msg.String() == "tab" || msg.String() == "shift+tab" {
+					// No field focused: tab switches menu views (below).
+					break
+				}
+				return m.updateSetup(msg)
+			}
+		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			if m.embedded {
@@ -342,6 +367,13 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = "focus terminal: " + msg.err.Error()
 		}
+	case setupDoneMsg:
+		if msg.err != nil {
+			m.status = "setup: " + msg.err.Error()
+		} else {
+			m.status = "done"
+		}
+		return m, m.refresh()
 	case termDoneMsg:
 		if msg.err != nil {
 			m.status = "terminal: " + msg.err.Error()
@@ -407,6 +439,9 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	}
+	if m.tab == tabSetup {
+		return m.updateSetup(msg)
 	}
 	if m.menubar {
 		// Bar mode: a click outside the two bars goes to the agent
@@ -537,6 +572,8 @@ func (m *modelTUI) View() string {
 			b.WriteString(m.viewMounts())
 		case tabEvents:
 			b.WriteString(m.viewEvents())
+		case tabSetup:
+			b.WriteString(m.viewSetup())
 		}
 	}
 	if m.status != "" {

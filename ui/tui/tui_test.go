@@ -24,6 +24,7 @@ func sampleData() dataMsg {
 		},
 		workspaces: []*model.Workspace{
 			{ID: "ws1", Name: "proj", HostPath: "/srv/proj", CreatedAt: now},
+			{ID: "ws2", Name: "docs", HostPath: "/srv/docs", CreatedAt: now},
 		},
 		mounts: []*model.MountState{
 			{ID: "m1", AgentID: "ag1", HostPath: "/srv/proj", TargetPath: "/var/lib/dockweave/agents/ag1/workspace/proj",
@@ -539,5 +540,123 @@ func TestAgentDetailShowsFolders(t *testing.T) {
 	out = m.View()
 	if !strings.Contains(out, "no project assigned") {
 		t.Fatalf("missing no-project hint:\n%s", out)
+	}
+}
+
+// ---- Setup tab: forms, folders, mouse+keyboard ----
+
+func TestSetupViewShowsAllSections(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
+	m.data = sampleData()
+	m.data.grants = []*model.Grant{{
+		ID: "gr1", WorkspaceID: "ws1", AgentID: "ag1",
+		Mode: model.ModeRW, Status: model.GrantActive, CreatedAt: time.Now(),
+	}}
+	m.data.paths = map[string]sdk.AgentPathsInfo{
+		"ag1": {AgentID: "ag1", AgentDir: "/a/agent", MemoryID: "mem_1", MemoryDir: "/m/mem_1", WorkspaceDir: "/a/ws"},
+	}
+	out := m.View()
+	for _, want := range []string{
+		"create agent", "Type", "Create", "Clear",
+		"folders · alpha", "AGENTS.md, skills", "long-term memory",
+		"/workspace/proj", "/srv/proj", "unassign",
+		"/workspace/docs", "/srv/docs", "assign",
+		"register workspace", "Register",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("setup view missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSetupFormTypingAndFocus(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
+	m.data = sampleData()
+
+	// Click the name field: it takes focus, typing goes in.
+	_ = m.View() // build hit map
+	_, cmd := m.Update(leftClick(4, 4))
+	_ = cmd
+	for _, r := range "coder2" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if m.form.name.Value() != "coder2" {
+		t.Fatalf("name field = %q", m.form.name.Value())
+	}
+	// Tab moves focus on; typing no longer reaches name.
+	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if m.form.name.Value() != "coder2" {
+		t.Fatal("focus must leave the name field")
+	}
+	// The type cycler changes on click and keyboard.
+	start := m.form.agentType
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\r'}}) // enter activates focused control
+	// Direct cycler click:
+	_, _ = m.Update(leftClick(56, 4))
+	if m.form.agentType == start {
+		// clicking the cycler may refocus only; keyboard cycles too:
+		m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	}
+	if m.form.agentType == start {
+		t.Fatal("type cycler must change")
+	}
+}
+
+func TestSetupAssignClickIssuesCommand(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent-dockweave.sock")}
+	m.data = sampleData() // no grants: ws1 is unassigned
+	_ = m.View()
+	// Find the assign hotspot for ws1 and click it.
+	var target *setupHit
+	for i := range m.form.hits {
+		if m.form.hits[i].action == "assign:ws1" {
+			target = &m.form.hits[i]
+		}
+	}
+	if target == nil {
+		t.Fatal("assign hotspot missing")
+	}
+	_, cmd := m.Update(leftClick(target.x0+1, target.y))
+	if cmd == nil {
+		t.Fatal("assign click must issue a command")
+	}
+	msg := cmd()
+	if _, ok := msg.(setupDoneMsg); !ok {
+		t.Fatalf("expected setupDoneMsg, got %#v", msg)
+	}
+}
+
+func TestSetupUnassignRequiresActiveGrant(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent-dockweave.sock")}
+	m.data = sampleData()
+	m.data.grants = []*model.Grant{{
+		ID: "gr1", WorkspaceID: "ws1", AgentID: "ag1",
+		Mode: model.ModeRW, Status: model.GrantActive, CreatedAt: time.Now(),
+	}}
+	_ = m.View()
+	var target *setupHit
+	for i := range m.form.hits {
+		if m.form.hits[i].action == "unassign:ws1" {
+			target = &m.form.hits[i]
+		}
+	}
+	if target == nil {
+		t.Fatal("unassign hotspot missing for the granted workspace")
+	}
+	_, cmd := m.Update(leftClick(target.x0+1, target.y))
+	if cmd == nil {
+		t.Fatal("unassign click must issue a command")
+	}
+	if _, ok := cmd().(setupDoneMsg); !ok {
+		t.Fatal("expected setupDoneMsg")
+	}
+	// A workspace without grant shows 'assign', not 'unassign'.
+	for _, h := range m.form.hits {
+		if h.action == "unassign:ws2" {
+			t.Fatal("ws2 has no grant and must not offer unassign")
+		}
 	}
 }
