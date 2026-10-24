@@ -59,6 +59,9 @@ type Service struct {
 	// AllowRootContainer permits UID 0 containers; every root container is
 	// audited. Root is refused otherwise and the default identity applied.
 	AllowRootContainer bool
+	// Grants revokes grants during agent removal (usually *workspaces.Service).
+	// Required before removing agents that hold grants.
+	Grants GrantRevoker
 }
 
 // ErrMemoryUnavailable is returned when memory snapshotting is not configured.
@@ -550,13 +553,24 @@ func (s *Service) Restart(ctx context.Context, idOrName, actor string) (*model.A
 	return s.Start(ctx, idOrName, actor)
 }
 
+// GrantRevoker revokes grants during agent removal (implemented by
+// *workspaces.Service). Agent removal must never leave grants behind:
+// their rows block the registry delete and their mounts would be orphaned.
+type GrantRevoker interface {
+	Revoke(ctx context.Context, grantID, actor string, forceUnmount bool) error
+}
+
 // Remove deletes the agent identity and container. Host data (agent install,
 // memory) is preserved unless prune is true.
 //
-// Prune safety (review-003): every cleanup error is collected and returned,
-// MNT_DETACH is only used when force is explicitly set (graceful umount is
-// tried first; every detached mount is audited), and the agent record is
-// deleted only after cleanup succeeded — a failed prune is retryable.
+// Removal order (safe and retryable): container → grants (revoked, mounts
+// removed) → memory binding (detached; pruned with --prune) → host data →
+// registry rows. Every error is collected and returned; the agent record is
+// deleted only when everything below it is clean.
+//
+// Prune safety (review-003): MNT_DETACH is only used when force is
+// explicitly set (graceful umount is tried first; every detached mount is
+// audited).
 func (s *Service) Remove(ctx context.Context, idOrName, actor string, prune, force bool) error {
 	a, err := s.Store.GetAgent(ctx, idOrName)
 	if err != nil {
@@ -567,61 +581,104 @@ func (s *Service) Remove(ctx context.Context, idOrName, actor string, prune, for
 			return fmt.Errorf("remove container for agent %s: %w", a.ID, err)
 		}
 	}
-	if !prune {
-		if err := s.Store.DeleteAgent(ctx, a.ID); err != nil {
-			return err
-		}
-		s.event(ctx, model.EventAgentRemoved, actor, a.ID, fmt.Sprintf("agent %q removed (prune=false)", a.Name))
-		return nil
-	}
 
 	var errs []error
-	ms, err := s.Mounts.List(a.ID)
+
+	// 1. Revoke every grant of this agent (unmounts included). Leaving rows
+	// behind would block the delete (FK) and orphan live mounts.
+	grants, err := s.Store.ListGrants(ctx, "", a.ID, false)
 	if err != nil {
-		errs = append(errs, fmt.Errorf("list mounts: %w", err))
+		return err
 	}
-	for i := len(ms) - 1; i >= 0; i-- {
-		name := baseName(ms[i].TargetPath)
-		if err := s.Mounts.Remove(a.ID, name, false); err != nil {
-			if force {
-				// Explicit force: audited MNT_DETACH after graceful failure.
-				s.event(ctx, model.EventUnmountForced, actor, a.ID,
-					fmt.Sprintf("forced detach of %q during prune: %v", name, err))
-				if err = s.Mounts.Remove(a.ID, name, true); err != nil {
-					errs = append(errs, fmt.Errorf("forced unmount %q: %w", name, err))
-					continue
-				}
+	for _, g := range grants {
+		if g.RevokedAt != nil {
+			continue
+		}
+		if s.Grants == nil {
+			errs = append(errs, fmt.Errorf("grant %s exists but no grant revoker is configured", g.ID))
+			continue
+		}
+		if err := s.Grants.Revoke(ctx, g.ID, actor, force); err != nil {
+			errs = append(errs, fmt.Errorf("revoke grant %s: %w", g.ID, err))
+		}
+	}
+
+	// 2. Unbind the memory identity; the store survives for a replacement
+	// agent unless --prune deletes it below.
+	var mem *model.Memory
+	if s.Memory != nil {
+		if m, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+			mem = m
+			if err := s.Store.SetMemoryOwner(ctx, m.ID, ""); err != nil {
+				errs = append(errs, fmt.Errorf("detach memory %s: %w", m.ID, err))
 			} else {
-				errs = append(errs, fmt.Errorf("unmount %q: %w", name, err))
-				continue
+				s.event(ctx, model.EventMemoryDetached, actor, a.ID,
+					fmt.Sprintf("memory %s detached during agent removal", m.ID))
 			}
 		}
 	}
-	// Tear down the workspace tree self-bind (and any stragglers) so the
-	// host data can actually be deleted. Forced detaches are audited.
-	detached, terr := s.Mounts.TeardownAgentTree(a.ID, force)
-	for _, mp := range detached {
-		s.event(ctx, model.EventUnmountForced, actor, a.ID,
-			fmt.Sprintf("forced detach of %q during prune teardown", mp))
-	}
-	if terr != nil {
-		errs = append(errs, fmt.Errorf("teardown workspace tree: %w", terr))
-	}
-	agentRoot := filepath.Dir(s.Mounts.WorkspaceTree(a.ID)) // <root>/agents/<id>
-	if filepath.Base(agentRoot) == a.ID {
-		if err := os.RemoveAll(agentRoot); err != nil {
-			errs = append(errs, fmt.Errorf("remove %q: %w", agentRoot, err))
+
+	// 3. Prune host data (mount leftovers, tree, agent root, memory store).
+	if prune {
+		ms, err := s.Mounts.List(a.ID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("list mounts: %w", err))
+		}
+		for i := len(ms) - 1; i >= 0; i-- {
+			name := baseName(ms[i].TargetPath)
+			if err := s.Mounts.Remove(a.ID, name, false); err != nil {
+				if force {
+					// Explicit force: audited MNT_DETACH after graceful failure.
+					s.event(ctx, model.EventUnmountForced, actor, a.ID,
+						fmt.Sprintf("forced detach of %q during prune: %v", name, err))
+					if err = s.Mounts.Remove(a.ID, name, true); err != nil {
+						errs = append(errs, fmt.Errorf("forced unmount %q: %w", name, err))
+						continue
+					}
+				} else {
+					errs = append(errs, fmt.Errorf("unmount %q: %w", name, err))
+					continue
+				}
+			}
+		}
+		// Tear down the workspace tree self-bind (and any stragglers) so the
+		// host data can actually be deleted. Forced detaches are audited.
+		detached, terr := s.Mounts.TeardownAgentTree(a.ID, force)
+		for _, mp := range detached {
+			s.event(ctx, model.EventUnmountForced, actor, a.ID,
+				fmt.Sprintf("forced detach of %q during prune teardown", mp))
+		}
+		if terr != nil {
+			errs = append(errs, fmt.Errorf("teardown workspace tree: %w", terr))
+		}
+		agentRoot := filepath.Dir(s.Mounts.WorkspaceTree(a.ID)) // <root>/agents/<id>
+		if filepath.Base(agentRoot) == a.ID {
+			if err := os.RemoveAll(agentRoot); err != nil {
+				errs = append(errs, fmt.Errorf("remove %q: %w", agentRoot, err))
+			}
+		}
+		if mem != nil {
+			if err := os.RemoveAll(s.Memory.Path(mem.ID)); err != nil {
+				errs = append(errs, fmt.Errorf("remove memory store %s: %w", mem.ID, err))
+			} else if err := s.Store.DeleteMemory(ctx, mem.ID); err != nil {
+				errs = append(errs, fmt.Errorf("delete memory %s: %w", mem.ID, err))
+			}
 		}
 	}
 	if len(errs) > 0 {
-		// Keep the agent record: the prune stays retryable until clean.
-		return fmt.Errorf("prune incomplete (agent record kept, retry remove): %w", errors.Join(errs...))
+		// Keep the agent record: the removal stays retryable until clean.
+		return fmt.Errorf("remove incomplete (agent record kept, retry remove): %w", errors.Join(errs...))
+	}
+
+	// 4. Registry rows last (FK-safe: grant rows are gone by now).
+	if err := s.Store.PurgeGrantsByAgent(ctx, a.ID); err != nil {
+		return err
 	}
 	if err := s.Store.DeleteAgent(ctx, a.ID); err != nil {
 		return err
 	}
 	s.event(ctx, model.EventAgentRemoved, actor, a.ID,
-		fmt.Sprintf("agent %q removed (prune=true, force=%v)", a.Name, force))
+		fmt.Sprintf("agent %q removed (prune=%v, force=%v)", a.Name, prune, force))
 	return nil
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/persistence"
+	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
 // fakeMounts implements MountOps with error injection for prune tests.
@@ -26,6 +27,9 @@ type fakeMounts struct {
 	teardownDetach string
 	chown          [][2]int
 	calls          []string
+	added          []string
+	addErr         error
+	roots          []string
 }
 
 func (f *fakeMounts) PrepareAgentTree(id string) error {
@@ -44,6 +48,19 @@ func (f *fakeMounts) WorkspaceTree(id string) string {
 	return filepath.Join(f.root, "agents", id, "workspace")
 }
 func (f *fakeMounts) List(string) ([]model.MountState, error) { return f.list, nil }
+
+// Add and AddAllowedRoot complete the workspaces.MountExecutor contract.
+func (f *fakeMounts) Add(agentID, source, targetName string, mode model.AccessMode) (string, error) {
+	if f.addErr != nil {
+		return "", f.addErr
+	}
+	f.added = append(f.added, agentID+":"+targetName+":"+string(mode))
+	return filepath.Join(f.WorkspaceTree(agentID), targetName), nil
+}
+
+func (f *fakeMounts) AddAllowedRoot(path string) {
+	f.roots = append(f.roots, path)
+}
 
 func (f *fakeMounts) TeardownAgentTree(_ string, force bool) ([]string, error) {
 	if f.teardownErr != nil {
@@ -464,5 +481,88 @@ func TestEnsureMemoryIdentitiesMigratesLegacyDirs(t *testing.T) {
 	list, _ := st.ListMemories(ctx)
 	if len(list) != 1 {
 		t.Fatalf("expected exactly one memory identity, got %d", len(list))
+	}
+}
+
+func TestRemoveRevokesGrantsAndDetachesMemory(t *testing.T) {
+	svc, fm, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+	// The real workspace service revokes grants during removal.
+	ws := &workspaces.Service{Store: st, Mounts: fm}
+	svc.Grants = ws
+
+	dir := t.TempDir()
+	w, err := ws.Register(ctx, "proj", dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &model.Agent{Name: "rm1", Type: "custom", Image: "img"}
+	if _, err := svc.Create(ctx, a, "test"); err != nil {
+		t.Fatal(err)
+	}
+	g, err := ws.Grant(ctx, w.Name, a.ID, model.ModeRW, false, 0, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mm.Path(mem.ID), "keep.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without the fix this failed with a FOREIGN KEY constraint error.
+	if err := svc.Remove(ctx, a.ID, "test", false, false); err != nil {
+		t.Fatalf("remove agent with active grant: %v", err)
+	}
+
+	if _, err := st.GetAgent(ctx, a.ID); !errors.Is(err, persistence.ErrNotFound) {
+		t.Fatalf("agent record must be gone, got %v", err)
+	}
+	gs, err := st.ListGrants(ctx, w.ID, "", true)
+	if err != nil || len(gs) != 0 {
+		t.Fatalf("grant rows must be purged, got %v (%v)", gs, err)
+	}
+	got, err := st.GetMemory(ctx, mem.ID)
+	if err != nil {
+		t.Fatalf("memory identity must survive (no prune): %v", err)
+	}
+	if got.OwnerAgentID != "" {
+		t.Fatalf("memory must be detached, owner=%q", got.OwnerAgentID)
+	}
+	if b, _ := os.ReadFile(filepath.Join(mm.Path(mem.ID), "keep.txt")); string(b) != "data" {
+		t.Fatal("memory data must survive without prune")
+	}
+	// The unmount happened through the revoker.
+	if len(fm.calls) == 0 {
+		t.Fatal("grant revocation must unmount")
+	}
+	_ = g
+}
+
+func TestRemovePruneDeletesMemoryStore(t *testing.T) {
+	svc, fm, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+	ws := &workspaces.Service{Store: st, Mounts: fm}
+	svc.Grants = ws
+
+	a := &model.Agent{Name: "rm2", Type: "custom", Image: "img"}
+	if _, err := svc.Create(ctx, a, "test"); err != nil {
+		t.Fatal(err)
+	}
+	mem, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.Remove(ctx, a.ID, "test", true, false); err != nil {
+		t.Fatalf("prune remove: %v", err)
+	}
+	if _, err := st.GetMemory(ctx, mem.ID); !errors.Is(err, persistence.ErrNotFound) {
+		t.Fatalf("prune must delete the memory identity, got %v", err)
+	}
+	if _, err := os.Stat(mm.Path(mem.ID)); !os.IsNotExist(err) {
+		t.Fatal("prune must delete the memory store directory")
 	}
 }

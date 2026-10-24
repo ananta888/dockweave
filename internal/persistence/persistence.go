@@ -485,6 +485,17 @@ func (s *Store) PurgeGrants(ctx context.Context, workspaceID string) error {
 	return nil
 }
 
+// PurgeGrantsByAgent deletes all grant rows (including historical) of an
+// agent. Called during agent removal after revoking — the FK on
+// grants.agent_id would otherwise block the delete.
+func (s *Store) PurgeGrantsByAgent(ctx context.Context, agentID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM grants WHERE agent_id=?`, agentID)
+	if err != nil {
+		return fmt.Errorf("purge grants by agent: %w", err)
+	}
+	return nil
+}
+
 // ---- Memories (decoupled identity, single write owner) ----
 
 // CreateMemory inserts a memory identity. ownerAgentID may be empty
@@ -590,6 +601,16 @@ func (s *Store) SetMemoryOwner(ctx context.Context, id, agentID string) error {
 			return ErrNotFound
 		}
 		return fmt.Errorf("%w: memory %s is owned by another agent", ErrConflict, id)
+	}
+	return nil
+}
+
+// DeleteMemory removes a memory identity (its store directory is handled
+// by the caller).
+func (s *Store) DeleteMemory(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM memories WHERE id=?`, id)
+	if err != nil {
+		return fmt.Errorf("delete memory: %w", err)
 	}
 	return nil
 }

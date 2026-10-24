@@ -107,6 +107,8 @@ func run(cfgPath string) error {
 	}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
 	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs)
+	// Agent removal revokes the agent's grants through the workspace service.
+	agentSvc.Grants = wsSvc
 
 	// Migrate legacy per-agent memory dirs to decoupled memory identities.
 	if err := agentSvc.EnsureMemoryIdentities(context.Background()); err != nil {
