@@ -61,13 +61,6 @@ func agentCmd(agent, termSocket string) string {
 	return fmt.Sprintf("%s agent attach %s --term-socket %s", self, agent, termSocket)
 }
 
-func (t *realTmux) ensureSession(name, cmd string) error {
-	if err := tmuxRun("has-session", "-t", name); err == nil {
-		return nil
-	}
-	return tmuxRun("new-session", "-d", "-s", name, cmd)
-}
-
 func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 	out, err := tmuxOutput("split-window", "-v", "-l", "70%", "-P", "-F", "#{pane_id}", placeholder)
 	if err != nil {
@@ -84,17 +77,11 @@ func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 }
 
 func (t *realTmux) switchTerminal(pane, agent, termSocket string) error {
-	sess := "dw-" + agent
-	// Always start a fresh attach client: a session from an earlier daemon
-	// generation would show stale content (the old stream is dead).
-	_ = tmuxRun("kill-session", "-t", sess)
-	if err := t.ensureSession(sess, agentCmd(agent, termSocket)); err != nil {
-		return err
-	}
-	// Nested attach: unset $TMUX so the inner client may attach (tmux
-	// refuses nested sessions otherwise and the pane would die).
-	return tmuxRun("respawn-pane", "-k", "-t", pane,
-		fmt.Sprintf("sh -c 'unset TMUX; exec tmux attach -t %s'", sess))
+	// The pane runs the attach client directly — no intermediate session,
+	// no nested tmux attach (which needs $TMUX unset and races a
+	// kill/recreate against the display). The agent's UI keeps running in
+	// the container; only the viewer restarts.
+	return tmuxRun("respawn-pane", "-k", "-t", pane, agentCmd(agent, termSocket))
 }
 
 func (t *realTmux) focusTerminal(pane string) error {
@@ -113,12 +100,7 @@ func (t *realTmux) quitAll() {
 }
 
 func (t *realTmux) splitAgent(agent, termSocket string) error {
-	sess := "dw-" + agent
-	if err := t.ensureSession(sess, agentCmd(agent, termSocket)); err != nil {
-		return err
-	}
-	if err := tmuxRun("split-window", "-v", "-l", "70%",
-		fmt.Sprintf("sh -c 'unset TMUX; exec tmux attach -t %s'", sess)); err != nil {
+	if err := tmuxRun("split-window", "-v", "-l", "70%", agentCmd(agent, termSocket)); err != nil {
 		return err
 	}
 	t.splitOpen = true
