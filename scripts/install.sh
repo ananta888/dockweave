@@ -39,6 +39,14 @@ fi
 echo "==> Installing to /usr/local/bin"
 $SUDO install -Dm755 bin/dockweave  /usr/local/bin/dockweave
 $SUDO install -Dm755 bin/dockweaved /usr/local/bin/dockweaved
+# Remove stale user-local copies: they shadow /usr/local/bin when
+# ~/.local/bin comes first in PATH and would silently run old builds.
+for f in "$HOME/.local/bin/dockweave" "$HOME/.local/bin/dockweaved"; do
+	if [ -e "$f" ]; then
+		echo "==> Removing stale $f (shadows /usr/local/bin)"
+		rm -f "$f"
+	fi
+done
 
 # ---- admin group (for future logins; see SOCKET_GROUP note below) ----
 $SUDO groupadd -f dockweave 2>/dev/null || true
