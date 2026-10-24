@@ -47,6 +47,7 @@ func NewRegistry() *Registry {
 		&CodexAdapter{},
 		&OpencodeAdapter{},
 		&ClaudeAdapter{},
+		&AntigravityAdapter{}, // before gemini: agy lives inside ~/.gemini
 		&GeminiAdapter{},
 	}}
 }
@@ -204,6 +205,44 @@ func (ClaudeAdapter) SessionInfo(ctx context.Context, exec ExecFunc) (*SessionIn
 	}
 	info.Sessions = newestNames(info.Sessions, 10)
 	return info, nil
+}
+
+// ---- Google Antigravity CLI ----
+
+// AntigravityAdapter detects the Antigravity CLI (agy) — Google's current
+// coding agent. gemini-cli is legacy: Google ships an official migration
+// guide (antigravity.google/docs/cli/gcli-migration, "legacy configurations")
+// and agy imports gemini assets via `agy plugin import gemini`.
+type AntigravityAdapter struct{}
+
+// Name implements Adapter.
+func (AntigravityAdapter) Name() string { return "antigravity" }
+
+// Detect implements Adapter.
+func (AntigravityAdapter) Detect(ctx context.Context, exec ExecFunc) bool {
+	return firstExisting(ctx, exec, "/memory/.gemini/antigravity-cli", "/root/.gemini/antigravity-cli") != ""
+}
+
+// SessionInfo implements Adapter. Conversations live as one SQLite file
+// per session under ~/.gemini/antigravity-cli/conversations.
+func (AntigravityAdapter) SessionInfo(ctx context.Context, exec ExecFunc) (*SessionInfo, error) {
+	base := firstExisting(ctx, exec, "/memory/.gemini/antigravity-cli", "/root/.gemini/antigravity-cli")
+	if base == "" {
+		return &SessionInfo{Adapter: "antigravity", Detected: false}, nil
+	}
+	var sessions []string
+	for _, n := range listDir(ctx, exec, filepath.Join(base, "conversations")) {
+		n = strings.TrimSuffix(n, ".db")
+		if len(n) > 8 {
+			n = n[:8] + "…"
+		}
+		sessions = append(sessions, n)
+	}
+	return &SessionInfo{
+		Adapter:  "antigravity",
+		Detected: true,
+		Sessions: newestNames(sessions, 10),
+	}, nil
 }
 
 // ---- Gemini CLI ----

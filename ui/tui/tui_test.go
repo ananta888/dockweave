@@ -751,3 +751,32 @@ func TestChromeAutoHidesForTallContent(t *testing.T) {
 		t.Fatal("menu must return after clicking the strip")
 	}
 }
+
+// TestAntigravityPreset: the create form pre-fills the official installer
+// for the antigravity profile (gemini-cli is legacy per Google's docs).
+func TestAntigravityPreset(t *testing.T) {
+	p := agentPresets["antigravity"]
+	if !strings.Contains(p.command, "antigravity.google/cli/install.sh") || !strings.Contains(p.command, "agy") {
+		t.Fatalf("antigravity preset must use the official installer: %q", p.command)
+	}
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	_ = m.View()
+	// antigravity is offered as a profile and fills the form on switch.
+	found := false
+	for i, tp := range agentTypes {
+		if tp == "antigravity" {
+			found = true
+			m.form.agentType = i
+		}
+	}
+	if !found {
+		t.Fatal("agentTypes must offer antigravity")
+	}
+	m.applyTypeDefaults()
+	if !strings.Contains(m.form.cmd.Value(), "agy") {
+		t.Fatalf("antigravity defaults missing: %q", m.form.cmd.Value())
+	}
+}

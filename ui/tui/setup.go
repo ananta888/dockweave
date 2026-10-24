@@ -20,7 +20,7 @@ import (
 	"github.com/ananta888/dockweave/pkg/sdk"
 )
 
-var agentTypes = []string{"codex", "opencode", "claude", "gemini", "custom"}
+var agentTypes = []string{"codex", "opencode", "claude", "antigravity", "gemini", "custom"}
 
 // agentPreset holds the default image and command per agent profile. The
 // packages are the verified npm distributions; installs go to $HOME/.local
@@ -43,7 +43,15 @@ var agentPresets = map[string]agentPreset{
 		image:   "node:22-bookworm",
 		command: `npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"`,
 	},
+	"antigravity": {
+		// Google's current coding agent (gemini-cli is legacy). Official
+		// installer from antigravity.google/docs/getting-started; the
+		// binary lands in $HOME/.local/bin/agy (= /memory, persistent).
+		image:   "node:22-bookworm",
+		command: `curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy"`,
+	},
 	"gemini": {
+		// Legacy (Google: "Migrating from Gemini CLI").
 		image:   "node:22-bookworm",
 		command: `npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"`,
 	},

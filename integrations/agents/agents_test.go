@@ -98,6 +98,30 @@ func TestOpencodeAndGemini(t *testing.T) {
 // TestAdapterMarkerMatrix (review-008): every profile detects on its own
 // marker directory (in /memory and the /root fallback), and unrelated
 // directory shapes are never detected.
+func TestAntigravityPreferredOverGemini(t *testing.T) {
+	// agy lives inside ~/.gemini — with both present the registry must
+	// attribute to antigravity (registered first).
+	fs := fakeFS{dirs: map[string][]string{
+		"/memory/.gemini":                 {"antigravity-cli", "tmp"},
+		"/memory/.gemini/antigravity-cli": {"conversations"},
+		"/memory/.gemini/antigravity-cli/conversations": {
+			"1c27b429-b823-4af0-b45c-ec6ed2d2d3cc.db",
+			"43892784-afa3-4f5a-9d2d-81ea57ae4984.db",
+		},
+	}}
+	a, ok := NewRegistry().DetectAll(context.Background(), fs.exec)
+	if !ok || a.Name() != "antigravity" {
+		t.Fatalf("expected antigravity detection, got %v %v", a, ok)
+	}
+	info, err := a.SessionInfo(context.Background(), fs.exec)
+	if err != nil || !info.Detected {
+		t.Fatalf("session info: %+v %v", info, err)
+	}
+	if len(info.Sessions) != 2 {
+		t.Fatalf("expected 2 conversations, got %v", info.Sessions)
+	}
+}
+
 func TestAdapterMarkerMatrix(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
@@ -109,6 +133,7 @@ func TestAdapterMarkerMatrix(t *testing.T) {
 		{"codex", CodexAdapter{}, "/memory/.codex", "/root/.codex"},
 		{"opencode", OpencodeAdapter{}, "/memory/.local/share/opencode", "/root/.local/share/opencode"},
 		{"claude", ClaudeAdapter{}, "/memory/.claude", "/root/.claude"},
+		{"antigravity", AntigravityAdapter{}, "/memory/.gemini/antigravity-cli", "/root/.gemini/antigravity-cli"},
 		{"gemini", GeminiAdapter{}, "/memory/.gemini", "/root/.gemini"},
 	}
 	for _, c := range cases {
@@ -135,5 +160,32 @@ func TestAdapterMarkerMatrix(t *testing.T) {
 				t.Fatal("empty container must not detect")
 			}
 		})
+	}
+}
+
+// TestAntigravityWinsOverGemini (review follow-up): agy lives inside
+// ~/.gemini — when both markers exist, the registry must attribute the
+// container to antigravity (gemini-cli is legacy).
+func TestAntigravityWinsOverGemini(t *testing.T) {
+	fs := fakeFS{dirs: map[string][]string{
+		"/memory/.gemini":                               {"antigravity-cli"},
+		"/memory/.gemini/antigravity-cli":               {"conversations", "antigravity-oauth-token"},
+		"/memory/.gemini/antigravity-cli/conversations": {"1c27b429-aaaa.db", "43892784-bbbb.db"},
+	}}
+	a, ok := NewRegistry().DetectAll(context.Background(), fs.exec)
+	if !ok || a.Name() != "antigravity" {
+		t.Fatalf("expected antigravity detection, got %v %v", a, ok)
+	}
+	info, err := a.SessionInfo(context.Background(), fs.exec)
+	if err != nil || !info.Detected {
+		t.Fatalf("session info: %+v %v", info, err)
+	}
+	if len(info.Sessions) != 2 {
+		t.Fatalf("expected 2 conversations, got %v", info.Sessions)
+	}
+	for _, s := range info.Sessions {
+		if strings.HasSuffix(s, ".db") {
+			t.Fatalf("session names must not keep the .db suffix: %v", info.Sessions)
+		}
 	}
 }

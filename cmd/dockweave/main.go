@@ -96,7 +96,7 @@ func agentCmd() *cobra.Command {
 		},
 	}
 	f := create.Flags()
-	f.StringVar(&spec.Type, "type", "custom", "agent type (codex|opencode|claude|gemini|custom)")
+	f.StringVar(&spec.Type, "type", "custom", "agent type (codex|opencode|claude|antigravity|gemini|custom)")
 	f.StringVar(&spec.Image, "image", "", "container image (required)")
 	f.StringVar(&spec.EnvFile, "env-file", "", "file with KEY=VALUE env (secrets)")
 	f.StringVar(&spec.NetworkMode, "network", "bridge", "network mode (bridge|none)")

@@ -42,7 +42,11 @@ dockweave agent create claude-01 --type claude --image node:22-bookworm \
 dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
   --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"'
 
-# Gemini CLI (npm-Paket @google/gemini-cli)
+# Google Antigravity (agy) — Googles aktueller Coding-Agent
+dockweave agent create gravity-01 --type antigravity --image node:22-bookworm \
+  --exec 'curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy"'
+
+# Gemini CLI — Legacy (Google: "Migrating from Gemini CLI")
 dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
   --exec 'npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"
 
