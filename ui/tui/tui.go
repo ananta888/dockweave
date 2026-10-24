@@ -55,6 +55,9 @@ type dataMsg struct {
 
 type tickMsg time.Time
 
+// termDoneMsg reports the outcome of a full-screen terminal attach.
+type termDoneMsg struct{ err error }
+
 // span is a clickable region on the menu bar (plain-text columns).
 type span struct {
 	tab    tab
@@ -73,6 +76,8 @@ type modelTUI struct {
 
 	// compact UI: the detail card is only shown for the selected agent.
 	expanded bool
+	// status is a transient message line (e.g. terminal attach errors).
+	status string
 	// menubar mode: only the menu bar is rendered (tmux split hosts the
 	// agent terminal below; see tmux.go).
 	menubar bool
@@ -207,6 +212,12 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tick())
+	case termDoneMsg:
+		if msg.err != nil {
+			m.status = "terminal: " + msg.err.Error()
+		} else {
+			m.status = "terminal closed"
+		}
 	case dataMsg:
 		m.data = msg
 	}
@@ -261,18 +272,26 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 // openTerminal hands the agent terminal to tmux (split pane when running
 // inside tmux, menu-bar-only above) or falls back to a full-screen attach.
+// Failures are surfaced in the status line — never swallowed.
 func (m *modelTUI) openTerminal() tea.Cmd {
 	if len(m.data.agents) == 0 || m.cursor >= len(m.data.agents) {
+		m.status = "no agent selected"
 		return nil
 	}
 	a := m.data.agents[m.cursor]
+	if a.State != model.AgentRunning {
+		m.status = fmt.Sprintf("agent %s is %s — start it first", a.Name, a.State)
+		return nil
+	}
 	if m.tmux.available() && m.tmux.inSession() {
 		if err := m.tmux.splitAgent(a.Name, m.socket); err == nil {
 			// The split shrinks our pane; render menu-bar-only.
 			m.menubar = true
+			m.status = ""
 			return nil
+		} else {
+			m.status = "tmux split failed: " + err.Error() + " — falling back to full-screen"
 		}
-		// fall through to the exec-based attach
 	}
 	self, err := os.Executable()
 	if err != nil {
@@ -280,7 +299,7 @@ func (m *modelTUI) openTerminal() tea.Cmd {
 	}
 	c := exec.Command(self, "agent", "attach", "--term-socket", m.socket, a.Name)
 	return tea.ExecProcess(c, func(err error) tea.Msg {
-		return dataMsg{err: nil} // triggers redraw after return
+		return termDoneMsg{err: err}
 	})
 }
 
@@ -332,6 +351,9 @@ func (m *modelTUI) View() string {
 		case tabEvents:
 			b.WriteString(m.viewEvents())
 		}
+	}
+	if m.status != "" {
+		b.WriteString("\n" + errStyle.Render("! "+m.status))
 	}
 	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • r: refresh • q: quit"))
 	return b.String()

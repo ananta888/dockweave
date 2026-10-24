@@ -150,7 +150,12 @@ func (s *TermServer) handle(conn net.Conn) {
 	if len(cmd) == 0 {
 		cmd = []string{"/bin/sh", "-c", "exec $(command -v bash || command -v sh)"}
 	}
-	stream, execID, err := s.cfg.Docker.Exec(ctx, cid, cmd, true)
+	// The exec/attach stream lives for the whole session: it must not use
+	// the (already canceled) lookup context. The context is canceled when
+	// the handler returns, closing the hijacked stream.
+	sctx, scancel := context.WithCancel(context.Background())
+	defer scancel()
+	stream, execID, err := s.cfg.Docker.Exec(sctx, cid, cmd, true)
 	if err != nil {
 		fmt.Fprintf(conn, "ERR exec: %v\n", err)
 		return
