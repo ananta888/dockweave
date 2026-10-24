@@ -105,6 +105,7 @@ func (s *TermServer) Close() error {
 const ctrlPrefix = 0x01
 
 // parseAttach parses an ATTACH line into agent target and command.
+// No command means: join the agent's main TTY (its own UI).
 func parseAttach(line string) (agent string, cmd []string, err error) {
 	f := strings.Fields(line)
 	if len(f) < 2 || f[0] != "ATTACH" {
@@ -113,7 +114,7 @@ func parseAttach(line string) (agent string, cmd []string, err error) {
 	agent = f[1]
 	cmd = f[2:]
 	if len(cmd) == 0 {
-		cmd = nil // server default shell
+		cmd = nil // no command: join the agent's main TTY
 	}
 	return agent, cmd, nil
 }
@@ -146,29 +147,38 @@ func (s *TermServer) handle(conn net.Conn) {
 		fmt.Fprintf(conn, "ERR agent %q not running\n", agent)
 		return
 	}
-	// Default command: spawn login shell with fallback sh.
-	if len(cmd) == 0 {
-		cmd = []string{"/bin/sh", "-c", "exec $(command -v bash || command -v sh)"}
-	}
-	// The exec/attach stream lives for the whole session: it must not use
-	// the (already canceled) lookup context. The context is canceled when
-	// the handler returns, closing the hijacked stream.
 	sctx, scancel := context.WithCancel(context.Background())
 	defer scancel()
-	stream, execID, err := s.cfg.Docker.Exec(sctx, cid, cmd, true)
+	// No command: join the agent's *main* TTY — the user wants to see the
+	// agent's own UI (e.g. the codex TUI), not a second shell. With a
+	// command: a separate exec session (shell, tools, …).
+	var stream io.ReadWriteCloser
+	var resize func(rows, cols int)
+	if len(cmd) == 0 {
+		stream, err = s.cfg.Docker.Attach(sctx, cid)
+		resize = func(rows, cols int) {
+			rctx, rcancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer rcancel()
+			_ = s.cfg.Docker.Resize(rctx, cid, rows, cols)
+		}
+	} else {
+		var execID string
+		stream, execID, err = s.cfg.Docker.Exec(sctx, cid, cmd, true)
+		resize = func(rows, cols int) {
+			rctx, rcancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer rcancel()
+			_ = s.cfg.Docker.ExecResize(rctx, execID, rows, cols)
+		}
+	}
 	if err != nil {
-		fmt.Fprintf(conn, "ERR exec: %v\n", err)
+		fmt.Fprintf(conn, "ERR attach: %v\n", err)
 		return
 	}
 	defer stream.Close()
 
 	done := make(chan error, 2)
 	go func() {
-		done <- pumpInput(conn, br, stream, func(rows, cols int) {
-			rctx, rcancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer rcancel()
-			_ = s.cfg.Docker.ExecResize(rctx, execID, rows, cols)
-		})
+		done <- pumpInput(conn, br, stream, resize)
 	}()
 	go func() {
 		_, err := io.Copy(conn, stream)

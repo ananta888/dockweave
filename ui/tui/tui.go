@@ -148,6 +148,19 @@ func (m *modelTUI) setupEmbedded() tea.Cmd {
 	}
 }
 
+// expandTUI grows the TUI pane so the selected view is visible.
+func (m *modelTUI) expandTUI() {
+	m.menubar = false
+	_ = m.tmux.resizeSelf(m.height + 20)
+}
+
+// collapseToBar shrinks the TUI to the menu bar (terminal below owns the
+// screen).
+func (m *modelTUI) collapseToBar() {
+	m.menubar = true
+	_ = m.tmux.resizeSelf(4)
+}
+
 // switchBottom shows the selected agent's terminal in the bottom pane.
 // With focus it also moves keyboard focus into the terminal.
 func (m *modelTUI) switchBottom(focus bool) tea.Cmd {
@@ -256,9 +269,11 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.expanded = !m.expanded
 		case msg.String() == "esc":
 			if m.menubar {
-				// Leave menu-bar-only mode: give the TUI its height back.
-				m.menubar = false
-				m.tmux.resizeSelf(m.height + 20)
+				m.expandTUI()
+				return m, nil
+			}
+			if m.embedded {
+				m.collapseToBar()
 				return m, nil
 			}
 			m.expanded = false
@@ -311,14 +326,21 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
-	// Menu bar: switch tabs.
+	// Menu bar: a click reveals the view — in bar mode the TUI expands
+	// first so the content is actually visible.
 	if msg.Y == 1 {
 		for _, s := range m.tabSpans {
 			if msg.X >= s.x0 && msg.X < s.x1 {
+				if m.menubar {
+					m.expandTUI()
+				}
 				m.tab = s.tab
 				m.expanded = false
 				return m, nil
 			}
+		}
+		if m.menubar {
+			m.expandTUI()
 		}
 		return m, nil
 	}
@@ -377,8 +399,7 @@ func (m *modelTUI) openTerminal() tea.Cmd {
 			return nil
 		}
 		m.status = ""
-		m.menubar = true
-		_ = m.tmux.resizeSelf(4) // bar mode above the terminal
+		m.collapseToBar() // bar above the terminal
 		return m.switchBottom(true)
 	}
 	if m.tmux.available() && m.tmux.inSession() {
@@ -427,7 +448,7 @@ func (m *modelTUI) View() string {
 		// Bar mode: menu + agent tabs only (tmux hosts the terminal below).
 		b.WriteString("\n")
 		m.renderAgentTabs(&b)
-		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • click tab: switch agent • t: focus terminal • esc: expand • q: quit"))
+		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • click menu: expand view • click agent: switch terminal • t: focus • esc: toggle • q: quit"))
 		return b.String()
 	}
 	b.WriteString("\n")

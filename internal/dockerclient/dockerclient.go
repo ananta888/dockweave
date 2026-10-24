@@ -365,6 +365,13 @@ func (c *Client) Attach(ctx context.Context, containerID string) (io.ReadWriteCl
 	return resp.Conn, nil
 }
 
+// Resize changes the TTY size of the container's main process.
+func (c *Client) Resize(ctx context.Context, containerID string, rows, cols int) error {
+	return c.cli.ContainerResize(ctx, containerID, container.ResizeOptions{
+		Height: uint(rows), Width: uint(cols),
+	})
+}
+
 // Demux copies a multiplexed docker stream (8-byte header frames) to stdout/stderr.
 func Demux(src io.Reader, stdout, stderr io.Writer) error {
 	hdr := make([]byte, 8)

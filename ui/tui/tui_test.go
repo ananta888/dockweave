@@ -435,3 +435,32 @@ func TestBarModeShowsMenuAndAgentTabs(t *testing.T) {
 		t.Fatalf("agent tabs must stay visible in bar mode:\n%s", out)
 	}
 }
+
+func TestMenuBarClickExpandsFromBarMode(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 4, tmux: ft, embedded: true, menubar: true}
+	m.data = sampleData()
+	_ = m.View()
+
+	var target span
+	for _, s := range m.tabSpans {
+		if s.tab == tabMounts {
+			target = s
+		}
+	}
+	m.Update(leftClick(target.x0+1, 1))
+	if m.menubar {
+		t.Fatal("menu click must expand the TUI so the content is visible")
+	}
+	if m.tab != tabMounts {
+		t.Fatalf("menu click must switch the view: %v", m.tab)
+	}
+	if len(ft.resized) == 0 || ft.resized[len(ft.resized)-1] <= 5 {
+		t.Fatalf("pane must grow, resize log: %v", ft.resized)
+	}
+	// esc collapses back to the bar.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if !m.menubar {
+		t.Fatal("esc must collapse back to the menu bar")
+	}
+}
