@@ -63,9 +63,11 @@ type setupForm struct {
 	name, image, cmd, uid textinput.Model
 	folder                textinput.Model
 	wsName, wsPath        textinput.Model
-	agentType             int // index into agentTypes
-	folderTarget          int // 0 = /agent folder, 1 = new memory folder
-	focusIdx              int // index into hits, -1 = nothing focused
+	agentType             int  // index into agentTypes
+	folderTarget          int  // 0 = /agent folder, 1 = new memory folder
+	mode                  int  // 0 = agent settings, 1 = new agent, 2 = workspaces
+	showStores            bool // memory store list expanded
+	focusIdx              int  // index into hits, -1 = nothing focused
 	hits                  []setupHit
 	// touched marks fields the user typed into: type changes never
 	// overwrite them. seeded applies the defaults once on first entry.
@@ -83,15 +85,15 @@ func newSetupForm() setupForm {
 		return ti
 	}
 	return setupForm{
-		name:      mk("Name    ", "e.g. codex-02", 40),
-		image:     mk("Image   ", "node:22-bookworm", 80),
-		cmd:       mk("Command ", "npm install -g --prefix ... && exec ...", 160),
-		uid:       mk("UID     ", "1000", 8),
-		folder:    mk("folder  ", "/home/me/my-agent-settings", 120),
-		wsName:    mk("Name    ", "myproject", 40),
-		wsPath:    mk("Path    ", "/srv/projects/myproject", 120),
-		focusIdx:  -1,
-		touched:   map[string]bool{},
+		name:     mk("Name    ", "e.g. codex-02", 40),
+		image:    mk("Image   ", "node:22-bookworm", 80),
+		cmd:      mk("Command ", "npm install -g --prefix ... && exec ...", 160),
+		uid:      mk("UID     ", "1000", 8),
+		folder:   mk("folder  ", "/home/me/my-agent-settings", 120),
+		wsName:   mk("Name    ", "myproject", 40),
+		wsPath:   mk("Path    ", "/srv/projects/myproject", 120),
+		focusIdx: -1,
+		touched:  map[string]bool{},
 	}
 }
 
@@ -185,119 +187,187 @@ func (m *modelTUI) viewSetup() string {
 		return f.focusIdx >= 0 && f.focusIdx < len(f.hits) && f.hits[f.focusIdx].action == action
 	}
 
-	// -- create agent --
-	b.WriteString(tabActive.Render(" create agent ") + "\n")
+	// -- agent tab area: click an agent to see and change its settings --
+	x := 2
+	chip := func(label string, y int, action, arg string, active bool) {
+		text := " " + label + " "
+		w := len(text) + 2
+		if active {
+			b.WriteString(tabActive.Render(text))
+		} else {
+			b.WriteString(tabIdle.Render(text))
+		}
+		hit(y, x, x+w, action, arg)
+		x += w + 1
+	}
+	b.WriteString(" ")
+	for i, a := range m.data.agents {
+		chip(a.Name, row, "select:"+a.ID, a.ID, f.mode == 0 && m.cursor == i)
+	}
+	chip("+ new agent", row, "mode:1", "", f.mode == 1)
+	chip("workspaces", row, "mode:2", "", f.mode == 2)
+	b.WriteString("\n")
 	row++
-	b.WriteString("  " + f.name.View() + "   Type " + cyclerView(agentTypes[f.agentType], focused("type")) + "\n")
-	hit(row, 2, 42, "f-name", "")
-	hit(row, 52, 74, "type", "")
-	row++
-	b.WriteString("  " + f.image.View() + "   " + f.uid.View() + "\n")
-	hit(row, 2, 52, "f-image", "")
-	hit(row, 52, 68, "f-uid", "")
-	row++
+
+	switch f.mode {
+	case 1:
+		return b.String() + m.viewSetupNew(&row, hit, focused)
+	case 2:
+		return b.String() + m.viewSetupWorkspaces(&row, hit, focused)
+	}
+	return b.String() + m.viewSetupSettings(&row, hit, focused)
+}
+
+// viewSetupSettings shows the configuration of the selected agent.
+func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, string), focused func(string) bool) string {
+	var b strings.Builder
+	f := &m.form
+	a := m.selectedAgent()
+	if a == nil {
+		b.WriteString("\n" + dimStyle.Render("no agent selected") + "\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "\n  settings · %s      %s %s %s\n", a.Name,
+		buttonView("start", focused("start")), buttonView("stop", focused("stop")), buttonView("remove", focused("remove")))
+	hit(*row+1, 34, 46, "start", "")
+	hit(*row+1, 48, 60, "stop", "")
+	hit(*row+1, 62, 78, "remove", "")
+	*row += 2
+
+	b.WriteString("  " + cyclerView(agentTypes[f.agentType], focused("type")) + "  " + f.image.View() + " " + f.uid.View() + "\n")
+	hit(*row, 2, 20, "type", "")
+	hit(*row, 22, 76, "f-image", "")
+	hit(*row, 78, 92, "f-uid", "")
+	*row++
 	b.WriteString("  " + f.cmd.View() + "\n")
-	hit(row, 2, 90, "f-cmd", "")
-	row++
-	b.WriteString("  " + buttonView("Create", focused("create")) + "  " + buttonView("Clear", focused("clear")) + "\n")
-	hit(row, 2, 12, "create", "")
-	hit(row, 15, 25, "clear", "")
-	row += 2
+	hit(*row, 2, 92, "f-cmd", "")
+	*row++
+	b.WriteString("  " + buttonView("Apply", focused("apply-config")) + "\n")
+	hit(*row, 2, 14, "apply-config", "")
+	*row += 2
 
-	// -- folders of the selected agent --
-	agentName := "(no agent selected)"
-	var a *model.Agent
-	if a = m.selectedAgent(); a != nil {
-		agentName = a.Name
+	b.WriteString("  " + tabActive.Render(" folders ") + "\n")
+	*row++
+	p := m.data.paths[a.ID]
+	am := "   "
+	if p.AgentDirCustom {
+		am = okStyle.Render("● ")
 	}
-	b.WriteString(tabActive.Render(" folders · " + agentName + " ") + "\n")
-	row++
-	if a != nil {
-		p := m.data.paths[a.ID]
-		agentMark := "   "
-		if p.AgentDirCustom {
-			agentMark = okStyle.Render("● ")
-		}
-		fmt.Fprintf(&b, "  %s%-8s /agent  ← %s   %s  %s %s\n", agentMark, "agent", p.AgentDir,
-			dimStyle.Render("(AGENTS.md, skills)"),
-			buttonView("set folder", focused("folder-agent")), buttonView("reset", focused("folder-reset")))
-		hit(row, 2, 70, "folder-agent", "")
-		hit(row, 71, 83, "folder-reset", "")
-		row++
-		memMark := "   "
-		memNote := "(not attached)"
-		if p.MemoryID != "" {
-			memMark = okStyle.Render("● ")
-			memNote = dimStyle.Render("(long-term memory)")
-		}
-		memPath := p.MemoryDir
-		if memPath == "" {
-			memPath = "—"
-		}
-		fmt.Fprintf(&b, "  %s%-8s /memory ← %s   %s  %s\n", memMark, "memory", memPath, memNote,
-			buttonView("detach", focused("mem-detach")))
-		hit(row, 2, 70, "mem-detach", "")
-		row++
-		for _, w := range m.data.workspaces {
-			mark := "   "
-			label, action := "assign", "assign:"+w.ID
-			if g := m.grantFor(a.ID, w.ID); g != nil {
-				mark = okStyle.Render("● ")
-				label, action = "unassign", "unassign:"+w.ID
-			}
-			fmt.Fprintf(&b, "  %s%-8s /workspace/%-12s ← %-24s %s\n", mark, "project", w.Name, w.HostPath,
-				buttonView(label, focused(action)))
-			hit(row, 55, 72, action, w.ID)
-			row++
-		}
+	fmt.Fprintf(&b, "  %s%-8s /agent  ← %s %s %s %s\n", am, "agent", p.AgentDir, dimStyle.Render("(AGENTS.md, skills)"),
+		buttonView("set folder", focused("folder-agent")), buttonView("reset", focused("folder-reset")))
+	hit(*row, 2, 66, "folder-agent", "")
+	hit(*row, 68, 80, "folder-reset", "")
+	*row++
+	mm := "   "
+	if p.MemoryID != "" {
+		mm = okStyle.Render("● ")
 	}
-	row++
+	mp := p.MemoryDir
+	if mp == "" {
+		mp = "—"
+	}
+	fmt.Fprintf(&b, "  %s%-8s /memory ← %s %s  %s %s\n", mm, "memory", mp, dimStyle.Render("(long-term memory)"),
+		buttonView("detach", focused("mem-detach")), buttonView("change", focused("change")))
+	hit(*row, 2, 66, "mem-detach", "")
+	hit(*row, 68, 82, "change", "")
+	*row++
+	for _, w := range m.data.workspaces {
+		mark := "   "
+		label, action := "assign", "assign:"+w.ID
+		if g := m.grantFor(a.ID, w.ID); g != nil {
+			mark = okStyle.Render("● ")
+			label, action = "unassign", "unassign:"+w.ID
+		}
+		fmt.Fprintf(&b, "  %s%-8s /workspace/%-12s ← %-24s %s\n", mark, "project", w.Name, w.HostPath,
+			buttonView(label, focused(action)))
+		hit(*row, 55, 72, action, w.ID)
+		*row++
+	}
 
-	// -- memory stores (attach any to the selected agent) --
-	b.WriteString(tabActive.Render(" memory stores ") + "\n")
-	row++
-	for _, mem := range m.data.memories {
-		owner := "free"
-		if mem.OwnerAgentID != "" {
-			for _, ag := range m.data.agents {
-				if ag.ID == mem.OwnerAgentID {
-					owner = ag.Name
+	// Memory stores appear only on demand ([change]).
+	if f.showStores {
+		*row++
+		b.WriteString("  " + tabActive.Render(" memory stores ") + "\n")
+		*row++
+		for _, mem := range m.data.memories {
+			owner := "free"
+			if mem.OwnerAgentID != "" {
+				for _, ag := range m.data.agents {
+					if ag.ID == mem.OwnerAgentID {
+						owner = ag.Name
+					}
 				}
 			}
+			pth := mem.Path
+			if pth == "" {
+				pth = "(default layout)"
+			}
+			fmt.Fprintf(&b, "    %-14s owner: %-12s %-28s %s\n", shortID(mem.ID), owner, pth,
+				buttonView("attach", focused("attach:"+mem.ID)))
+			hit(*row, 58, 72, "attach:"+mem.ID, mem.ID)
+			*row++
 		}
-		pth := mem.Path
-		if pth == "" {
-			pth = "(default layout)"
-		}
-		fmt.Fprintf(&b, "  %-14s owner: %-12s %-28s %s\n", shortID(mem.ID), owner, pth,
-			buttonView("attach", focused("attach:"+mem.ID)))
-		hit(row, 60, 72, "attach:"+mem.ID, mem.ID)
-		row++
 	}
-	row++
+	return b.String()
+}
 
-	// -- register / set folder --
-	targets := []string{"agent", "memory"}
-	b.WriteString(tabActive.Render(" register / set folder ") + "\n")
-	row++
-	b.WriteString("  " + "folder for " + cyclerView(targets[m.form.folderTarget], focused("target")) + " " + "  " + f.folder.View() + "\n")
-	hit(row, 2, 24, "target", "")
-	hit(row, 26, 110, "f-folder", "")
-	row++
-	b.WriteString("  " + buttonView("Apply", focused("apply-folder")) + "\n")
-	hit(row, 2, 12, "apply-folder", "")
-	row += 2
+// viewSetupNew shows the create-agent form.
+func (m *modelTUI) viewSetupNew(row *int, hit func(int, int, int, string, string), focused func(string) bool) string {
+	var b strings.Builder
+	f := &m.form
+	b.WriteString("\n  " + tabActive.Render(" new agent ") + "\n")
+	*row++
+	b.WriteString("  " + f.name.View() + "   " + cyclerView(agentTypes[f.agentType], focused("type")) + "\n")
+	hit(*row, 2, 42, "f-name", "")
+	hit(*row, 52, 74, "type", "")
+	*row++
+	b.WriteString("  " + f.image.View() + "   " + f.uid.View() + "\n")
+	hit(*row, 2, 52, "f-image", "")
+	hit(*row, 52, 68, "f-uid", "")
+	*row++
+	b.WriteString("  " + f.cmd.View() + "\n")
+	hit(*row, 2, 92, "f-cmd", "")
+	*row++
+	b.WriteString("  " + buttonView("Create", focused("create")) + "  " + buttonView("Clear", focused("clear")) + "\n")
+	hit(*row, 2, 14, "create", "")
+	hit(*row, 16, 28, "clear", "")
+	return b.String()
+}
 
-	// -- register workspace --
-	b.WriteString(tabActive.Render(" register workspace ") + "\n")
-	row++
+// viewSetupWorkspaces shows workspace management (register folders).
+func (m *modelTUI) viewSetupWorkspaces(row *int, hit func(int, int, int, string, string), focused func(string) bool) string {
+	var b strings.Builder
+	f := &m.form
+	b.WriteString("\n  " + tabActive.Render(" workspaces ") + "\n")
+	*row++
+	for _, w := range m.data.workspaces {
+		users := 0
+		for _, g := range m.data.grants {
+			if g.WorkspaceID == w.ID && g.Active(time.Now()) {
+				users++
+			}
+		}
+		fmt.Fprintf(&b, "  %-16s %-32s %s\n", w.Name, w.HostPath,
+			dimStyle.Render(fmt.Sprintf("%d agent(s)", users)))
+		*row++
+	}
+	*row++
+	b.WriteString("  " + tabActive.Render(" register workspace ") + "\n")
+	*row++
 	b.WriteString("  " + f.wsName.View() + "  " + f.wsPath.View() + "\n")
-	hit(row, 2, 52, "f-wsname", "")
-	hit(row, 52, 130, "f-wspath", "")
-	row++
+	hit(*row, 2, 52, "f-wsname", "")
+	hit(*row, 52, 130, "f-wspath", "")
+	*row++
 	b.WriteString("  " + buttonView("Register", focused("register")) + "\n")
-	hit(row, 2, 16, "register", "")
-
+	hit(*row, 2, 16, "register", "")
+	*row += 2
+	b.WriteString("  " + tabActive.Render(" register memory folder ") + "\n")
+	*row++
+	b.WriteString("  " + f.folder.View() + "\n")
+	hit(*row, 2, 110, "f-folder", "")
+	*row++
+	b.WriteString("  " + buttonView("Register memory", focused("apply-memory")) + "\n")
+	hit(*row, 2, 26, "apply-memory", "")
 	return b.String()
 }
 
@@ -469,10 +539,64 @@ func (m *modelTUI) cycleType(next bool) {
 	m.applyTypeDefaults()
 }
 
+// loadAgentConfig fills the settings fields from the selected agent.
+func (m *modelTUI) loadAgentConfig() {
+	a := m.selectedAgent()
+	if a == nil {
+		return
+	}
+	f := &m.form
+	f.image.SetValue(a.Image)
+	uid := strconv.Itoa(a.UID)
+	if a.UID == 0 {
+		uid = "1000"
+	}
+	f.uid.SetValue(uid)
+	cmd := strings.Join(a.Command, " ")
+	if len(a.Command) == 3 && a.Command[0] == "sh" && a.Command[1] == "-c" {
+		cmd = a.Command[2]
+	}
+	f.cmd.SetValue(cmd)
+	for i, t := range agentTypes {
+		if t == a.Type {
+			f.agentType = i
+		}
+	}
+	for _, k := range []string{"image", "cmd", "uid"} {
+		delete(f.touched, k)
+	}
+}
+
 // activate performs the action of a focused/clicked control.
 func (m *modelTUI) activate(h setupHit) tea.Cmd {
 	f := &m.form
 	switch {
+	case strings.HasPrefix(h.action, "select:"):
+		id := strings.TrimPrefix(h.action, "select:")
+		for i, a := range m.data.agents {
+			if a.ID == id {
+				m.cursor = i
+			}
+		}
+		f.mode = 0
+		m.loadAgentConfig()
+		return nil
+	case h.action == "mode:1":
+		f.mode = 1
+		m.applyTypeDefaults()
+		return nil
+	case h.action == "mode:2":
+		f.mode = 2
+		return nil
+	case h.action == "change":
+		f.showStores = !f.showStores
+		return nil
+	case h.action == "apply-config":
+		return m.submitAgentUpdate()
+	case h.action == "start" || h.action == "stop" || h.action == "remove":
+		return m.submitAgentAction(h.action)
+	case h.action == "apply-memory":
+		return m.submitMemoryRegister()
 	case h.action == "type":
 		m.cycleType(true)
 		return nil
@@ -536,6 +660,67 @@ func (m *modelTUI) submitAgent() tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_, err := client.CreateAgent(ctx, spec)
+		return setupDoneMsg{err: err}
+	}
+}
+
+// submitAgentUpdate saves the changed configuration (restart to apply).
+func (m *modelTUI) submitAgentUpdate() tea.Cmd {
+	a := m.selectedAgent()
+	if a == nil {
+		return nil
+	}
+	f := &m.form
+	uid, _ := strconv.Atoi(strings.TrimSpace(f.uid.Value()))
+	cmd := strings.TrimSpace(f.cmd.Value())
+	specCmd := []string(nil)
+	if cmd != "" {
+		specCmd = []string{"sh", "-c", cmd}
+	}
+	client, id := m.client, a.ID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := client.UpdateAgent(ctx, id, agentTypes[f.agentType], strings.TrimSpace(f.image.Value()), specCmd, uid, uid)
+		return setupDoneMsg{err: err}
+	}
+}
+
+// submitAgentAction starts/stops/removes the selected agent.
+func (m *modelTUI) submitAgentAction(action string) tea.Cmd {
+	a := m.selectedAgent()
+	if a == nil {
+		return nil
+	}
+	client, id := m.client, a.ID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		var err error
+		switch action {
+		case "start":
+			_, err = client.AgentAction(ctx, id, "start")
+		case "stop":
+			err = client.StopAgent(ctx, id)
+		case "remove":
+			err = client.RemoveAgent(ctx, id, false, false)
+		}
+		return setupDoneMsg{err: err}
+	}
+}
+
+// submitMemoryRegister registers the folder input as a memory store.
+func (m *modelTUI) submitMemoryRegister() tea.Cmd {
+	path := strings.TrimSpace(m.form.folder.Value())
+	if path == "" {
+		m.status = "register memory: path is required"
+		return nil
+	}
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, err := client.RegisterMemory(ctx, path)
 		return setupDoneMsg{err: err}
 	}
 }

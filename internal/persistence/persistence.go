@@ -238,6 +238,22 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	return &a, nil
 }
 
+// UpdateAgentConfig updates the mutable agent configuration (type, image,
+// command, uid/gid). Applied to the container at the next start.
+func (s *Store) UpdateAgentConfig(ctx context.Context, a *model.Agent) error {
+	cmd, _ := json.Marshal(a.Command)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET type=?, image=?, command=?, uid=?, gid=?, updated_at=? WHERE id=?`,
+		string(a.Type), a.Image, string(cmd), a.UID, a.GID, ts(time.Now()), a.ID)
+	if err != nil {
+		return fmt.Errorf("update agent config: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UpdateAgentDir sets (or with an empty dir clears) the custom /agent
 // source directory of an agent.
 func (s *Store) UpdateAgentDir(ctx context.Context, id, dir string) error {

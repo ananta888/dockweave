@@ -101,6 +101,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/session", s.agentSession)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/paths", s.agentPaths)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/agent-dir", s.setAgentDir)
+	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
@@ -434,6 +435,34 @@ func (s *Server) deleteMemorySnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- memory identities (review-009) ----
+
+func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type    string   `json:"type"`
+		Image   string   `json:"image"`
+		Command []string `json:"command"`
+		UID     *int     `json:"uid"`
+		GID     *int     `json:"gid"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	uid, gid := -1, -1
+	if req.UID != nil {
+		uid = *req.UID
+	}
+	if req.GID != nil {
+		gid = *req.GID
+	}
+	a, err := s.Agents.UpdateAgentConfig(r.Context(), r.PathValue("id"),
+		req.Type, req.Image, req.Command, uid, gid, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
 
 func (s *Server) setAgentDir(w http.ResponseWriter, r *http.Request) {
 	var req struct {

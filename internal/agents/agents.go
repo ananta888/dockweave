@@ -500,6 +500,37 @@ func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths,
 	return p, nil
 }
 
+// UpdateAgentConfig changes the mutable configuration of an agent (type,
+// image, command, uid/gid). It takes effect at the next agent start.
+func (s *Service) UpdateAgentConfig(ctx context.Context, idOrName string, type_, image string, cmd []string, uid, gid int, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if type_ != "" {
+		a.Type = type_
+	}
+	if image != "" {
+		a.Image = image
+	}
+	if cmd != nil {
+		a.Command = cmd
+	}
+	if uid >= 0 {
+		a.UID = uid
+	}
+	if gid >= 0 {
+		a.GID = gid
+	}
+	a.UpdatedAt = time.Now()
+	if err := s.Store.UpdateAgentConfig(ctx, a); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID,
+		fmt.Sprintf("config updated: type=%s image=%s uid=%d:%d (restart to apply)", a.Type, a.Image, a.UID, a.GID))
+	return a, nil
+}
+
 // SetAgentDir registers a custom host directory as the /agent source
 // (settings, AGENTS.md, skills). An empty path restores the default. The
 // change takes effect at the next agent start.

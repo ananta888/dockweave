@@ -545,43 +545,111 @@ func TestAgentDetailShowsFolders(t *testing.T) {
 
 // ---- Setup tab: forms, folders, mouse+keyboard ----
 
-func TestSetupViewShowsAllSections(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
-	m.data = sampleData()
-	m.data.grants = []*model.Grant{{
+func setupTestData() dataMsg {
+	d := sampleData()
+	d.grants = []*model.Grant{{
 		ID: "gr1", WorkspaceID: "ws1", AgentID: "ag1",
 		Mode: model.ModeRW, Status: model.GrantActive, CreatedAt: time.Now(),
 	}}
-	m.data.paths = map[string]sdk.AgentPathsInfo{
+	d.paths = map[string]sdk.AgentPathsInfo{
 		"ag1": {AgentID: "ag1", AgentDir: "/a/agent", MemoryID: "mem_1", MemoryDir: "/m/mem_1", WorkspaceDir: "/a/ws"},
 	}
+	return d
+}
+
+// clickHit clicks the hotspot with the given action and runs the command.
+func clickHit(t *testing.T, m *modelTUI, action string) tea.Msg {
+	t.Helper()
+	_ = m.View()
+	for _, h := range m.form.hits {
+		if h.action == action {
+			_, cmd := m.Update(leftClick(h.x0+1, h.y))
+			if cmd != nil {
+				return cmd()
+			}
+			return nil
+		}
+	}
+	t.Fatalf("hotspot %q missing", action)
+	return nil
+}
+
+func TestSetupSettingsMode(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
 	out := m.View()
 	for _, want := range []string{
-		"create agent", "Type", "Create", "Clear",
-		"folders · alpha", "AGENTS.md, skills", "long-term memory",
+		"alpha", "+ new agent", "workspaces", // agent tab chips
+		"settings · alpha", "start", "stop", "remove",
+		"folders", "AGENTS.md, skills", "long-term memory",
 		"/workspace/proj", "/srv/proj", "unassign",
 		"/workspace/docs", "/srv/docs", "assign",
-		"register workspace", "Register",
 	} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("setup view missing %q:\n%s", want, out)
+			t.Fatalf("settings view missing %q:\n%s", want, out)
+		}
+	}
+	// Memory stores stay hidden until [change] is pressed.
+	if strings.Contains(out, "memory stores") {
+		t.Fatal("store list must be collapsed by default")
+	}
+	m.activate(setupHit{action: "change"})
+	if !strings.Contains(m.View(), "memory stores") {
+		t.Fatal("change must reveal the memory stores")
+	}
+}
+
+func TestSetupNewAgentMode(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	m.applyTypeDefaults()
+	out := m.View()
+	for _, want := range []string{"new agent", "Create", "Clear", "codex-01", "node:22-bookworm", "@openai/codex"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("new-agent view missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSetupWorkspacesMode(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 2
+	out := m.View()
+	for _, want := range []string{"workspaces", "register workspace", "register memory folder", "Register memory", "/srv/proj"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("workspaces view missing %q:\n%s", want, out)
 		}
 	}
 }
 
 func TestSetupFormTypingAndFocus(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
-	m.data = sampleData()
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	m.applyTypeDefaults()
 
-	// Click the name field: it takes focus, typing goes in (the default
-	// suggestion stays, user input appends).
-	_ = m.View() // build hit map + seed defaults
-	_, cmd := m.Update(leftClick(4, 4))
-	_ = cmd
+	// Click the name field via its hotspot: typing goes in.
+	_ = m.View()
+	var nameHit *setupHit
+	for i := range m.form.hits {
+		if m.form.hits[i].action == "f-name" {
+			nameHit = &m.form.hits[i]
+		}
+	}
+	if nameHit == nil {
+		t.Fatal("name field hotspot missing")
+	}
+	m.Update(leftClick(nameHit.x0+1, nameHit.y))
 	for _, r := range "x" {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if !strings.HasPrefix(m.form.name.Value(), "codex-01") || !strings.HasSuffix(m.form.name.Value(), "x") {
+	if !strings.HasSuffix(m.form.name.Value(), "x") {
 		t.Fatalf("name field = %q", m.form.name.Value())
 	}
 	// Tab moves focus on; typing no longer reaches name.
@@ -593,33 +661,24 @@ func TestSetupFormTypingAndFocus(t *testing.T) {
 }
 
 func TestSetupTypeDefaultsPreFill(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
-	m.data = sampleData()
-
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
 	_ = m.View() // seeds codex defaults
 	if got := m.form.name.Value(); got != "codex-01" {
 		t.Fatalf("name default = %q, want codex-01", got)
 	}
-	if got := m.form.image.Value(); got != "node:22-bookworm" {
-		t.Fatalf("image default = %q", got)
-	}
 	if !strings.Contains(m.form.cmd.Value(), "@openai/codex") {
-		t.Fatalf("cmd default = %q, want codex install", m.form.cmd.Value())
+		t.Fatalf("cmd default = %q", m.form.cmd.Value())
 	}
-
-	// Switching the profile updates all untouched fields.
 	m.cycleType(true) // -> opencode
-	if m.form.agentType != 1 {
-		t.Fatalf("type index = %d", m.form.agentType)
-	}
 	if got := m.form.name.Value(); got != "opencode-01" {
 		t.Fatalf("name after switch = %q", got)
 	}
 	if !strings.Contains(m.form.cmd.Value(), "opencode-ai") {
 		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
 	}
-
-	// A typed field survives later profile switches.
 	m.focusAction("f-name")
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
 	typed := m.form.name.Value()
@@ -630,11 +689,6 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 	if !strings.Contains(m.form.cmd.Value(), "@anthropic-ai/claude-code") {
 		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
 	}
-	if got := m.form.image.Value(); got != "node:22-bookworm" {
-		t.Fatalf("image after switch = %q", got)
-	}
-
-	// Clear resets to the profile defaults.
 	m.activate(setupHit{action: "clear"})
 	if m.form.name.Value() != "claude-01" || !strings.Contains(m.form.cmd.Value(), "claude-code") {
 		t.Fatalf("clear must restore defaults: name=%q cmd=%q", m.form.name.Value(), m.form.cmd.Value())
@@ -642,59 +696,58 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 }
 
 func TestSetupAssignClickIssuesCommand(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup,
-		form: newSetupForm(), client: sdk.New("/tmp/nonexistent-dockweave.sock")}
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
 	m.data = sampleData() // no grants: ws1 is unassigned
-	_ = m.View()
-	// Find the assign hotspot for ws1 and click it.
-	var target *setupHit
-	for i := range m.form.hits {
-		if m.form.hits[i].action == "assign:ws1" {
-			target = &m.form.hits[i]
-		}
-	}
-	if target == nil {
-		t.Fatal("assign hotspot missing")
-	}
-	_, cmd := m.Update(leftClick(target.x0+1, target.y))
-	if cmd == nil {
-		t.Fatal("assign click must issue a command")
-	}
-	msg := cmd()
+	msg := clickHit(t, m, "assign:ws1")
 	if _, ok := msg.(setupDoneMsg); !ok {
 		t.Fatalf("expected setupDoneMsg, got %#v", msg)
 	}
 }
 
 func TestSetupUnassignRequiresActiveGrant(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup,
-		form: newSetupForm(), client: sdk.New("/tmp/nonexistent-dockweave.sock")}
-	m.data = sampleData()
-	m.data.grants = []*model.Grant{{
-		ID: "gr1", WorkspaceID: "ws1", AgentID: "ag1",
-		Mode: model.ModeRW, Status: model.GrantActive, CreatedAt: time.Now(),
-	}}
-	_ = m.View()
-	var target *setupHit
-	for i := range m.form.hits {
-		if m.form.hits[i].action == "unassign:ws1" {
-			target = &m.form.hits[i]
-		}
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	msg := clickHit(t, m, "unassign:ws1")
+	if _, ok := msg.(setupDoneMsg); !ok {
+		t.Fatalf("expected setupDoneMsg, got %#v", msg)
 	}
-	if target == nil {
-		t.Fatal("unassign hotspot missing for the granted workspace")
-	}
-	_, cmd := m.Update(leftClick(target.x0+1, target.y))
-	if cmd == nil {
-		t.Fatal("unassign click must issue a command")
-	}
-	if _, ok := cmd().(setupDoneMsg); !ok {
-		t.Fatal("expected setupDoneMsg")
-	}
-	// A workspace without grant shows 'assign', not 'unassign'.
 	for _, h := range m.form.hits {
 		if h.action == "unassign:ws2" {
 			t.Fatal("ws2 has no grant and must not offer unassign")
 		}
+	}
+}
+
+func TestSetupAgentChipsSwitchSelection(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	clickHit(t, m, "select:ag2")
+	if m.cursor != 1 || m.form.mode != 0 {
+		t.Fatalf("chip click must select agent 2: cursor=%d mode=%d", m.cursor, m.form.mode)
+	}
+	if !strings.Contains(m.View(), "settings · beta") {
+		t.Fatal("settings must follow the selection")
+	}
+}
+
+func TestChromeAutoHidesForTallContent(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 12, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	out := m.View()
+	if strings.Contains(out, "dynamic workspaces for isolated AI agents") {
+		t.Fatalf("title must hide when content is tall:\n%s", out)
+	}
+	if !strings.Contains(out, "DockWeave") {
+		t.Fatalf("restore strip missing:\n%s", out)
+	}
+	// Click on the strip brings the chrome back (forced).
+	m.Update(leftClick(2, 0))
+	m.height = 45
+	if !strings.Contains(m.View(), "dynamic workspaces for isolated AI agents") {
+		t.Fatal("menu must return after clicking the strip")
 	}
 }

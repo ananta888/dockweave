@@ -90,6 +90,9 @@ type modelTUI struct {
 	embedded    bool
 	bottomPane  string
 	bottomAgent string // agent currently shown in the terminal pane
+	// chromeHidden: title+menu are suppressed to give content more room
+	// (automatic when the content does not fit; click/esc restores).
+	chromeHidden bool
 	// click geometry, recomputed on every render.
 	tabSpans []span
 	// agent tabs (running agents only, label "agent:workspace").
@@ -319,6 +322,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle the detail card (compact by default).
 			m.expanded = !m.expanded
 		case msg.String() == "esc":
+			if m.chromeHidden {
+				m.chromeHidden = false
+				return m, nil
+			}
 			if m.menubar {
 				m.expandTUI()
 				return m, nil
@@ -388,6 +395,11 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleMouse maps left-button clicks on the menu bar and the agent list.
 func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	// Compact chrome: the strip brings the menu back.
+	if msg.Y == 0 && m.chromeHidden {
+		m.chromeHidden = false
 		return m, nil
 	}
 	// Menu bar: a click reveals the view — in bar mode the TUI expands
@@ -512,7 +524,23 @@ func (m *modelTUI) openTerminal() tea.Cmd {
 }
 
 func (m *modelTUI) View() string {
+	// Content first: when it is too tall for the pane, the title and menu
+	// bar are hidden (compact chrome) so the view fits without clutter.
+	content := m.viewContent()
+	contentLines := strings.Count(content, "\n") + 1
+	compact := m.chromeHidden
+	if !compact && m.height > 8 && contentLines+5 > m.height {
+		compact = true
+	}
 	var b strings.Builder
+	if compact {
+		b.WriteString(tabActive.Render(" DockWeave ") + dimStyle.Render(" • click or esc for the menu • ") + "\n")
+		m.renderAgentTabs(&b)
+		b.WriteString("\n")
+		b.WriteString(content)
+		m.writeStatus(&b)
+		return b.String()
+	}
 	// Fixed geometry: line 0 = title, line 1 = menu bar (mouse targets),
 	// line 2+ = content. This keeps click hit-testing stable.
 	b.WriteString(titleStyle.Render("DockWeave") + dimStyle.Render(" — dynamic workspaces for isolated AI agents") + "\n")
@@ -546,29 +574,41 @@ func (m *modelTUI) View() string {
 	m.renderAgentTabs(&b)
 	b.WriteString("\n")
 
-	if m.data.err != nil {
-		b.WriteString(errStyle.Render("daemon: "+m.data.err.Error()) + "\n")
-		b.WriteString(dimStyle.Render("is dockweaved running? socket reachable?") + "\n")
-	} else {
-		switch m.tab {
-		case tabDashboard:
-			b.WriteString(m.viewDashboard())
-		case tabAgents:
-			b.WriteString(m.viewAgents())
-		case tabWorkspaces:
-			b.WriteString(m.viewWorkspaces())
-		case tabMounts:
-			b.WriteString(m.viewMounts())
-		case tabEvents:
-			b.WriteString(m.viewEvents())
-		case tabSetup:
-			b.WriteString(m.viewSetup())
-		}
-	}
+	b.WriteString(content)
+	m.writeStatus(&b)
+	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • r: refresh • q: quit"))
+	return b.String()
+}
+
+// writeStatus renders the transient status line when set.
+func (m *modelTUI) writeStatus(b *strings.Builder) {
 	if m.status != "" {
 		b.WriteString("\n" + errStyle.Render("! "+m.status))
 	}
-	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • r: refresh • q: quit"))
+}
+
+// viewContent renders the active tab's body (without the global chrome).
+func (m *modelTUI) viewContent() string {
+	var b strings.Builder
+	if m.data.err != nil {
+		b.WriteString(errStyle.Render("daemon: "+m.data.err.Error()) + "\n")
+		b.WriteString(dimStyle.Render("is dockweaved running? socket reachable?") + "\n")
+		return b.String()
+	}
+	switch m.tab {
+	case tabDashboard:
+		b.WriteString(m.viewDashboard())
+	case tabAgents:
+		b.WriteString(m.viewAgents())
+	case tabWorkspaces:
+		b.WriteString(m.viewWorkspaces())
+	case tabMounts:
+		b.WriteString(m.viewMounts())
+	case tabEvents:
+		b.WriteString(m.viewEvents())
+	case tabSetup:
+		b.WriteString(m.viewSetup())
+	}
 	return b.String()
 }
 

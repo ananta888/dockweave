@@ -313,6 +313,23 @@ func (c *Client) AgentPaths(ctx context.Context, idOrName string) (*AgentPathsIn
 	return &out, nil
 }
 
+// UpdateAgent changes the mutable agent configuration (type, image,
+// command, uid/gid). Takes effect at the next start.
+func (c *Client) UpdateAgent(ctx context.Context, idOrName, type_, image string, cmd []string, uid, gid int) (*model.Agent, error) {
+	body := map[string]any{"type": type_, "image": image, "command": cmd}
+	if uid >= 0 {
+		body["uid"] = uid
+	}
+	if gid >= 0 {
+		body["gid"] = gid
+	}
+	var out model.Agent
+	if err := c.do(ctx, "PATCH", "/api/v1/agents/"+idOrName, body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // SetAgentDir registers a custom host folder as the /agent source
 // (settings, AGENTS.md, skills); empty restores the default.
 func (c *Client) SetAgentDir(ctx context.Context, idOrName, path string) (*model.Agent, error) {
