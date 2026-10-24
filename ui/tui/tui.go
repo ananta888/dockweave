@@ -165,14 +165,27 @@ func (m *modelTUI) collapseToBar() {
 }
 
 // switchBottom shows the selected agent's terminal in the bottom pane.
-// With focus it also moves keyboard focus into the terminal. On failure
-// the switch stays retryable (bottomAgent is only set on success).
+// With focus it also moves keyboard focus into the terminal. Switching to
+// the agent that is already shown does not rebuild the session (no churn);
+// on failure the switch stays retryable (bottomAgent is set only on success).
 func (m *modelTUI) switchBottom(focus bool) tea.Cmd {
 	if m.cursor >= len(m.data.agents) {
 		return nil
 	}
 	a := m.data.agents[m.cursor]
 	pane, agent, sock := m.bottomPane, a.Name, m.socket
+	if m.bottomAgent == agent {
+		// Already showing this agent: avoid killing the terminal session.
+		if focus {
+			return func() tea.Msg {
+				if err := m.tmux.focusTerminal(pane); err != nil {
+					return switchDoneMsg{agent: agent, err: err}
+				}
+				return switchDoneMsg{agent: agent}
+			}
+		}
+		return nil
+	}
 	return func() tea.Msg {
 		if err := m.tmux.switchTerminal(pane, agent, sock); err != nil {
 			return switchDoneMsg{agent: agent, err: err}
@@ -265,7 +278,7 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(m.data.agents)-1 {
 				m.cursor++
 			}
-		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents && !m.menubar:
+		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
 			return m, m.openTerminal()
 		case msg.String() == "enter" && m.tab == tabAgents && !m.menubar:
 			// Toggle the detail card (compact by default).
@@ -349,17 +362,22 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	// Agent tab row: switch the active agent (select + expand details);
-	// in embedded mode the terminal below follows immediately.
+	// Agent tab row: switch the active agent. In the embedded layout the
+	// terminal below follows and the bar collapses to menu + tabs only;
+	// in the plain TUI the details card expands for the selection.
 	if msg.Y == 2 {
 		for i, s := range m.agentSpans {
 			if msg.X >= s.x0 && msg.X < s.x1 {
 				m.tab = tabAgents
 				m.cursor = m.agentRows[i]
-				m.expanded = !m.menubar
-				if m.embedded && m.bottomPane != "" {
-					return m, m.switchBottom(false)
+				if m.embedded {
+					m.collapseToBar()
+					if m.bottomPane != "" {
+						return m, m.switchBottom(false)
+					}
+					return m, nil
 				}
+				m.expanded = true
 				return m, nil
 			}
 		}
@@ -372,6 +390,17 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if m.tab == tabAgents && msg.Y >= m.listTop {
 		row := msg.Y - m.listTop
 		if row < len(m.data.agents) {
+			if m.embedded {
+				// Selecting an agent = agent mode: compact bar + its
+				// terminal below.
+				m.cursor = row
+				m.expanded = false
+				m.collapseToBar()
+				if m.bottomPane != "" {
+					return m, m.switchBottom(false)
+				}
+				return m, nil
+			}
 			if m.cursor == row {
 				m.expanded = !m.expanded
 			} else {

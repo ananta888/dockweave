@@ -392,6 +392,8 @@ func TestEmbeddedTabClickSwitchesTerminal(t *testing.T) {
 	if cmd != nil {
 		if sd, ok := cmd().(switchDoneMsg); !ok || sd.err != nil {
 			t.Fatalf("switch failed: %#v", sd)
+		} else {
+			m.Update(sd) // deliver the result like bubbletea would
 		}
 	}
 	if len(ft.switched) != 2 || ft.switched[1] != "beta" {
@@ -399,6 +401,18 @@ func TestEmbeddedTabClickSwitchesTerminal(t *testing.T) {
 	}
 	if m.cursor != 1 {
 		t.Fatalf("cursor must follow: %d", m.cursor)
+	}
+	// Agent selected = compact: only menu + agent tabs on top.
+	if !m.menubar {
+		t.Fatal("selecting an agent must collapse the bar to menu + tabs")
+	}
+	// Clicking the same tab again must not rebuild the terminal session.
+	_, cmd = m.Update(leftClick(s.x0+1, 2))
+	if cmd != nil {
+		cmd()
+	}
+	if len(ft.switched) != 2 {
+		t.Fatalf("same-tab click must not churn the session: %v", ft.switched)
 	}
 	// 't' focuses the terminal.
 	_, tcmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
