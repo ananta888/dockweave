@@ -148,3 +148,126 @@ func TestUpdateDataAndTickDoNotPanic(t *testing.T) {
 	}
 	_ = m.View() // must not panic after updates
 }
+
+// ---- mouse, compact details, menubar mode (tmux) ----
+
+type fakeTmux struct {
+	avail   bool
+	inTmux  bool
+	splits  []string
+	resized []int
+}
+
+func (f *fakeTmux) available() bool { return f.avail }
+func (f *fakeTmux) inSession() bool { return f.inTmux }
+func (f *fakeTmux) active() bool    { return len(f.resized) > 0 && f.resized[len(f.resized)-1] <= 4 }
+func (f *fakeTmux) splitAgent(agent, termSocket string) error {
+	f.splits = append(f.splits, agent)
+	return f.resizeSelf(3)
+}
+func (f *fakeTmux) resizeSelf(rows int) error {
+	f.resized = append(f.resized, rows)
+	return nil
+}
+
+func leftClick(x, y int) tea.MouseMsg {
+	return tea.MouseMsg(tea.MouseEvent{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+}
+
+func TestMenuBarClickSwitchesTabs(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 100, height: 30}
+	m.data = sampleData()
+	_ = m.View() // computes tab spans
+	// Click on the "Agents" tab (second span).
+	var target span
+	for _, s := range m.tabSpans {
+		if s.tab == tabAgents {
+			target = s
+		}
+	}
+	m.Update(leftClick(target.x0+1, 1))
+	if m.tab != tabAgents {
+		t.Fatalf("click on Agents tab: tab=%v", m.tab)
+	}
+	// Click on the "Events" span switches again.
+	for _, s := range m.tabSpans {
+		if s.tab == tabEvents {
+			target = s
+		}
+	}
+	m.Update(leftClick(target.x0+1, 1))
+	if m.tab != tabEvents {
+		t.Fatalf("click on Events tab: tab=%v", m.tab)
+	}
+	// A click outside any span keeps the tab.
+	m.Update(leftClick(95, 1))
+	if m.tab != tabEvents {
+		t.Fatalf("click on empty menu space changed tab: %v", m.tab)
+	}
+}
+
+func TestListClickSelectsAndTogglesDetails(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 100, height: 30, tab: tabAgents}
+	m.data = sampleData()
+	_ = m.View() // computes listTop
+
+	// Click the second row: select + expand.
+	m.Update(leftClick(5, m.listTop+1))
+	if m.cursor != 1 || !m.expanded {
+		t.Fatalf("row click: cursor=%d expanded=%v", m.cursor, m.expanded)
+	}
+	// Click the selected row again: collapse.
+	m.Update(leftClick(5, m.listTop+1))
+	if m.expanded {
+		t.Fatal("second click must collapse the detail card")
+	}
+	// Compact default: no detail card rendered when collapsed.
+	if strings.Contains(m.View(), "  id ") {
+		t.Fatal("collapsed view must stay compact")
+	}
+	m.expanded = true
+	if !strings.Contains(m.View(), "  id ") {
+		t.Fatal("expanded view must show the detail card")
+	}
+}
+
+func TestMenubarModeRendersOnlyBar(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 100, height: 3, tmux: &fakeTmux{avail: true, inTmux: true}}
+	m.data = sampleData()
+	m.menubar = true
+	out := m.View()
+	if strings.Contains(out, "NAME") || strings.Contains(out, "AGENT") {
+		t.Fatalf("menubar mode must not render content:\n%s", out)
+	}
+	if !strings.Contains(out, "tmux owns the terminal below") {
+		t.Fatalf("menubar hint missing:\n%s", out)
+	}
+	// Shrink detection: a tiny window turns menubar mode on.
+	m.menubar = false
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 3})
+	if !m.menubar {
+		t.Fatal("height <= 4 must enable menubar mode")
+	}
+}
+
+func TestOpenTerminalUsesTmuxSplit(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 100, height: 30, tab: tabAgents, tmux: ft, socket: "/run/x.sock"}
+	m.data = sampleData()
+	m.cursor = 1
+	cmd := m.openTerminal()
+	if cmd != nil {
+		t.Fatal("tmux split must not exec a full-screen attach")
+	}
+	if len(ft.splits) != 1 || ft.splits[0] != "beta" {
+		t.Fatalf("split for wrong agent: %v", ft.splits)
+	}
+	if !m.menubar {
+		t.Fatal("TUI must drop to menu-bar-only after the split")
+	}
+	// Esc restores the full TUI.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.menubar {
+		t.Fatal("esc must leave menubar mode")
+	}
+}

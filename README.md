@@ -76,6 +76,12 @@ dockweave monitor activity
 dockweave tui
 ```
 
+The TUI is mouse-enabled: the menu bar switches views on click, agents stay
+compact — click (or `enter`) a row to expand its details. Press `t` to open
+the agent terminal: inside tmux it splits the window (agent below, DockWeave
+collapses to the menu bar — `esc` restores the full TUI), otherwise it
+attaches full-screen.
+
 The installer does the following (all fully reversible):
 
 - builds and installs `dockweave`/`dockweaved` to `/usr/local/bin`

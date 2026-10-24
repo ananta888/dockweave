@@ -49,10 +49,17 @@ type dataMsg struct {
 	mounts     []*model.MountState
 	events     []*model.Event
 	conflicts  []model.FileConflict
+	memories   []sdk.MemoryInfo
 	err        error
 }
 
 type tickMsg time.Time
+
+// span is a clickable region on the menu bar (plain-text columns).
+type span struct {
+	tab    tab
+	x0, x1 int
+}
 
 type modelTUI struct {
 	client *sdk.Client
@@ -63,6 +70,16 @@ type modelTUI struct {
 	keys   keyMap
 	cursor int    // selection in agents view
 	socket string // daemon term socket (for terminals)
+
+	// compact UI: the detail card is only shown for the selected agent.
+	expanded bool
+	// menubar mode: only the menu bar is rendered (tmux split hosts the
+	// agent terminal below; see tmux.go).
+	menubar bool
+	// click geometry, recomputed on every render.
+	tabSpans []span
+	listTop  int // y of the first clickable list row
+	tmux     tmuxCtl
 }
 
 type keyMap struct {
@@ -85,8 +102,8 @@ func defaultKeys() keyMap {
 // Run starts the TUI against the daemon at socketPath.
 func Run(socketPath string) error {
 	termSocket := filepath.Join(filepath.Dir(socketPath), "dockweaved.term.sock")
-	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket}
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket, tmux: &realTmux{}}
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
@@ -130,6 +147,9 @@ func (m *modelTUI) refresh() tea.Cmd {
 				d.conflicts = append(d.conflicts, *c)
 			}
 		}
+		if mems, err := m.client.ListMemories(ctx); err == nil {
+			d.memories = mems
+		}
 		d.err = nil
 		return d
 	}
@@ -139,37 +159,48 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		// A very small pane means the tmux split owns the terminal:
+		// stay menu-bar-only until the pane is resized back.
+		if m.height <= 4 {
+			m.menubar = true
+		} else if m.menubar && !m.tmux.active() {
+			m.menubar = false
+		}
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Next):
 			m.tab = (m.tab + 1) % tabCount
+			m.expanded = false
 		case key.Matches(msg, m.keys.Prev):
 			m.tab = (m.tab - 1 + tabCount) % tabCount
+			m.expanded = false
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.refresh()
-		case key.Matches(msg, m.keys.CursorUp) && m.tab == tabAgents:
+		case key.Matches(msg, m.keys.CursorUp) && m.tab == tabAgents && !m.menubar:
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case key.Matches(msg, m.keys.CursorDown) && m.tab == tabAgents:
+		case key.Matches(msg, m.keys.CursorDown) && m.tab == tabAgents && !m.menubar:
 			if m.cursor < len(m.data.agents)-1 {
 				m.cursor++
 			}
-		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
-			// Hand the terminal to `dockweave agent attach` via exec.
-			if len(m.data.agents) > 0 && m.cursor < len(m.data.agents) {
-				name := m.data.agents[m.cursor].Name
-				self, err := os.Executable()
-				if err != nil {
-					self = "dockweave"
-				}
-				c := exec.Command(self, "agent", "attach", "--term-socket", m.socket, name)
-				return m, tea.ExecProcess(c, func(err error) tea.Msg {
-					return dataMsg{err: nil} // triggers redraw after return
-				})
+		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents && !m.menubar:
+			return m, m.openTerminal()
+		case msg.String() == "enter" && m.tab == tabAgents && !m.menubar:
+			// Toggle the detail card (compact by default).
+			m.expanded = !m.expanded
+		case msg.String() == "esc":
+			if m.menubar {
+				// Leave menu-bar-only mode: give the TUI its height back.
+				m.menubar = false
+				m.tmux.resizeSelf(m.height + 20)
+				return m, nil
 			}
+			m.expanded = false
 		}
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tick())
@@ -179,18 +210,93 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleMouse maps left-button clicks on the menu bar and the agent list.
+func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	// Menu bar: switch tabs.
+	if msg.Y == 1 {
+		for _, s := range m.tabSpans {
+			if msg.X >= s.x0 && msg.X < s.x1 {
+				m.tab = s.tab
+				m.expanded = false
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+	if m.menubar {
+		return m, nil
+	}
+	// Agent list rows: select; clicking the selected row toggles details.
+	if m.tab == tabAgents && msg.Y >= m.listTop {
+		row := msg.Y - m.listTop
+		if row < len(m.data.agents) {
+			if m.cursor == row {
+				m.expanded = !m.expanded
+			} else {
+				m.cursor = row
+				m.expanded = true
+			}
+		}
+	}
+	return m, nil
+}
+
+// openTerminal hands the agent terminal to tmux (split pane when running
+// inside tmux, menu-bar-only above) or falls back to a full-screen attach.
+func (m *modelTUI) openTerminal() tea.Cmd {
+	if len(m.data.agents) == 0 || m.cursor >= len(m.data.agents) {
+		return nil
+	}
+	a := m.data.agents[m.cursor]
+	if m.tmux.available() && m.tmux.inSession() {
+		if err := m.tmux.splitAgent(a.Name, m.socket); err == nil {
+			// The split shrinks our pane; render menu-bar-only.
+			m.menubar = true
+			return nil
+		}
+		// fall through to the exec-based attach
+	}
+	self, err := os.Executable()
+	if err != nil {
+		self = "dockweave"
+	}
+	c := exec.Command(self, "agent", "attach", "--term-socket", m.socket, a.Name)
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return dataMsg{err: nil} // triggers redraw after return
+	})
+}
+
 func (m *modelTUI) View() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("DockWeave") + dimStyle.Render(" — dynamic workspaces for isolated AI agents") + "\n\n")
-	// Tabs
+	// Fixed geometry: line 0 = title, line 1 = menu bar (mouse targets),
+	// line 2+ = content. This keeps click hit-testing stable.
+	b.WriteString(titleStyle.Render("DockWeave") + dimStyle.Render(" — dynamic workspaces for isolated AI agents") + "\n")
+
+	// Menu bar with clickable tab spans (plain width = label + padding).
+	m.tabSpans = m.tabSpans[:0]
+	x := 0
 	for i, name := range tabNames {
+		w := len(name) + 2 // lipgloss Padding(0, 1)
+		m.tabSpans = append(m.tabSpans, span{tab: tab(i), x0: x, x1: x + w})
 		if tab(i) == m.tab {
 			b.WriteString(tabActive.Render(name))
 		} else {
 			b.WriteString(tabIdle.Render(name))
 		}
+		x += w + 1
+		if i < len(tabNames)-1 {
+			b.WriteString(" ")
+		}
 	}
-	b.WriteString("\n\n")
+	if m.menubar {
+		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • esc: expand TUI • q: quit"))
+		return b.String()
+	}
+	b.WriteString("\n")
+
 	if m.data.err != nil {
 		b.WriteString(errStyle.Render("daemon: "+m.data.err.Error()) + "\n")
 		b.WriteString(dimStyle.Render("is dockweaved running? socket reachable?") + "\n")
@@ -208,7 +314,7 @@ func (m *modelTUI) View() string {
 			b.WriteString(m.viewEvents())
 		}
 	}
-	b.WriteString("\n" + dimStyle.Render("tab: next • shift+tab: prev • r: refresh • ↑/↓: select • t: terminal • q: quit"))
+	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • r: refresh • q: quit"))
 	return b.String()
 }
 
@@ -270,8 +376,9 @@ func (m *modelTUI) viewDashboard() string {
 
 func (m *modelTUI) viewAgents() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%-16s %-10s %-10s %-30s %s\n", "NAME", "TYPE", "STATE", "IMAGE", "ID")
-	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 80))
+	m.listTop = 4 // title(0) + tabs(1) + header(2) + divider(3)
+	fmt.Fprintf(&b, "%-16s %-10s %-30s %s\n", "NAME", "STATE", "IMAGE", "MEM")
+	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 78))
 	for i, a := range m.data.agents {
 		st := string(a.State)
 		if a.State == model.AgentRunning {
@@ -281,9 +388,69 @@ func (m *modelTUI) viewAgents() string {
 		if i == m.cursor && m.tab == tabAgents {
 			marker = tabActive.Render("▸ ")
 		}
-		fmt.Fprintf(&b, "%s%-14s %-10s %-19s %-30s %s\n", marker, padEnd(a.Name, 14), a.Type, st, a.Image, a.ID)
+		fmt.Fprintf(&b, "%s%-14s %-19s %-30s %s\n", marker, padEnd(a.Name, 14), st, a.Image, shortID(m.memoryOf(a.ID)))
 	}
-	b.WriteString("\n" + dimStyle.Render("t: open terminal on selected agent"))
+	if m.expanded && m.cursor < len(m.data.agents) {
+		b.WriteString("\n" + m.viewAgentDetail(m.data.agents[m.cursor]))
+	} else {
+		b.WriteString("\n" + dimStyle.Render("t: terminal • enter/click: details"))
+	}
+	return b.String()
+}
+
+// shortID abbreviates registry IDs for compact display.
+func shortID(id string) string {
+	if id == "" {
+		return "-"
+	}
+	if len(id) > 12 {
+		return id[:12] + "…"
+	}
+	return id
+}
+
+// memoryOf returns the memory identity currently bound to an agent.
+func (m *modelTUI) memoryOf(agentID string) string {
+	for _, mem := range m.data.memories {
+		if mem.OwnerAgentID == agentID {
+			return mem.ID
+		}
+	}
+	return ""
+}
+
+// viewAgentDetail is the expandable card shown only for the selected agent
+// (compact default; details on selection).
+func (m *modelTUI) viewAgentDetail(a *model.Agent) string {
+	var b strings.Builder
+	b.WriteString(tabActive.Render(" details ") + "\n")
+	fmt.Fprintf(&b, "  id        %s\n", a.ID)
+	fmt.Fprintf(&b, "  type      %s\n", a.Type)
+	fmt.Fprintf(&b, "  image     %s\n", a.Image)
+	if a.UID != 0 || a.GID != 0 {
+		fmt.Fprintf(&b, "  identity  %d:%d\n", a.UID, a.GID)
+	}
+	if mem := m.memoryOf(a.ID); mem != "" {
+		fmt.Fprintf(&b, "  memory    %s\n", mem)
+	}
+	for _, act := range m.data.activity {
+		if act.AgentID != a.ID {
+			continue
+		}
+		fmt.Fprintf(&b, "  activity  %s", act.Activity)
+		if act.Available {
+			fmt.Fprintf(&b, "  cpu %.0f%%  mem %dMiB", act.CPUPercent, act.MemoryBytes/1024/1024)
+		}
+		b.WriteString("\n")
+		for p, ev := range act.FileEvidence {
+			fmt.Fprintf(&b, "    file %s (%s)\n", p, ev)
+		}
+	}
+	for _, mt := range m.data.mounts {
+		if mt.AgentID == a.ID {
+			fmt.Fprintf(&b, "  mount     %s → %s (%s)\n", mt.HostPath, lastElem(mt.TargetPath), mt.Mode)
+		}
+	}
 	return b.String()
 }
 

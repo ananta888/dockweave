@@ -55,6 +55,12 @@ dockweave agent start codex-01
 dockweave tui
 ```
 
+Die TUI ist mausfähig: die Menüleiste wechselt die Ansicht per Klick,
+Agenten bleiben kompakt — Klick (oder `enter`) auf eine Zeile blendet die
+Details ein. `t` öffnet das Agent-Terminal: innerhalb von tmux als Split
+(Agent unten, DockWeave schrumpft auf die Menüleiste — `esc` stellt die
+volle TUI wieder her), sonst Vollbild-Attach.
+
 Das Skript erledigt (alles vollständig reversibel):
 
 - baut und installiert `dockweave`/`dockweaved` nach `/usr/local/bin`
