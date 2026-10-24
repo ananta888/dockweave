@@ -80,6 +80,7 @@ ausführen. Tests, die `CAP_SYS_ADMIN` benötigen, prüfen
 - `internal/supervisor` — Recovery/Soll-Ist-Abgleich
 - `pkg/sdk` — öffentlicher Go-Client
 - `ui/tui` — Bubble Tea TUI
+- `scripts/` — Install-/Uninstall-Skripte (`install.sh`, `uninstall.sh`)
 - `todo/*.json` — maschinenlesbare Aufgabenstände
 - `tests/integration` — privilegierte Tests
 

@@ -31,27 +31,12 @@ mounts never propagate back to the host.
 
 ## Quick Start
 
+### Automated install (recommended)
+
 ```bash
-# Build — needs the Go toolchain (>= 1.27) on your PATH or at
-# ~/.local/go/bin/go (the Makefile finds it there automatically)
-make build
-
-# Optional but recommended: install the CLI onto your PATH
-# (~/.local/bin — make sure it is on your PATH, e.g. via ~/.profile)
-make install
-
-# Daemon configuration: authorize your user for write access (admin role)
-# and put it into the socket group. Without ADMIN_UIDS only root (uid 0)
-# may use the write API; the monitor role is read-only (GET/HEAD) and
-# unknown UIDs are denied entirely. The sockets are 0660 root:SOCKET_GROUP
-# (default group: "dockweave").
-sudo groupadd -f dockweave
-sudo usermod -aG dockweave "$(whoami)"   # re-login afterwards
-mkdir -p /etc/dockweave
-echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
-
-# Start the daemon (requires root, CAP_SYS_ADMIN) — keep this running
-sudo ./bin/dockweaved
+# One sudo prompt: build -> install -> configure -> start -> verify.
+# Everything is ready to use in this very same shell afterwards.
+./scripts/install.sh
 
 # Register a workspace
 dockweave workspace register myproject /srv/projects/myproject
@@ -72,15 +57,67 @@ dockweave monitor activity
 dockweave tui
 ```
 
-If `go` is not on your `PATH` after installing it under `~/.local/go`:
-`export PATH="$HOME/.local/go/bin:$PATH"` (persist it in `~/.bashrc` /
-`~/.profile`) — or just rely on the Makefile fallback. If `dockweave` is
-not found, use `./bin/dockweave` instead of `make install`.
+The installer does the following (all fully reversible):
 
-If the CLI reports `permission denied` on the socket: your user is not in
-the socket group yet (`sudo usermod -aG dockweave $USER`, then re-login) —
-or, without a group setup, `sudo chmod 666 /run/dockweave/dockweaved.sock`
-as a temporary workaround (the UID→role policy still applies).
+- builds and installs `dockweave`/`dockweaved` to `/usr/local/bin`
+  (on `PATH` in every shell — no `command not found`)
+- writes `/etc/dockweave/dockweaved.conf`: `ADMIN_UIDS` = your uid (write
+  access), `SOCKET_GROUP` = your **primary group**, so the CLI connects
+  immediately — **no re-login needed**
+- adds you to the `dockweave` group for the future (after re-login you may
+  switch `SOCKET_GROUP` to `dockweave` for shared admin setups)
+- starts the daemon (systemd unit when available, otherwise background;
+  logs: `/var/log/dockweaved.log` or `journalctl -u dockweaved`)
+- verifies `dockweave status` as your user
+
+### Uninstall
+
+```bash
+./scripts/uninstall.sh          # stops daemon, removes binaries + config, keeps data
+./scripts/uninstall.sh --purge  # ... and deletes /var/lib/dockweave (agents, memories, snapshots)
+```
+
+The scripts also print these instructions when they finish.
+
+### Manual installation
+
+<details>
+<summary>step by step (what the installer automates)</summary>
+
+```bash
+# Build — needs the Go toolchain (>= 1.27) on your PATH or at
+# ~/.local/go/bin/go (the Makefile finds it there automatically)
+make build
+
+# Optional: install the CLI onto your PATH (~/.local/bin)
+make install
+
+# Daemon configuration: authorize your user for write access (admin role).
+# Without ADMIN_UIDS only root (uid 0) may use the write API; the monitor
+# role is read-only (GET/HEAD), unknown UIDs are denied entirely.
+sudo groupadd -f dockweave
+sudo usermod -aG dockweave "$(whoami)"   # re-login afterwards
+mkdir -p /etc/dockweave
+echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
+
+# Start the daemon (requires root, CAP_SYS_ADMIN) — keep this running
+sudo ./bin/dockweaved
+```
+
+The sockets are `0660 root:SOCKET_GROUP` (default group: `dockweave`).
+
+</details>
+
+### Troubleshooting
+
+- `go: not found` during build: install Go ≥ 1.27 or put it at
+  `~/.local/go/bin` (`export PATH="$HOME/.local/go/bin:$PATH"` and persist
+  it in `~/.bashrc` / `~/.profile`) — the Makefile falls back to that path.
+- `dockweave: command not found`: use `./bin/dockweave`, run `make install`,
+  or install system-wide with `./scripts/install.sh`.
+- `permission denied` on the socket: your shell predates the group change —
+  run `newgrp dockweave` in the current shell (or re-login). With the
+  installer this cannot happen (socket group = your primary group).
 
 ## Requirements
 
