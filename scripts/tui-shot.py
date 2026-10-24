@@ -136,6 +136,8 @@ def main():
                     help="key to send (repeatable): enter, esc, t, q, down, up, tab, or a literal char")
     ap.add_argument("--click", action="append", default=[],
                     help="left click as COL,ROW (repeatable)")
+    ap.add_argument("--hold", type=float, default=0,
+                    help="seconds to keep running after the last step (for inspection)")
     ap.add_argument("--tmux-session", default="",
                     help="dump the real tmux panes of this session via capture-pane (authoritative)")
     ap.add_argument("cmd", nargs="*", default=["tui"])
@@ -209,6 +211,8 @@ def main():
         pump(settle)
         dump(title)
 
+    if args.hold:
+        pump(args.hold)
     if args.tmux_session:
         # The 'q' must reach the DockWeave bar, not the agent terminal.
         os.system("tmux select-pane -t %s:0.0 2>/dev/null" % args.tmux_session)

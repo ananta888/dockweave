@@ -28,6 +28,9 @@ type tmuxCtl interface {
 	focusTerminal(pane string) error
 	// focusSelf keeps keyboard focus on the TUI pane (menu bar).
 	focusSelf()
+	// enableMouse turns on tmux mouse support for our session so clicks
+	// select panes (agent terminal <-> menu bar).
+	enableMouse()
 	// quitAll tears the managed session down (embedded mode).
 	quitAll()
 	// resizeSelf changes the height of the TUI pane.
@@ -73,6 +76,9 @@ func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 	}
 	// Keep focus on the menu bar: keys must not leak into the agent UI.
 	t.focusSelf()
+	// Mouse clicks select panes: click the terminal to type there, click
+	// the bar to come back.
+	t.enableMouse()
 	return pane, nil
 }
 
@@ -91,6 +97,17 @@ func (t *realTmux) focusTerminal(pane string) error {
 func (t *realTmux) focusSelf() {
 	if self := t.selfPaneID(); self != "" {
 		_ = tmuxRun("select-pane", "-t", self)
+	}
+}
+
+func (t *realTmux) enableMouse() {
+	self := t.selfPaneID()
+	if self == "" {
+		return
+	}
+	// Session-scoped: never touch the user's other tmux sessions.
+	if sess, err := tmuxOutput("display-message", "-p", "-t", self, "#{session_name}"); err == nil {
+		_ = tmuxRun("set-option", "-t", strings.TrimSpace(sess), "mouse", "on")
 	}
 }
 

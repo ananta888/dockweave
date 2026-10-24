@@ -135,6 +135,20 @@ type switchDoneMsg struct {
 	err   error
 }
 
+// focusDoneMsg reports the outcome of moving focus into the terminal.
+type focusDoneMsg struct{ err error }
+
+// focusBottom moves keyboard focus into the agent terminal pane.
+func (m *modelTUI) focusBottom() tea.Cmd {
+	pane := m.bottomPane
+	return func() tea.Msg {
+		if err := m.tmux.focusTerminal(pane); err != nil {
+			return focusDoneMsg{err: err}
+		}
+		return focusDoneMsg{}
+	}
+}
+
 func (m *modelTUI) Init() tea.Cmd {
 	if m.embedded {
 		return tea.Batch(m.refresh(), tick(), m.setupEmbedded())
@@ -317,6 +331,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.bottomAgent = msg.agent
 			m.status = ""
 		}
+	case focusDoneMsg:
+		if msg.err != nil {
+			m.status = "focus terminal: " + msg.err.Error()
+		}
 	case termDoneMsg:
 		if msg.err != nil {
 			m.status = "terminal: " + msg.err.Error()
@@ -384,6 +402,12 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.menubar {
+		// Bar mode: a click outside the two bars goes to the agent
+		// terminal — the mouse sets the key focus there (typing reaches
+		// the agent UI). Clicking the bar itself comes back to us.
+		if msg.Y != 1 && msg.Y != 2 && m.bottomPane != "" {
+			return m, m.focusBottom()
+		}
 		return m, nil
 	}
 	// Agent list rows: select; clicking the selected row toggles details.
@@ -482,7 +506,7 @@ func (m *modelTUI) View() string {
 		// Bar mode: menu + agent tabs only (tmux hosts the terminal below).
 		b.WriteString("\n")
 		m.renderAgentTabs(&b)
-		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • click menu: expand view • click agent: switch terminal • t: focus • esc: toggle • q: quit"))
+		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • click menu: expand • click agent: switch terminal • click terminal: type • t: focus • q: quit"))
 		return b.String()
 	}
 	b.WriteString("\n")

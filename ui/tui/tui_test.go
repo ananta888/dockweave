@@ -161,6 +161,7 @@ type fakeTmux struct {
 	switched    []string
 	focused     bool
 	selfFocused bool
+	mouseOn     bool
 	quit        bool
 	bottom      string
 	setupErr    error
@@ -187,7 +188,9 @@ func (f *fakeTmux) focusTerminal(pane string) error {
 }
 
 func (f *fakeTmux) focusSelf() { f.selfFocused = true }
-func (f *fakeTmux) quitAll()   { f.quit = true }
+
+func (f *fakeTmux) enableMouse() { f.mouseOn = true }
+func (f *fakeTmux) quitAll()     { f.quit = true }
 func (f *fakeTmux) splitAgent(agent, termSocket string) error {
 	f.splits = append(f.splits, agent)
 	return f.resizeSelf(3)
@@ -479,5 +482,31 @@ func TestMenuBarClickExpandsFromBarMode(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if !m.menubar {
 		t.Fatal("esc must collapse back to the menu bar")
+	}
+}
+
+func TestBarModeClickBelowBarsFocusesTerminal(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 4, tmux: ft, embedded: true, menubar: true, bottomPane: "pane1"}
+	m.data = sampleData()
+	_ = m.View()
+
+	// Click in the terminal area (below the bars): focus goes to the agent.
+	_, cmd := m.Update(leftClick(40, 8))
+	if cmd == nil {
+		t.Fatal("terminal-area click must move focus")
+	}
+	msg := cmd()
+	if fd, ok := msg.(focusDoneMsg); !ok || fd.err != nil {
+		t.Fatalf("focus result: %#v", msg)
+	}
+	if !ft.focused {
+		t.Fatal("terminal pane must receive focus")
+	}
+	// Click on the menu bar must NOT steal focus into the terminal.
+	ft.focused = false
+	m.Update(leftClick(20, 1))
+	if ft.focused {
+		t.Fatal("menu clicks must stay on the bar")
 	}
 }
