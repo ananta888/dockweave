@@ -78,8 +78,11 @@ type modelTUI struct {
 	menubar bool
 	// click geometry, recomputed on every render.
 	tabSpans []span
-	listTop  int // y of the first clickable list row
-	tmux     tmuxCtl
+	// agent tabs (running agents only, label "agent:workspace").
+	agentSpans []span
+	agentRows  []int // agent index per tab
+	listTop    int   // y of the first clickable list row
+	tmux       tmuxCtl
 }
 
 type keyMap struct {
@@ -226,6 +229,18 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	// Agent tab row: switch the active agent (select + expand details).
+	if msg.Y == 2 {
+		for i, s := range m.agentSpans {
+			if msg.X >= s.x0 && msg.X < s.x1 {
+				m.tab = tabAgents
+				m.cursor = m.agentRows[i]
+				m.expanded = true
+				return m, nil
+			}
+		}
+		return m, nil
+	}
 	if m.menubar {
 		return m, nil
 	}
@@ -295,6 +310,10 @@ func (m *modelTUI) View() string {
 		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • esc: expand TUI • q: quit"))
 		return b.String()
 	}
+	b.WriteString("\n")
+
+	// Agent tabs (running agents only): switch with a click.
+	m.renderAgentTabs(&b)
 	b.WriteString("\n")
 
 	if m.data.err != nil {
@@ -376,7 +395,7 @@ func (m *modelTUI) viewDashboard() string {
 
 func (m *modelTUI) viewAgents() string {
 	var b strings.Builder
-	m.listTop = 4 // title(0) + tabs(1) + header(2) + divider(3)
+	m.listTop = 5 // title(0) + tabs(1) + agent tabs(2) + header(3) + divider(4)
 	fmt.Fprintf(&b, "%-16s %-10s %-30s %s\n", "NAME", "STATE", "IMAGE", "MEM")
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 78))
 	for i, a := range m.data.agents {
@@ -396,6 +415,52 @@ func (m *modelTUI) viewAgents() string {
 		b.WriteString("\n" + dimStyle.Render("t: terminal • enter/click: details"))
 	}
 	return b.String()
+}
+
+// renderAgentTabs draws the running-agent tab row (line 2, clickable).
+// Labels are "agent:workspace" so every tab is unambiguous.
+func (m *modelTUI) renderAgentTabs(b *strings.Builder) {
+	m.agentSpans = m.agentSpans[:0]
+	m.agentRows = m.agentRows[:0]
+	x := 0
+	any := false
+	for i, a := range m.data.agents {
+		if a.State != model.AgentRunning {
+			continue
+		}
+		any = true
+		label := m.agentTabLabel(a)
+		w := len(label) + 2 // padding(0,1)
+		m.agentSpans = append(m.agentSpans, span{tab: tabAgents, x0: x, x1: x + w})
+		m.agentRows = append(m.agentRows, i)
+		active := i == m.cursor
+		if active {
+			b.WriteString(tabActive.Render(label))
+		} else {
+			b.WriteString(tabIdle.Render(label))
+		}
+		x += w + 1
+		b.WriteString(" ")
+	}
+	if !any {
+		b.WriteString(dimStyle.Render("no running agents"))
+	}
+}
+
+// agentTabLabel returns the unique tab label "agent:workspace" for a
+// running agent (the workspace is its primary active share).
+func (m *modelTUI) agentTabLabel(a *model.Agent) string {
+	ws := ""
+	for _, mt := range m.data.mounts {
+		if mt.AgentID == a.ID && mt.Status == model.MountActive {
+			ws = lastElem(mt.TargetPath)
+			break
+		}
+	}
+	if ws == "" {
+		return a.Name
+	}
+	return a.Name + ":" + ws
 }
 
 // shortID abbreviates registry IDs for compact display.

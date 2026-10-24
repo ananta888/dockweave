@@ -15,7 +15,7 @@ func sampleData() dataMsg {
 	return dataMsg{
 		agents: []*model.Agent{
 			{ID: "ag1", Name: "alpha", Type: "codex", Image: "img-a", State: model.AgentRunning},
-			{ID: "ag2", Name: "beta", Type: "custom", Image: "img-b", State: model.AgentExited},
+			{ID: "ag2", Name: "beta", Type: "custom", Image: "img-b", State: model.AgentRunning},
 		},
 		activity: []*model.AgentActivity{
 			{AgentID: "ag1", State: "running", Activity: model.ActivityWriting, Available: true,
@@ -27,6 +27,8 @@ func sampleData() dataMsg {
 		mounts: []*model.MountState{
 			{ID: "m1", AgentID: "ag1", HostPath: "/srv/proj", TargetPath: "/var/lib/dockweave/agents/ag1/workspace/proj",
 				Mode: model.ModeRW, Status: model.MountActive, UpdatedAt: now},
+			{ID: "m2", AgentID: "ag2", HostPath: "/srv/docs", TargetPath: "/var/lib/dockweave/agents/ag2/workspace/docs",
+				Mode: model.ModeRO, Status: model.MountActive, UpdatedAt: now},
 		},
 		events: []*model.Event{
 			{ID: "ev1", Type: model.EventGrantCreated, Actor: "root", Message: "grant on proj", Timestamp: now},
@@ -269,5 +271,59 @@ func TestOpenTerminalUsesTmuxSplit(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.menubar {
 		t.Fatal("esc must leave menubar mode")
+	}
+}
+
+func TestAgentTabsShowRunningWithWorkspaceLabels(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tab: tabAgents}
+	m.data = sampleData()
+	out := m.View()
+	lines := strings.Split(out, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("view too short:\n%s", out)
+	}
+	tabs := lines[2]
+	if !strings.Contains(tabs, "alpha:proj") || !strings.Contains(tabs, "beta:docs") {
+		t.Fatalf("agent tabs must show agent:workspace labels:\n%s", tabs)
+	}
+	// Stopped agents get no tab.
+	m.data.agents[1].State = model.AgentExited
+	out = m.View()
+	tabs = strings.Split(out, "\n")[2]
+	if strings.Contains(tabs, "beta") {
+		t.Fatalf("stopped agents must not appear as tabs:\n%s", tabs)
+	}
+	if !strings.Contains(tabs, "alpha:proj") {
+		t.Fatalf("running agent tab missing:\n%s", tabs)
+	}
+}
+
+func TestAgentTabClickSwitchesActiveAgent(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30}
+	m.data = sampleData()
+	_ = m.View() // computes agent tab spans
+	if len(m.agentSpans) != 2 || len(m.agentRows) != 2 {
+		t.Fatalf("expected 2 agent tabs, got %d", len(m.agentSpans))
+	}
+	// Click the second agent tab (beta): selects it and expands details.
+	s := m.agentSpans[1]
+	m.Update(leftClick(s.x0+1, 2))
+	if m.tab != tabAgents {
+		t.Fatal("agent tab click must switch to the agents view")
+	}
+	if m.cursor != m.agentRows[1] || m.cursor != 1 {
+		t.Fatalf("agent tab click must select the agent: cursor=%d", m.cursor)
+	}
+	if !m.expanded {
+		t.Fatal("agent tab click must expand the details")
+	}
+	// The first tab follows the selection highlight.
+	if !strings.Contains(strings.Split(m.View(), "\n")[2], "beta:docs") {
+		t.Fatal("active agent tab must be rendered")
+	}
+	s = m.agentSpans[0]
+	m.Update(leftClick(s.x0+1, 2))
+	if m.cursor != 0 {
+		t.Fatalf("switching back failed: cursor=%d", m.cursor)
 	}
 }
