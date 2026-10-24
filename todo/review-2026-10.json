@@ -208,7 +208,7 @@
         "Unit: Provider-Verträge (keine Mock-Daten in produktiven Pfaden)",
         "Unit: Adapter-Marker je Profil (positiv/negativ)"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-009",

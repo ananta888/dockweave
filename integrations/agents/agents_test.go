@@ -94,3 +94,46 @@ func TestOpencodeAndGemini(t *testing.T) {
 		t.Fatalf("gemini sessions wrong: %+v", gi)
 	}
 }
+
+// TestAdapterMarkerMatrix (review-008): every profile detects on its own
+// marker directory (in /memory and the /root fallback), and unrelated
+// directory shapes are never detected.
+func TestAdapterMarkerMatrix(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name     string
+		adapter  Adapter
+		marker   string // the marker directory to seed
+		fallback string // the /root fallback marker
+	}{
+		{"codex", CodexAdapter{}, "/memory/.codex", "/root/.codex"},
+		{"opencode", OpencodeAdapter{}, "/memory/.local/share/opencode", "/root/.local/share/opencode"},
+		{"claude", ClaudeAdapter{}, "/memory/.claude", "/root/.claude"},
+		{"gemini", GeminiAdapter{}, "/memory/.gemini", "/root/.gemini"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Positive: marker in /memory.
+			fs := fakeFS{dirs: map[string][]string{c.marker: {}}}
+			if !c.adapter.Detect(ctx, fs.exec) {
+				t.Fatalf("marker %q not detected", c.marker)
+			}
+			// Positive: /root fallback variant.
+			fs = fakeFS{dirs: map[string][]string{c.fallback: {}}}
+			if !c.adapter.Detect(ctx, fs.exec) {
+				t.Fatalf("fallback marker %q not detected", c.fallback)
+			}
+			// Negative: marker's *parent* exists but not the marker itself.
+			parent := c.marker[:strings.LastIndex(c.marker, "/")]
+			fs = fakeFS{dirs: map[string][]string{parent: {"other"}}}
+			if c.adapter.Detect(ctx, fs.exec) {
+				t.Fatalf("parent dir %q must not trigger detection", parent)
+			}
+			// Negative: empty container.
+			fs = fakeFS{dirs: map[string][]string{"/memory": {}}}
+			if c.adapter.Detect(ctx, fs.exec) {
+				t.Fatal("empty container must not detect")
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ananta888/dockweave/internal/model"
@@ -165,4 +166,57 @@ func (brokenProvider) Available(ctx context.Context) error { return nil }
 
 func (brokenProvider) Observe(ctx context.Context, act *model.AgentActivity) error {
 	return errors.New("forced failure")
+}
+
+// TestProviderContractExplicitUnavailable (review-008): providers must
+// either deliver real data or report themselves explicitly unavailable —
+// never fabricate activity. Covers the unavailability contracts.
+func TestProviderContractExplicitUnavailable(t *testing.T) {
+	ctx := context.Background()
+
+	// Tetragon without an events path: unavailable with a config hint.
+	p := NewTetragonProvider("", nil)
+	err := p.Available(ctx)
+	if err == nil || !strings.Contains(err.Error(), "DOCKWEAVE_TETRAGON_EVENTS") {
+		t.Fatalf("tetragon must be explicitly unavailable without events path: %v", err)
+	}
+
+	// Tetragon with a directory instead of a JSONL file: unavailable.
+	p = NewTetragonProvider(t.TempDir(), nil)
+	if err := p.Available(ctx); err == nil {
+		t.Fatal("directory events path must be refused")
+	}
+
+	// Procfs with an unreadable root: unavailable.
+	pp := &ProcfsProvider{
+		ProcRoot:       filepath.Join(t.TempDir(), "missing"),
+		WorkspaceRoots: func() map[string]string { return map[string]string{} },
+	}
+	if err := pp.Available(ctx); err == nil {
+		t.Fatal("missing proc root must be unavailable")
+	}
+
+	// Procfs with a usable root: available, and an agent without a known
+	// workspace tree must yield no fabricated data.
+	procRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(procRoot, "self", "fd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pp = &ProcfsProvider{
+		ProcRoot:       procRoot,
+		WorkspaceRoots: func() map[string]string { return map[string]string{} },
+	}
+	if err := pp.Available(ctx); err != nil {
+		t.Fatalf("procfs should be available with a readable root: %v", err)
+	}
+	act := &model.AgentActivity{AgentID: "ag1", State: "running", Activity: model.ActivityUnknown}
+	if err := pp.Observe(ctx, act); err != nil {
+		t.Fatalf("observe without tree: %v", err)
+	}
+	if len(act.OpenFiles) != 0 {
+		t.Fatalf("no data may be invented without a workspace tree: %v", act.OpenFiles)
+	}
+	if act.Activity != model.ActivityUnknown {
+		t.Fatalf("activity must stay unknown without evidence, got %s", act.Activity)
+	}
 }
