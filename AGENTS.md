@@ -40,6 +40,9 @@ Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
    Schreibinhaber; Attach/Detach an Ersatzagenten nur im gestoppten Zustand.
 7. Der Daemon entfernt bei Recovery niemals Mounts, die nicht eindeutig von
    DockWeave stammen (Label-/Registry-Prüfung).
+8. **Socket-Zugriff ist zweistufig:** SO_PEERCRED identifiziert den Peer,
+   die UID→Rollen-Policy (`ADMIN_UIDS`/`MONITOR_UIDS`) autorisiert;
+   unbekannte UIDs sind gesperrt, die Monitor-Rolle ist nur lesend.
 
 ## Build & Test
 

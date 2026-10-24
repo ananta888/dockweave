@@ -116,6 +116,12 @@ root requires `ALLOW_ROOT_CONTAINER=true` and is audited
 (`agent.identity` event). The Docker client always sets an explicit
 `user` identity.
 
+Socket access itself is layered underneath the roles: the daemon chowns
+both unix sockets to `SOCKET_GROUP` (default `dockweave`, empty =
+`root:root`) with mode 0660, so an unprivileged admin group can connect
+without world-writable sockets. A missing group is reported at startup;
+socket mode alone never grants API rights — the UID→role policy does.
+
 ## SD-010 — Recursive read-only enforcement via mount_setattr (review-007)
 
 The privileged integration suite found that

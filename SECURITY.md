@@ -61,7 +61,13 @@
 ### API Authentication
 
 - Unix socket with `SO_PEERCRED` peer verification
-- Socket permissions `0660 root:dockweave`
+- Socket permissions `0660 root:<SOCKET_GROUP>` (default group
+  `dockweave`; empty keeps `root:root`). The group is set by the daemon
+  at startup; missing groups are reported, not silently ignored.
+- **Authorization is role-based** (SO_PEERCRED identifies, the policy
+  decides): `ADMIN_UIDS` may use the full API and terminals,
+  `MONITOR_UIDS` may only read (GET/HEAD), all other UIDs are denied.
+  Both lists are configured in `/etc/dockweave/dockweaved.conf`.
 - No TCP exposure by default
 
 ### Audit Log
