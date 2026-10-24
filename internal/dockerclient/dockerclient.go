@@ -133,7 +133,7 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 		// starts in the image default (/) and the agent cannot see its
 		// projects without manual navigation.
 		WorkingDir: workDir,
-		User:   user,
+		User:       user,
 		// Keep stdin open + tty for attach/exec based interactive use.
 		OpenStdin: true,
 		Tty:       true,
