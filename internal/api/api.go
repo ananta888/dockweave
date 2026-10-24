@@ -99,6 +99,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/detach", s.detachMemory)
 	s.mux.HandleFunc("GET /api/v1/memories", s.listMemories)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/session", s.agentSession)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/paths", s.agentPaths)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
 	s.mux.HandleFunc("DELETE /api/v1/workspaces/{id}", s.unregisterWorkspace)
@@ -464,6 +465,15 @@ func (s *Server) detachMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, mem)
+}
+
+func (s *Server) agentPaths(w http.ResponseWriter, r *http.Request) {
+	p, err := s.Agents.AgentPaths(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) agentSession(w http.ResponseWriter, r *http.Request) {

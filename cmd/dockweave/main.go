@@ -195,6 +195,28 @@ func agentCmd() *cobra.Command {
 		},
 	}
 
+	paths := &cobra.Command{
+		Use:   "paths NAME|ID",
+		Short: "Show folder assignments (/agent, /memory, /workspace)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			p, err := client().AgentPaths(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			out(p, func(w *tabwriter.Writer) {
+				fmt.Fprintln(w, "CONTAINER\tHOST\tNOTE")
+				fmt.Fprintf(w, "/agent\t%s\tAGENTS.md, skills\n", p.AgentDir)
+				mem := p.MemoryDir
+				if mem == "" {
+					mem = "(not attached)"
+				}
+				fmt.Fprintf(w, "/memory\t%s\tlong-term memory %s\n", mem, p.MemoryID)
+				fmt.Fprintf(w, "/workspace\t%s\tproject mounts\n", p.WorkspaceDir)
+			})
+		},
+	}
+
 	var attachTermSocket string
 	attach := &cobra.Command{
 		Use:   "attach NAME|ID [-- CMD...]",
@@ -215,7 +237,7 @@ func agentCmd() *cobra.Command {
 		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
 	attach.Flags().SetInterspersed(false)
 
-	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, attach)
+	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, attach)
 	return cmd
 }
 

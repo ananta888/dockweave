@@ -50,6 +50,7 @@ type dataMsg struct {
 	events     []*model.Event
 	conflicts  []model.FileConflict
 	memories   []sdk.MemoryInfo
+	paths      map[string]sdk.AgentPathsInfo // agent id -> folder assignments
 	err        error
 }
 
@@ -250,6 +251,12 @@ func (m *modelTUI) refresh() tea.Cmd {
 		}
 		if mems, err := m.client.ListMemories(ctx); err == nil {
 			d.memories = mems
+		}
+		d.paths = map[string]sdk.AgentPathsInfo{}
+		for _, a := range d.agents {
+			if p, err := m.client.AgentPaths(ctx, a.ID); err == nil {
+				d.paths[a.ID] = *p
+			}
 		}
 		d.err = nil
 		return d
@@ -697,9 +704,7 @@ func (m *modelTUI) viewAgentDetail(a *model.Agent) string {
 	if a.UID != 0 || a.GID != 0 {
 		fmt.Fprintf(&b, "  identity  %d:%d\n", a.UID, a.GID)
 	}
-	if mem := m.memoryOf(a.ID); mem != "" {
-		fmt.Fprintf(&b, "  memory    %s\n", mem)
-	}
+	b.WriteString(m.viewAgentFolders(a))
 	for _, act := range m.data.activity {
 		if act.AgentID != a.ID {
 			continue
@@ -713,10 +718,33 @@ func (m *modelTUI) viewAgentDetail(a *model.Agent) string {
 			fmt.Fprintf(&b, "    file %s (%s)\n", p, ev)
 		}
 	}
-	for _, mt := range m.data.mounts {
-		if mt.AgentID == a.ID {
-			fmt.Fprintf(&b, "  mount     %s → %s (%s)\n", mt.HostPath, lastElem(mt.TargetPath), mt.Mode)
+	return b.String()
+}
+
+// viewAgentFolders lists the folder assignments of an agent container:
+// which host directory backs /agent (settings, AGENTS.md, skills),
+// /memory (long-term memory) and /workspace (the project mounts).
+func (m *modelTUI) viewAgentFolders(a *model.Agent) string {
+	var b strings.Builder
+	p, ok := m.data.paths[a.ID]
+	b.WriteString(tabActive.Render(" folders ") + "\n")
+	if ok {
+		fmt.Fprintf(&b, "  agent     /agent ← %s   (AGENTS.md, skills)\n", p.AgentDir)
+		if p.MemoryDir != "" {
+			fmt.Fprintf(&b, "  memory    /memory ← %s   (long-term memory)\n", p.MemoryDir)
+		} else {
+			b.WriteString("  memory    /memory ← (not attached)\n")
 		}
+	}
+	mounted := false
+	for _, mt := range m.data.mounts {
+		if mt.AgentID == a.ID && mt.Status == model.MountActive {
+			fmt.Fprintf(&b, "  project   /workspace/%s ← %s   (%s)\n", lastElem(mt.TargetPath), mt.HostPath, mt.Mode)
+			mounted = true
+		}
+	}
+	if !mounted {
+		b.WriteString("  project   /workspace ← (no project assigned)\n")
 	}
 	return b.String()
 }

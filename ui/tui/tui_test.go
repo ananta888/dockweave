@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/pkg/sdk"
 )
 
 func sampleData() dataMsg {
@@ -508,5 +509,35 @@ func TestBarModeClickBelowBarsFocusesTerminal(t *testing.T) {
 	m.Update(leftClick(20, 1))
 	if ft.focused {
 		t.Fatal("menu clicks must stay on the bar")
+	}
+}
+
+func TestAgentDetailShowsFolders(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tab: tabAgents, expanded: true}
+	m.data = sampleData()
+	m.data.paths = map[string]sdk.AgentPathsInfo{
+		"ag1": {
+			AgentID:  "ag1",
+			AgentDir: "/var/lib/dockweave/agents/ag1/agent",
+			MemoryID: "mem_1", MemoryDir: "/var/lib/dockweave/memories/mem_1",
+			WorkspaceDir: "/var/lib/dockweave/agents/ag1/workspace",
+		},
+	}
+	_ = m.View()
+	out := m.View()
+	for _, want := range []string{
+		"folders", "AGENTS.md, skills", "long-term memory",
+		"/workspace/proj", "/srv/proj", "(rw)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("detail card missing %q:\n%s", want, out)
+		}
+	}
+	// An agent without mounts shows the hint instead of a project line.
+	m.cursor = 0
+	m.data.mounts = nil
+	out = m.View()
+	if !strings.Contains(out, "no project assigned") {
+		t.Fatalf("missing no-project hint:\n%s", out)
 	}
 }

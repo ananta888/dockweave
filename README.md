@@ -155,6 +155,11 @@ capability detection at startup and refuses to run without required privileges.
 
 ## CLI Commands
 
+`dockweave agent paths NAME` shows the folder assignments of an agent:
+which host directory backs `/agent` (AGENTS.md, skills), `/memory`
+(long-term memory) and `/workspace` (project mounts) — the TUI detail
+card (click/enter on an agent) shows the same overview.
+
 ```text
 dockweave agent create|start|stop|restart|remove|inspect|list
 dockweave workspace register|list|unregister

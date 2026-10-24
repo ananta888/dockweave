@@ -291,6 +291,25 @@ type MemoryInfo struct {
 	AttachedAt   string `json:"attached_at,omitempty"`
 }
 
+// AgentPathsInfo describes an agent's folder assignments (API shape).
+type AgentPathsInfo struct {
+	AgentID      string `json:"agent_id"`
+	AgentDir     string `json:"agent_dir"`
+	MemoryID     string `json:"memory_id,omitempty"`
+	MemoryDir    string `json:"memory_dir"`
+	WorkspaceDir string `json:"workspace_dir"`
+}
+
+// AgentPaths resolves which host directories back /agent, /memory and
+// /workspace of an agent.
+func (c *Client) AgentPaths(ctx context.Context, idOrName string) (*AgentPathsInfo, error) {
+	var out AgentPathsInfo
+	if err := c.do(ctx, "GET", "/api/v1/agents/"+idOrName+"/paths", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListMemories lists all memory identities and their write owners.
 func (c *Client) ListMemories(ctx context.Context) ([]MemoryInfo, error) {
 	var out []MemoryInfo

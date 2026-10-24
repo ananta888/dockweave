@@ -140,6 +140,13 @@ Windows, macOS und Docker Desktop werden **nicht unterstützt**.
 - Audit-Log mit Hash-Kette
 - Details: [SECURITY.md](SECURITY.md)
 
+## Ordnerzuordnung
+
+`dockweave agent paths NAME` zeigt die Ordnerzuordnung eines Agenten:
+welches Host-Verzeichnis hinter `/agent` (AGENTS.md, Skills), `/memory`
+(Langzeitgedächtnis) und `/workspace` (Projekt-Mounts) liegt — die
+TUI-Detailcard (Klick/`enter` auf einen Agenten) zeigt dasselbe.
+
 ## Lizenz
 
 BSD-3-Clause. Siehe [LICENSE](LICENSE).

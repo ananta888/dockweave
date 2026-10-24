@@ -440,6 +440,37 @@ func (s *Service) Get(ctx context.Context, idOrName string) (*model.Agent, error
 	return s.Store.GetAgent(ctx, idOrName)
 }
 
+// AgentPaths describes the folder assignments of an agent container: which
+// host directory backs /agent (settings, AGENTS.md, skills), /memory
+// (long-term memory) and /workspace (project mounts).
+type AgentPaths struct {
+	AgentID      string `json:"agent_id"`
+	AgentDir     string `json:"agent_dir"` // host dir mounted at /agent
+	MemoryID     string `json:"memory_id,omitempty"`
+	MemoryDir    string `json:"memory_dir"`    // host dir mounted at /memory
+	WorkspaceDir string `json:"workspace_dir"` // host tree mounted at /workspace
+}
+
+// AgentPaths resolves the folder assignments of one agent.
+func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	p := &AgentPaths{
+		AgentID:      a.ID,
+		AgentDir:     s.Mounts.AgentDir(a.ID),
+		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
+	}
+	if s.Memory != nil {
+		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+			p.MemoryID = mem.ID
+			p.MemoryDir = s.Memory.Path(mem.ID)
+		}
+	}
+	return p, nil
+}
+
 // List returns all agents.
 func (s *Service) List(ctx context.Context) ([]*model.Agent, error) {
 	return s.Store.ListAgents(ctx)

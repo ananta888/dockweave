@@ -566,3 +566,26 @@ func TestRemovePruneDeletesMemoryStore(t *testing.T) {
 		t.Fatal("prune must delete the memory store directory")
 	}
 }
+
+func TestAgentPathsFolderAssignments(t *testing.T) {
+	svc, fm, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+	a := &model.Agent{Name: "paths1", Type: "custom", Image: "img"}
+	if _, err := svc.Create(ctx, a, "test"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := svc.AgentPaths(ctx, a.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.AgentDir != fm.AgentDir(a.ID) || p.WorkspaceDir != fm.WorkspaceTree(a.ID) {
+		t.Fatalf("agent/workspace dirs wrong: %+v", p)
+	}
+	mem, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.MemoryID != mem.ID || p.MemoryDir != mm.Path(mem.ID) {
+		t.Fatalf("memory assignment wrong: %+v (want %s at %s)", p, mem.ID, mm.Path(mem.ID))
+	}
+}
