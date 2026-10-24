@@ -1,0 +1,242 @@
+{
+  "domain": "review-2026-10",
+  "updated": "2026-10-24",
+  "source": "Externer statischer Code-/Architektur-Review (2026-10-24); Fundstellen am Code verifiziert",
+  "tasks": [
+    {
+      "id": "review-001",
+      "title": "Mount-Identitätsprüfung und Deduplizierung korrigieren",
+      "description": "Add() behandelt einen vorhandenen Mount am Ziel als idempotent, sobald RO/RW übereinstimmt, ohne die tatsächliche Quelle (mountinfo root) zu vergleichen. Ein Mount von Projekt A wird als Erfolg gewertet, obwohl Projekt B angefordert wurde — insbesondere gefährlich bei RW-A vor RO-B.",
+      "cause": "internal/mounts/manager.go Add(): Dedup-Loop (~Z. 251-262) vergleicht nur mi.MountPoint == target und mi.Readonly(); mi.Root (Bind-Quelle) und Mount-ID werden nicht gegen canon geprüft. Kommentar ~Z. 229 behauptet 'same source', der Code prüft es nicht.",
+      "files": [
+        "internal/mounts/manager.go (Add, Dedup-Loop ~Z. 251-262, Doc-Kommentar ~Z. 229)",
+        "internal/mounts/mountinfo.go (MountInfo.Root)"
+      ],
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/mounts"
+      ],
+      "acceptance": "Add() vergleicht bei Dedup die echte Quelle (kanonischer mountinfo-root gegen canon) und die Mount-Optionen; gleiche Quelle + gleicher Modus => idempotent OK; abweichende Quelle oder Modus => eindeutiger Konfliktfehler, kein stilles Akzeptieren.",
+      "tests": [
+        "Integration privilegiert: Add(A), dann Add(B) selbes Ziel => Fehler; Add(A) erneut => idempotent",
+        "Integration privilegiert: RW-A am Ziel, Add(B, ro) => Fehler (kein Erfolg)",
+        "Unit: Dedup-Entscheidungstabelle (Quelle x Modus)"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-002",
+      "title": "Grant-/Revoke-Transaktionen und Zwischenzustände absichern",
+      "description": "Grant wird vor erfolgreichem Mount in SQLite gespeichert (fehlgeschlagener Mount hinterlässt aktiven Grant). Revoke widerruft den Grant vor dem Unmount (fehlgeschlagenes Unmount hinterlässt aktiven Mount bei revoktem Grant). Fehlen explizite Zwischenzustände und Wiederhol-/Reconciliation-Logik.",
+      "cause": "internal/workspaces/workspaces.go: Grant() ~Z. 154-188 — CreateGrant vor Mounts.Add; bei Mount-Fehler bleibt der Grant aktiv (nur MountState=MountFailed). Revoke() ~Z. 189-215 — RevokeGrant vor Mounts.Remove; EBUSY meldet 'grant revoked, but unmount failed' ohne Zwischenzustand oder Retry-Pfad.",
+      "files": [
+        "internal/workspaces/workspaces.go (Grant ~Z. 154-188, Revoke ~Z. 189-215)",
+        "internal/persistence (Grants/Mounts-Schema, Statuswerte)",
+        "internal/model (Grant-/MountStatus-Enum)"
+      ],
+      "priority": "critical",
+      "dependencies": [
+        "review-001"
+      ],
+      "components": [
+        "internal/workspaces",
+        "internal/persistence",
+        "internal/model"
+      ],
+      "acceptance": "Grant wird erst nach erfolgreichem Mount 'active' (sonst Rollback/Status mount_failed mit Aufräum-Reconcile); Revoke durchläuft revoking -> unmount_failed mit idempotentem Retry; kein Zustand, in dem Grant widerrufen, aber Mount noch aktiv ist, ohne dass der Zustand sichtbar und wiederholbar auflösbar ist.",
+      "tests": [
+        "Unit mit injiziertem Mount-Fehler: kein aktiver Grant danach",
+        "Unit mit injiziertem Unmount-Fehler: Status unmount_failed, Retry-Revoke löst auf",
+        "Integration: Reconcile räumt halbfertige Grants/Mounts nach Daemon-Neustart auf"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-003",
+      "title": "Sichere Lösch- und Prune-Prozeduren einführen",
+      "description": "agents.Remove(..., prune=true) ignoriert Fehler beim Entfernen von Mounts (_ = Mounts.Remove mit force=true) und beim Verzeichnis-Delete (os.RemoveAll); DB-Eintrag wird vor dem Prune gelöscht. Übrig bleiben unregistrierte Mounts/Dateien oder halber Zustand; stilles MNT_DETACH widerspricht der Force-Audit-Regel.",
+      "cause": "internal/agents/agents.go Remove() ~Z. 289-313: Fehler werden verworfen, Unmount immer force (MNT_DETACH) ohne Audit-Eintrag, DeleteAgent vor Prune. Keine Fehleraggregation, kein resumabler Zwischenzustand.",
+      "files": [
+        "internal/agents/agents.go (Remove ~Z. 289-313)",
+        "internal/mounts/manager.go (Remove/unmount, MNT_DETACH-Handling)"
+      ],
+      "priority": "critical",
+      "dependencies": [
+        "review-002"
+      ],
+      "components": [
+        "internal/agents",
+        "internal/mounts"
+      ],
+      "acceptance": "Prune sammelt und meldet alle Fehler (Mount-/Dir-Remove), kein verworfener Fehler; MNT_DETACH nur mit explizitem Force-Flag und Audit-Event (AGENTS-Regel 3); DB-Löschung erst nach erfolgreichem Prune oder in dokumentiertem Zustand pruned_partial mit erneut löschbarem Retry.",
+      "tests": [
+        "Unit: Fehleraggregation bei teils fehlgeschlagenem Prune",
+        "Integration privilegiert: Busy-Mount + prune => Fehler gemeldet, kein MNT_DETACH ohne Force, Retry erfolgreich",
+        "Unit: Audit-Event bei Force-Unmount vorhanden"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-004",
+      "title": "Mount-Pfadvalidierung gegen Race Conditions härten",
+      "description": "Der openat2-Schutz (RESOLVE_BENEATH|NO_MAGICLINKS) öffnet den Pfad nur zur Prüfung, schließt das fd sofort und verwendet anschließend wieder den Pfadstring für unix.Mount. Zwischen Verifikation und Mount bleibt ein Swap-Race (rename/replace des Verzeichnisses).",
+      "cause": "internal/mounts/pathutil.go safeVerify() ~Z. 63-92: fd wird nach der Prüfung geschlossen, Rückgabe ist nur error; internal/mounts/manager.go Add() mountet danach über den String canon. Verifikation und Nutzung sind nicht über dasselbe fd gekoppelt.",
+      "files": [
+        "internal/mounts/pathutil.go (ResolveSource, safeVerify ~Z. 63-92)",
+        "internal/mounts/manager.go (Add: unix.Mount mit Pfadstring)"
+      ],
+      "priority": "high",
+      "dependencies": [
+        "review-001"
+      ],
+      "components": [
+        "internal/mounts"
+      ],
+      "acceptance": "Der Mount erfolgt über das verifizierte fd (z.B. /proc/self/fd/<n>), das bis zum Mount-Call offen gehalten wird; kein Pfadstring zwischen Verifikation und Nutzung; offene fd-Transplantation dokumentiert und getestet.",
+      "tests": [
+        "Unit: safeVerify gibt fd zurück und wird bei Fehler geschlossen",
+        "Integration: Race-Harness (Verzeichnis-Swap zwischen Prüfung und Mount) => Mount schlägt fehl oder trifft die geprüfte Quelle",
+        "Unit: ENOSYS-Degradation bleibt dokumentiert"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-005",
+      "title": "Docker-Container-Defaults und Socket-Autorisierung härten",
+      "description": "Zwei Punkte: (a) Agentencontainer laufen standardmäßig als UID 0 (Root im Container), da User nur bei a.UID != 0 gesetzt wird; (b) die Socket-Autorisierung nutzt SO_PEERCRED nur zur Identifikation, nicht zu rollenbasierter Autorisierung — Monitor-Nutzer dürfen keine Mount-Rechte erhalten.",
+      "cause": "(a) internal/dockerclient ~Z. 106-107: User wird nur bei nicht-null UID gesetzt, Default ist Root im Container. (b) internal/api/api.go PeerAuthMiddleware ~Z. 132-175 und internal/api/term.go authorize ~Z. 284-314: Uid-Mapping auf Identität, aber keine differenzierten Rechte (admin/mount vs. read-only/monitor).",
+      "files": [
+        "internal/dockerclient (Container-Config, User-Segment ~Z. 106-114)",
+        "internal/api/api.go (PeerAuthMiddleware ~Z. 132-175)",
+        "internal/api/term.go (authorize ~Z. 284-314)",
+        "internal/config (Rollen-/Uid-Policy als Config fehlt)"
+      ],
+      "priority": "high",
+      "dependencies": [],
+      "components": [
+        "internal/dockerclient",
+        "internal/api",
+        "internal/config"
+      ],
+      "acceptance": "Container-Default ist nicht-root (UID/GID-Mapping mit schreibbaren /memory-/ /workspace-Rechten, Override konfigurierbar und auditierbar); API-/Term-Socket unterscheiden Rollen (z.B. admin = volle Rechte, monitor = nur Leseendpunkte), Mount/Schreiboperationen verweigert für monitor-Rolle; Policy konfigurierbar via Dockweaved.conf.",
+      "tests": [
+        "Integration: docker exec id zeigt non-root Default",
+        "Unit: Rollenmatrix (monitor darf keine Mount-/Schreib-APIs aufrufen)",
+        "Unit: Socket-Peercred -> Rolle Mapping inkl. Unbekannt-Uid = deny"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-006",
+      "title": "Tetragon-Zuordnung und Dateiereignisse verbessern",
+      "description": "Die Aktivitätszuordnung basiert teilweise auf PID-Heuristiken (docker top, stale evidence) und Pfad-Kandidaten aus Args/Cwd. Falsche oder unvollständige Aktivitätsanzeige möglich. Dateiänderungen sollten über konkrete Kernel-Dateiereignisse zugeordnet werden.",
+      "cause": "internal/monitor/tetragon.go ~Z. 174-185: Kandidatenpfade aus ev.Fields['path'], Process.Cwd, Filename und Args-Substring ('>') — Heuristik ohne Evidenzstärke; BuildPIDMap (~Z. 223+) via docker top ist best-effort und veraltet nach Container-Neustart.",
+      "files": [
+        "internal/monitor/tetragon.go (Attribution ~Z. 174-185, BuildPIDMap ~Z. 223+)",
+        "integrations/tetragon/tracing-policy.yaml (File-Write-Kprobe fehlt)",
+        "internal/monitor/procfs.go (Ergänzungspfad)"
+      ],
+      "priority": "high",
+      "dependencies": [],
+      "components": [
+        "internal/monitor",
+        "integrations/tetragon"
+      ],
+      "acceptance": "Dateiänderungen werden primär über Kernel-Dateiereignisse (Tetragon file-write/fanotify) zugeordnet; Heuristiken bleiben nur als dokumentierter Fallback mit Confidence-Flag; PID-Map-Einträge altern nach Container-Neustart nicht mehr stillschweigend; falsch zugeordnete Events sind in Tests reproduzierbar ausgeschlossen.",
+      "tests": [
+        "Unit: Confidence-Flag bei Heuristik vs. File-Event",
+        "Unit: stale PID-Map-Einträge werden verworfen/invalidiert",
+        "Unit: Fixture-Events (file-write) => korrekte Agent-Zuordnung ohne Args-Heuristik"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-007",
+      "title": "Native Linux-Integrationstests einschließlich Neustart und Recovery",
+      "description": "Die RO-Staging-Validierung erfolgte bisher unter WSL2 (Kernel 6.18.x). Rekursive Bind-Mounts, verschachtelte Dateisysteme und mount --move müssen auf nativem Linux-Kernel verifiziert werden. Dazu fehlen Neustart-/Recovery-Szenarien (Daemon-Reboot, Reconcile, halbfertige Zustände) in der Testsuite.",
+      "cause": "tests/integration decken Mount-Grundfälle ab (und laufen auf dem GitHub-Runner nativ), aber keine expliziten Restart-/Recovery-Tests und keine dokumentierte Kernel-Matrix für RO-Propagation in Container-Namespaces (Phase-1 nur WSL2-validiert, siehe docs/validation/phase1-mounts.de.md).",
+      "files": [
+        "tests/integration (Mount-Suite; Restart/Recovery fehlt)",
+        ".github/workflows/ci.yml (Integration-Job, Kernel-Doku)",
+        "docs/validation/phase1-mounts.de.md",
+        "internal/supervisor (Recovery-Reconcile)"
+      ],
+      "priority": "high",
+      "dependencies": [
+        "review-001",
+        "review-002",
+        "review-004"
+      ],
+      "components": [
+        "tests/integration",
+        "internal/supervisor",
+        ".github/workflows"
+      ],
+      "acceptance": "Integrationstests laufen auf dem nativen Linux-Runner (GitHub ubuntu) inklusive RO-Propagation-Verifikation im Agent-Container; Neustart-/Recovery-Suite (Daemon-Neustart, Reconcile nach Crash, halbfertige Grants) ist grün; Kernel-Version des CI-Runners wird im Testprotokoll dokumentiert.",
+      "tests": [
+        "Integration: RO sichtbar im rslave-/Container-Namespace (read-only verifiziert per Schreibversuch)",
+        "Integration: Reconcile nach Daemon-Neustart stellt Mounts wieder her / meldet Orphans",
+        "Integration: Crash-Mittendrin (Grant ohne Mount) wird beim Start bereinigt"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-008",
+      "title": "TUI, Monitoring und Agentenadapter durchgängig testen",
+      "description": "TUI (Dashboard, Agents, Workspaces, Mounts, Events), Monitor-Regeln und die Agentenadapter (Codex/OpenCode/Claude/Gemini) besitzen nur Teil-Unit-Tests; E2E-Pfade (API -> Provider -> Anzeige, Adapter-Erkennung an echten Memory-Markern) sind nicht durchgängig verifiziert.",
+      "cause": "Fehlende E2E-/Smoke-Tests über die Grenzen ui/tui -> internal/api -> internal/monitor und integrations/agents; nur isolierte Unit-Tests vorhanden.",
+      "files": [
+        "ui/tui (fünf Ansichten)",
+        "internal/monitor (Provider-Verträge)",
+        "integrations/agents (Adapter-Erkennung)",
+        "tests/ (E2E fehlt)"
+      ],
+      "priority": "medium",
+      "dependencies": [
+        "review-005",
+        "review-006"
+      ],
+      "components": [
+        "ui/tui",
+        "internal/monitor",
+        "integrations/agents"
+      ],
+      "acceptance": "Smoke-Tests für alle fünf TUI-Views gegen die API (Start/Update/Terminate ohne Panic), Provider-Vertragstests (docker/procfs/tetragon: Daten oder explizit 'unverfügbar'), Adapter-Erkennungstests für alle vier Marker-Profile.",
+      "tests": [
+        "Unit: TUI-Model-Updates je View (Bubble Tea Headless)",
+        "Unit: Provider-Verträge (keine Mock-Daten in produktiven Pfaden)",
+        "Unit: Adapter-Marker je Profil (positiv/negativ)"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "review-009",
+      "title": "Gedächtnis-Identität von Agentenidentität entkoppeln",
+      "description": "Das Langzeitgedächtnis ist 1:1 an die Agent-ID gebunden (/memory pro Agent). Eine gezielte Zuordnung desselben Gedächtnisses an einen Ersatzagenten (Migration, Failover) ohne unkontrolliertes Parallel-Schreiben ist nicht vorgesehen (Architekturpunkt C des Reviews).",
+      "cause": "Speicherpfade, Retention und Schreibrechte hängen direkt an der Agent-ID (internal/memory, Mounts.WorkspaceTree/MemoryTree); kein eigenständiges Memory-Objekt mit Zuordnungs-/Inhaberschaftsmodell.",
+      "files": [
+        "internal/memory/memory.go",
+        "internal/mounts/manager.go (MemoryTree)",
+        "internal/persistence (Schema: Memory an Agent-ID)",
+        "internal/model"
+      ],
+      "priority": "medium",
+      "dependencies": [
+        "review-002"
+      ],
+      "components": [
+        "internal/memory",
+        "internal/persistence",
+        "internal/model"
+      ],
+      "acceptance": "Memory besitzt eine eigene ID mit Inhaberschaft (genau ein Schreibinhaber); gezieltes Attach/Detach an Ersatzagenten ist API-seitig möglich und auditiert; paralleler Schreibzugriff zweier Agenten auf dasselbe Memory wird erzwungen abgelehnt (AGENTS-Regel 6).",
+      "tests": [
+        "Unit: Attach/Detach-Transaktion inkl. Audit-Events",
+        "Unit: Zweiter Schreibinhaber wird abgelehnt",
+        "Unit: Migration Memory -> Ersatzagent ohne Datenverlust"
+      ],
+      "status": "pending"
+    }
+  ]
+}
