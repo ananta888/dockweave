@@ -25,7 +25,8 @@ func attachAgent(socketPath, idOrName string, cmd []string) error {
 
 	// Enter raw mode on the current terminal.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err == nil {
+	rawOK := err == nil
+	if rawOK {
 		defer term.Restore(int(os.Stdin.Fd()), oldState)
 	}
 
@@ -34,9 +35,14 @@ func attachAgent(socketPath, idOrName string, cmd []string) error {
 		return err
 	}
 
+	// Announce the window size *before* waiting for stream data: an idle
+	// agent UI (e.g. codex) sends nothing on attach and only repaints on
+	// SIGWINCH — peeking first would deadlock against the silence.
+	br := bufio.NewReader(conn)
+	sendResize(br, conn)
+
 	// Wait for ERR or stream start: read the first byte; "ERR" lines are
 	// printable server errors.
-	br := bufio.NewReader(conn)
 	first, err := br.Peek(1)
 	if err != nil {
 		return err
@@ -44,7 +50,9 @@ func attachAgent(socketPath, idOrName string, cmd []string) error {
 	if first[0] == 'E' {
 		line, _ := br.ReadString('\n')
 		msg := strings.TrimSpace(line)
-		term.Restore(int(os.Stdin.Fd()), oldState)
+		if rawOK {
+			term.Restore(int(os.Stdin.Fd()), oldState)
+		}
 		return errors.New(msg)
 	}
 

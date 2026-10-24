@@ -50,8 +50,13 @@ func (t *realTmux) inSession() bool { return os.Getenv("TMUX") != "" }
 func (t *realTmux) active() bool { return t.splitOpen }
 
 // agentCmd returns the command hosting one agent terminal in a session.
+// It uses the running binary so TUI and terminal client never diverge.
 func agentCmd(agent, termSocket string) string {
-	return fmt.Sprintf("dockweave agent attach %s --term-socket %s", agent, termSocket)
+	self, err := os.Executable()
+	if err != nil {
+		self = "dockweave"
+	}
+	return fmt.Sprintf("%s agent attach %s --term-socket %s", self, agent, termSocket)
 }
 
 func (t *realTmux) ensureSession(name, cmd string) error {
@@ -76,6 +81,9 @@ func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 
 func (t *realTmux) switchTerminal(pane, agent, termSocket string) error {
 	sess := "dw-" + agent
+	// Always start a fresh attach client: a session from an earlier daemon
+	// generation would show stale content (the old stream is dead).
+	_ = tmuxRun("kill-session", "-t", sess)
 	if err := t.ensureSession(sess, agentCmd(agent, termSocket)); err != nil {
 		return err
 	}
