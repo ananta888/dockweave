@@ -6,13 +6,18 @@ GOFLAGS   ?=
 BIN_DIR   := bin
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: all build test test-race test-integration vet lint clean docker-image install-tools
+.PHONY: all build install test test-race test-integration vet lint clean docker-image install-tools
 
 all: build
 
 build:
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweave ./cmd/dockweave
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweaved ./cmd/dockweaved
+
+install: build
+	install -Dm755 $(BIN_DIR)/dockweave $(HOME)/.local/bin/dockweave
+	install -Dm755 $(BIN_DIR)/dockweaved $(HOME)/.local/bin/dockweaved
+	@echo "installed to $(HOME)/.local/bin (make sure it is on your PATH)"
 
 test:
 	$(GO) test ./...
