@@ -71,11 +71,13 @@ type setupForm struct {
 	name, image, cmd, uid textinput.Model
 	folder                textinput.Model
 	wsName, wsPath        textinput.Model
-	agentType             int  // index into agentTypes
-	folderTarget          int  // 0 = /agent folder, 1 = new memory folder
-	mode                  int  // 0 = agent settings, 1 = new agent, 2 = workspaces
-	showStores            bool // memory store list expanded
-	focusIdx              int  // index into hits, -1 = nothing focused
+	agentType             int    // index into agentTypes
+	folderTarget          int    // 0 = /agent folder, 1 = new memory folder
+	mode                  int    // 0 = agent settings, 1 = new agent, 2 = workspaces
+	showStores            bool   // memory store list expanded
+	editing               bool   // a field is being changed (typing/cycling)
+	savedValue            string // value before editing (esc restores)
+	focusIdx              int    // index into hits, -1 = nothing focused
 	hits                  []setupHit
 	// touched marks fields the user typed into: type changes never
 	// overwrite them. seeded applies the defaults once on first entry.
@@ -219,11 +221,14 @@ func (m *modelTUI) viewSetup() string {
 
 	switch f.mode {
 	case 1:
-		return b.String() + m.viewSetupNew(&row, hit, focused)
+		b.WriteString(m.viewSetupNew(&row, hit, focused))
 	case 2:
-		return b.String() + m.viewSetupWorkspaces(&row, hit, focused)
+		b.WriteString(m.viewSetupWorkspaces(&row, hit, focused))
+	default:
+		b.WriteString(m.viewSetupSettings(&row, hit, focused))
 	}
-	return b.String() + m.viewSetupSettings(&row, hit, focused)
+	b.WriteString(m.setupHintLine())
+	return b.String()
 }
 
 // viewSetupSettings shows the configuration of the selected agent.
@@ -385,6 +390,16 @@ func (m *modelTUI) viewSetupWorkspaces(row *int, hit func(int, int, int, string,
 	return b.String()
 }
 
+// setupHintLine renders the action hints for the current selection.
+func (m *modelTUI) setupHintLine() string {
+	h := m.form.focusedHit()
+	marker := dimStyle.Render("  · ")
+	if h != nil {
+		marker = tabActive.Render(" ▸ ")
+	}
+	return "\n" + marker + dimStyle.Render(m.setupHint(h))
+}
+
 func cyclerView(label string, focused bool) string {
 	render := "‹ " + label + " ›"
 	if focused {
@@ -418,40 +433,60 @@ func (m *modelTUI) updateSetup(msg tea.Msg) (tea.Model, tea.Cmd) {
 	f := &m.form
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Interaction model: cursor keys move the selection, enter starts
+		// changing the selected control (cycle lists or type a value),
+		// enter again confirms, esc cancels.
 		switch msg.String() {
 		case "esc":
-			f.focusIdx = -1
-			for _, ti := range f.allInputs() {
-				ti.Blur()
+			if f.editing {
+				m.cancelEdit()
+			} else {
+				f.focusIdx = -1
+				for _, ti := range f.allInputs() {
+					ti.Blur()
+				}
 			}
 			return m, nil
-		case "tab", "down":
-			m.cycleSetupFocus(1)
-			return m, nil
-		case "shift+tab", "up":
+		case "up":
+			if f.editing {
+				return m, m.editStep(false)
+			}
 			m.cycleSetupFocus(-1)
 			return m, nil
-		case "enter", " ":
-			if f.focusIdx >= 0 && f.focusIdx < len(f.hits) {
-				return m, m.activate(f.hits[f.focusIdx])
+		case "down":
+			if f.editing {
+				return m, m.editStep(true)
+			}
+			m.cycleSetupFocus(1)
+			return m, nil
+		case "enter":
+			if f.editing {
+				m.finishEdit()
+				return m, nil
+			}
+			if h := f.focusedHit(); h != nil {
+				if strings.HasPrefix(h.action, "f-") || h.action == "type" || h.action == "target" {
+					// Enter starts changing the control: cycle lists or
+					// type a value, enter confirms, esc cancels.
+					m.startEdit()
+					return m, nil
+				}
+				return m, m.activate(*h)
 			}
 			return m, nil
 		case "left", "right":
-			if h := f.focusedHit(); h != nil && h.action == "type" {
-				m.cycleType(msg.String() == "right")
-				return m, nil
-			}
-			if h := f.focusedHit(); h != nil && h.action == "target" {
-				m.form.folderTarget = (m.form.folderTarget + 1) % 2
-				return m, nil
+			if f.editing {
+				return m, m.editStep(msg.String() == "right")
 			}
 			return m, nil
 		}
-		if ti := f.focusedInput(); ti != nil {
-			var cmd tea.Cmd
-			*ti, cmd = ti.Update(msg)
-			f.touched[strings.TrimPrefix(f.fieldOf(f.focusIdx), "f-")] = true
-			return m, cmd
+		if f.editing {
+			if ti := f.focusedInput(); ti != nil {
+				var cmd tea.Cmd
+				*ti, cmd = ti.Update(msg)
+				f.touched[strings.TrimPrefix(f.fieldOf(f.focusIdx), "f-")] = true
+				return m, cmd
+			}
 		}
 		return m, nil
 	case tea.MouseMsg:
@@ -462,6 +497,12 @@ func (m *modelTUI) updateSetup(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if h.y == msg.Y && msg.X >= h.x0 && msg.X < h.x1 {
 				f.focusIdx = i
 				m.applyFocusTo(i)
+				if strings.HasPrefix(h.action, "f-") || h.action == "type" || h.action == "target" {
+					// Direct manipulation: clicking a changeable control
+					// starts editing it right away.
+					m.startEdit()
+					return m, nil
+				}
 				return m, m.activate(h)
 			}
 		}
@@ -541,6 +582,97 @@ func (m *modelTUI) cycleSetupFocus(dir int) {
 		break
 	}
 	m.applyFocusTo(idx)
+}
+
+// startEdit enters change mode for the focused control (fields and
+// cyclers): the current value is saved so esc can restore it.
+func (m *modelTUI) startEdit() {
+	f := &m.form
+	h := f.focusedHit()
+	if h == nil {
+		return
+	}
+	switch {
+	case strings.HasPrefix(h.action, "f-"):
+		if ti := f.focusedInput(); ti != nil {
+			f.savedValue = ti.Value()
+			ti.Focus()
+			f.editing = true
+		}
+	case h.action == "type", h.action == "target":
+		if h.action == "type" {
+			f.savedValue = agentTypes[f.agentType]
+		}
+		f.editing = true
+	}
+}
+
+// finishEdit confirms the change.
+func (m *modelTUI) finishEdit() {
+	m.form.editing = false
+	for _, ti := range m.form.allInputs() {
+		ti.Blur()
+	}
+	m.applyFocusTo(m.form.focusIdx)
+}
+
+// cancelEdit aborts the change and restores the previous value.
+func (m *modelTUI) cancelEdit() {
+	f := &m.form
+	h := f.focusedHit()
+	if h != nil {
+		switch {
+		case strings.HasPrefix(h.action, "f-"):
+			if ti := f.focusedInput(); ti != nil {
+				ti.SetValue(f.savedValue)
+			}
+		case h.action == "type":
+			for i, t := range agentTypes {
+				if t == f.savedValue {
+					f.agentType = i
+				}
+			}
+		}
+	}
+	m.finishEdit()
+}
+
+// editStep changes list values while editing a cycler (cursor keys).
+func (m *modelTUI) editStep(next bool) tea.Cmd {
+	f := &m.form
+	h := f.focusedHit()
+	if h == nil {
+		return nil
+	}
+	switch h.action {
+	case "type":
+		m.cycleType(next)
+	case "target":
+		f.folderTarget = (f.folderTarget + 1) % 2
+	}
+	return nil
+}
+
+// setupHint describes the actions available for the selected control.
+func (m *modelTUI) setupHint(h *setupHit) string {
+	if h == nil {
+		return "↑↓: move • enter: change • tab: menu • esc: back"
+	}
+	base := "↑↓: move • tab: menu"
+	switch {
+	case h.action == "type" || h.action == "target":
+		if m.form.editing {
+			return "←→/↑↓: choose • enter: done • esc: cancel • " + base
+		}
+		return "enter: change (←→/↑↓: choose) • " + base
+	case strings.HasPrefix(h.action, "f-"):
+		if m.form.editing {
+			return "type: value • enter: done • esc: cancel • " + base
+		}
+		return "enter: edit • type: value • " + base
+	default:
+		return "enter: run • " + base
+	}
 }
 
 // cycleType cycles the agent type cycler and refreshes the defaults.

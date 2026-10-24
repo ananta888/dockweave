@@ -287,25 +287,24 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
-		// Setup tab: keys go to the form (typing, focus cycling); 'q'
-		// still quits when no field is focused.
-		if m.tab == tabSetup {
-			if !(key.Matches(msg, m.keys.Quit) && m.form.focusedInput() == nil) {
-				return m.updateSetup(msg)
-			}
-		}
 		switch {
 		case key.Matches(msg, m.keys.Quit):
-			if m.embedded {
-				m.tmux.quitAll()
+			if m.tab == tabSetup && m.form.editing {
+				// typing context: q is text, not quit
+			} else {
+				if m.embedded {
+					m.tmux.quitAll()
+				}
+				return m, tea.Quit
 			}
-			return m, tea.Quit
 		case key.Matches(msg, m.keys.Next):
 			m.tab = (m.tab + 1) % tabCount
 			m.expanded = false
+			return m, nil
 		case key.Matches(msg, m.keys.Prev):
 			m.tab = (m.tab - 1 + tabCount) % tabCount
 			m.expanded = false
+			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.refresh()
 		case key.Matches(msg, m.keys.CursorUp) && m.tab == tabAgents && !m.menubar:
@@ -318,6 +317,8 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
 			return m, m.openTerminal()
+		case m.tab == tabSetup:
+			return m.updateSetup(msg)
 		case msg.String() == "enter" && m.tab == tabAgents && !m.menubar:
 			// Toggle the detail card (compact by default).
 			m.expanded = !m.expanded

@@ -653,11 +653,17 @@ func TestSetupFormTypingAndFocus(t *testing.T) {
 	if !strings.HasSuffix(m.form.name.Value(), "x") {
 		t.Fatalf("name field = %q", m.form.name.Value())
 	}
-	// Tab moves focus on; typing no longer reaches name.
-	m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	// Enter confirms the change; only then do cursor keys move on.
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
 	if !strings.HasSuffix(m.form.name.Value(), "x") {
-		t.Fatal("focus must leave the name field")
+		t.Fatal("typing must not reach name after moving on")
+	}
+	// Tab switches the menu, not the form.
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if m.tab == tabSetup {
+		t.Fatal("tab must switch the menu")
 	}
 }
 
@@ -681,9 +687,11 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
 	}
 	m.focusAction("f-name")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // enter = change
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
 	typed := m.form.name.Value()
-	m.cycleType(true) // -> claude
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // confirm
+	m.cycleType(true)                        // -> claude
 	if m.form.name.Value() != typed {
 		t.Fatalf("typed name must survive, got %q want %q", m.form.name.Value(), typed)
 	}
@@ -802,3 +810,44 @@ func TestFolderDotsMeanAssigned(t *testing.T) {
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 
 func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }
+
+func TestSetupKeyboardInteractionModel(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	_ = m.View()
+
+	// Cursor keys move the selection and the hint follows.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	h1 := m.form.focusedHit()
+	if h1 == nil {
+		t.Fatal("down must select a control")
+	}
+	hint := m.setupHint(h1)
+	if !strings.Contains(hint, "enter:") {
+		t.Fatalf("hint must show the actions: %q", hint)
+	}
+	// Enter starts changing the selected control (marked as editing).
+	m.focusAction("f-name")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.form.editing {
+		t.Fatal("enter must enter change mode")
+	}
+	// Esc cancels and restores the previous value.
+	before := m.form.name.Value()
+	if ti := m.form.focusedInput(); ti != nil {
+		ti.SetValue("changed")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.form.editing {
+		t.Fatal("esc must leave change mode")
+	}
+	if ti := m.form.focusedInput(); ti != nil && ti.Value() != before {
+		t.Fatalf("esc must restore the value: %q want %q", ti.Value(), before)
+	}
+	// The selected control is marked in the view.
+	if !strings.Contains(m.View(), "▸") {
+		t.Fatal("selected control must be marked")
+	}
+}
