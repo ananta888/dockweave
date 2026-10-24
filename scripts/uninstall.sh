@@ -39,8 +39,8 @@ fi
 
 # ---- binaries ----
 echo "==> Removing binaries"
-$SUDO rm -f /usr/local/bin/dockweave /usr/local/bin/dockweaved
-$SUDO rm -f "$HOME/.local/bin/dockweave" "$HOME/.local/bin/dockweaved"
+$SUDO rm -f /usr/local/bin/dockweave /usr/local/bin/dockweave-tui /usr/local/bin/dockweaved
+$SUDO rm -f "$HOME/.local/bin/dockweave" "$HOME/.local/bin/dockweave-tui" "$HOME/.local/bin/dockweaved"
 
 # ---- sockets, config ----
 echo "==> Removing sockets and /etc/dockweave"

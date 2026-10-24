@@ -12,10 +12,12 @@ all: build
 
 build:
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweave ./cmd/dockweave
+	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweave-tui ./cmd/dockweave-tui
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweaved ./cmd/dockweaved
 
 install: build
 	install -Dm755 $(BIN_DIR)/dockweave $(HOME)/.local/bin/dockweave
+	install -Dm755 $(BIN_DIR)/dockweave-tui $(HOME)/.local/bin/dockweave-tui
 	install -Dm755 $(BIN_DIR)/dockweaved $(HOME)/.local/bin/dockweaved
 	@echo "installed to $(HOME)/.local/bin (make sure it is on your PATH)"
 

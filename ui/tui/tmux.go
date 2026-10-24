@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -57,14 +58,22 @@ func (t *realTmux) inSession() bool { return os.Getenv("TMUX") != "" }
 
 func (t *realTmux) active() bool { return t.splitOpen }
 
-// agentCmd returns the command hosting one agent terminal in a session.
-// It uses the running binary so TUI and terminal client never diverge.
-func agentCmd(agent, termSocket string) string {
-	self, err := os.Executable()
-	if err != nil {
-		self = "dockweave"
+// cliBinary locates the main dockweave CLI (the TUI runs from the
+// separate dockweave-tui binary; agent attach lives in the CLI).
+func cliBinary() string {
+	if self, err := os.Executable(); err == nil {
+		if cand := filepath.Join(filepath.Dir(self), "dockweave"); cand != self {
+			if _, err := os.Stat(cand); err == nil {
+				return cand
+			}
+		}
 	}
-	return fmt.Sprintf("%s agent attach %s --term-socket %s", self, agent, termSocket)
+	return "dockweave"
+}
+
+// agentCmd returns the command hosting one agent terminal in a session.
+func agentCmd(agent, termSocket string) string {
+	return fmt.Sprintf("%s agent attach %s --term-socket %s", cliBinary(), agent, termSocket)
 }
 
 func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
@@ -209,9 +218,9 @@ func LaunchLayout(socketPath string) (bool, error) {
 	}
 	self, err := os.Executable()
 	if err != nil {
-		self = "dockweave"
+		self = "dockweave-tui"
 	}
-	cmd := exec.Command("tmux", "new-session", "-A", "-s", "dockweave", self+" tui --embedded")
+	cmd := exec.Command("tmux", "new-session", "-A", "-s", "dockweave", self+" --embedded")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return true, fmt.Errorf("tmux session: %w", err)

@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -17,7 +19,6 @@ import (
 	"github.com/ananta888/dockweave/internal/mcp"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/pkg/sdk"
-	"github.com/ananta888/dockweave/ui/tui"
 )
 
 var (
@@ -485,19 +486,23 @@ func tuiCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "tui", Short: "Interactive terminal UI (tmux layout: menu bar + agent terminal)",
 		Run: func(cmd *cobra.Command, args []string) {
-			if !embedded && !plain {
-				// Auto-launch the managed tmux layout (menu bar on top,
-				// agent terminal below). Falls back to the plain TUI
-				// when tmux is not installed.
-				used, err := tui.LaunchLayout(socketPath)
-				if err != nil {
-					fail(err)
-				}
-				if used {
-					return
-				}
+			// The TUI lives in its own binary (dockweave-tui): loading the
+			// TUI stack here would make every CLI call query the terminal
+			// at startup (bubbletea init).
+			bin, err := tuiBinary()
+			if err != nil {
+				fail(err)
 			}
-			if err := tui.Run(socketPath, embedded); err != nil {
+			args2 := []string{"--socket", socketPath}
+			if embedded {
+				args2 = append(args2, "--embedded")
+			}
+			if plain {
+				args2 = append(args2, "--plain")
+			}
+			ex := exec.Command(bin, args2...)
+			ex.Stdin, ex.Stdout, ex.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := ex.Run(); err != nil {
 				fail(err)
 			}
 		},
@@ -505,6 +510,20 @@ func tuiCmd() *cobra.Command {
 	c.Flags().BoolVar(&embedded, "embedded", false, "internal: run inside the managed tmux layout")
 	c.Flags().BoolVar(&plain, "plain", false, "run without the tmux layout")
 	return c
+}
+
+// tuiBinary locates dockweave-tui next to this executable (or on PATH).
+func tuiBinary() (string, error) {
+	if self, err := os.Executable(); err == nil {
+		cand := filepath.Join(filepath.Dir(self), "dockweave-tui")
+		if _, err := os.Stat(cand); err == nil {
+			return cand, nil
+		}
+	}
+	if p, err := exec.LookPath("dockweave-tui"); err == nil {
+		return p, nil
+	}
+	return "", errors.New("dockweave-tui not found (install it next to dockweave)")
 }
 
 func out(v any, table func(w *tabwriter.Writer)) {
