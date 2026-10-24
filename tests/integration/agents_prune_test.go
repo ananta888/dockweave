@@ -23,7 +23,7 @@ import (
 // pruneDockerStub satisfies agents.DockerOps without an engine.
 type pruneDockerStub struct{}
 
-func (pruneDockerStub) EnsureImage(context.Context, string, io.Writer) error  { return nil }
+func (pruneDockerStub) EnsureImage(context.Context, string, io.Writer) error { return nil }
 func (pruneDockerStub) Create(context.Context, dockerclient.ContainerSpec) (string, error) {
 	return "", nil
 }
@@ -33,7 +33,7 @@ func (pruneDockerStub) Remove(context.Context, string, bool) error {
 	return nil
 }
 func (pruneDockerStub) FindByAgent(context.Context, string) (string, error) { return "", nil }
-func (pruneDockerStub) State(context.Context, string) (string, error)      { return "", nil }
+func (pruneDockerStub) State(context.Context, string) (string, error)       { return "", nil }
 func (pruneDockerStub) ExecOutput(context.Context, string, []string) (string, error) {
 	return "", nil
 }

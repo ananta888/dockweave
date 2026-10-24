@@ -103,8 +103,10 @@ type fakeLookup struct {
 	agents []*model.Agent
 }
 
-func (f fakeLookup) ContainerID(ctx context.Context, id string) (string, error) { return "c-" + id, nil }
-func (f fakeLookup) Agents(ctx context.Context) ([]*model.Agent, error)         { return f.agents, nil }
+func (f fakeLookup) ContainerID(ctx context.Context, id string) (string, error) {
+	return "c-" + id, nil
+}
+func (f fakeLookup) Agents(ctx context.Context) ([]*model.Agent, error) { return f.agents, nil }
 
 func TestBuildPIDMap(t *testing.T) {
 	agents := []*model.Agent{{ID: "agA"}, {ID: "agB"}}

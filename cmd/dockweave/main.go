@@ -13,8 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/mcp"
+	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/pkg/sdk"
 	"github.com/ananta888/dockweave/ui/tui"
 )

@@ -36,10 +36,14 @@ func (f *fakeMounts) PrepareAgentTree(id string) error {
 	}
 	return nil
 }
-func (f *fakeMounts) AgentDir(id string) string                      { return filepath.Join(f.root, "agents", id, "agent") }
-func (f *fakeMounts) MemoryDir(id string) string                     { return filepath.Join(f.root, "agents", id, "memory") }
-func (f *fakeMounts) WorkspaceTree(id string) string                 { return filepath.Join(f.root, "agents", id, "workspace") }
-func (f *fakeMounts) List(string) ([]model.MountState, error)        { return f.list, nil }
+func (f *fakeMounts) AgentDir(id string) string { return filepath.Join(f.root, "agents", id, "agent") }
+func (f *fakeMounts) MemoryDir(id string) string {
+	return filepath.Join(f.root, "agents", id, "memory")
+}
+func (f *fakeMounts) WorkspaceTree(id string) string {
+	return filepath.Join(f.root, "agents", id, "workspace")
+}
+func (f *fakeMounts) List(string) ([]model.MountState, error) { return f.list, nil }
 
 func (f *fakeMounts) TeardownAgentTree(_ string, force bool) ([]string, error) {
 	if f.teardownErr != nil {
@@ -78,8 +82,8 @@ func (f *fakeDocker) EnsureImage(context.Context, string, io.Writer) error { ret
 func (f *fakeDocker) Create(context.Context, dockerclient.ContainerSpec) (string, error) {
 	return "cid", nil
 }
-func (f *fakeDocker) Start(context.Context, string) error             { return nil }
-func (f *fakeDocker) Stop(context.Context, string, int) error         { return nil }
+func (f *fakeDocker) Start(context.Context, string) error     { return nil }
+func (f *fakeDocker) Stop(context.Context, string, int) error { return nil }
 func (f *fakeDocker) Remove(_ context.Context, id string, _ bool) error {
 	if f.rmErr != nil {
 		return f.rmErr
@@ -88,7 +92,7 @@ func (f *fakeDocker) Remove(_ context.Context, id string, _ bool) error {
 	return nil
 }
 func (f *fakeDocker) FindByAgent(context.Context, string) (string, error) { return "cid", nil }
-func (f *fakeDocker) State(context.Context, string) (string, error)      { return "exited", nil }
+func (f *fakeDocker) State(context.Context, string) (string, error)       { return "exited", nil }
 func (f *fakeDocker) ExecOutput(context.Context, string, []string) (string, error) {
 	return "", nil
 }

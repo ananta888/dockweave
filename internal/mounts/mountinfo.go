@@ -10,16 +10,16 @@ import (
 
 // MountInfo is one parsed entry of /proc/self/mountinfo.
 type MountInfo struct {
-	ID          int
-	ParentID    int
-	MajorMinor  string
-	Root        string
-	MountPoint  string
-	Options     string
-	Optional    []string // e.g. "shared:3", "master:7"
-	FSType      string
-	Source      string
-	SuperOpts   string
+	ID         int
+	ParentID   int
+	MajorMinor string
+	Root       string
+	MountPoint string
+	Options    string
+	Optional   []string // e.g. "shared:3", "master:7"
+	FSType     string
+	Source     string
+	SuperOpts  string
 }
 
 // Shared reports whether the mount belongs to a shared peer group.

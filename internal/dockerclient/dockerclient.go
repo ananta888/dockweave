@@ -128,10 +128,10 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 			Target: "/memory",
 		},
 		{
-			Type:             mount.TypeBind,
-			Source:           spec.WorkspaceDir,
-			Target:           "/workspace",
-			BindOptions:      &mount.BindOptions{Propagation: mount.PropagationRSlave},
+			Type:        mount.TypeBind,
+			Source:      spec.WorkspaceDir,
+			Target:      "/workspace",
+			BindOptions: &mount.BindOptions{Propagation: mount.PropagationRSlave},
 		},
 	}
 	host := &container.HostConfig{
@@ -139,10 +139,10 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 		// Hardening: drop all capabilities; agent work must not need any.
 		CapDrop: []string{"ALL"},
 		// Explicitly never privileged; seccomp stays at engine default.
-		Privileged:      false,
-		SecurityOpt:     []string{"no-new-privileges"},
-		NetworkMode:     container.NetworkMode(a.NetworkMode),
-		RestartPolicy:   container.RestartPolicy{Name: container.RestartPolicyDisabled},
+		Privileged:    false,
+		SecurityOpt:   []string{"no-new-privileges"},
+		NetworkMode:   container.NetworkMode(a.NetworkMode),
+		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyDisabled},
 	}
 	if a.NetworkMode == "" {
 		host.NetworkMode = "bridge"

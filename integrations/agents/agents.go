@@ -18,11 +18,11 @@ type ExecFunc func(ctx context.Context, cmd []string) (string, error)
 
 // SessionInfo is optional metadata reported by an adapter.
 type SessionInfo struct {
-	Adapter      string            `json:"adapter"`
-	Detected     bool              `json:"detected"`
-	ActiveProject string           `json:"active_project,omitempty"` // reported by the agent, if any
-	Sessions     []string          `json:"sessions,omitempty"`       // session/checkpoint identifiers
-	Details      map[string]string `json:"details,omitempty"`
+	Adapter       string            `json:"adapter"`
+	Detected      bool              `json:"detected"`
+	ActiveProject string            `json:"active_project,omitempty"` // reported by the agent, if any
+	Sessions      []string          `json:"sessions,omitempty"`       // session/checkpoint identifiers
+	Details       map[string]string `json:"details,omitempty"`
 }
 
 // Adapter detects one agent flavor and extracts session metadata.

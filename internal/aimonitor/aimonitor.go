@@ -17,9 +17,9 @@ import (
 
 // Findings classify report items.
 type Finding struct {
-	Kind    string `json:"kind"`    // conflict | inactivity | resource | distribution
+	Kind     string `json:"kind"`     // conflict | inactivity | resource | distribution
 	Severity string `json:"severity"` // info | warning | critical
-	Message string `json:"message"`
+	Message  string `json:"message"`
 }
 
 // Report is the analysis result of one observation cycle.

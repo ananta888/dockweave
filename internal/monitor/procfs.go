@@ -16,11 +16,11 @@ import (
 
 // OpenFile describes one file held open by a process on the host.
 type OpenFile struct {
-	PID    int
-	Path   string // readlink of /proc/PID/fd/N (host-namespace path)
-	Dev    uint64
-	Ino    uint64
-	Write  bool   // opened O_WRONLY or O_RDWR
+	PID   int
+	Path  string // readlink of /proc/PID/fd/N (host-namespace path)
+	Dev   uint64
+	Ino   uint64
+	Write bool // opened O_WRONLY or O_RDWR
 }
 
 // ProcfsProvider observes open files and working directories via /proc.

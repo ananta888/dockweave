@@ -43,13 +43,13 @@ const (
 var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events"}
 
 type dataMsg struct {
-	agents    []*model.Agent
-	activity  []*model.AgentActivity
+	agents     []*model.Agent
+	activity   []*model.AgentActivity
 	workspaces []*model.Workspace
-	mounts    []*model.MountState
-	events    []*model.Event
-	conflicts []model.FileConflict
-	err       error
+	mounts     []*model.MountState
+	events     []*model.Event
+	conflicts  []model.FileConflict
+	err        error
 }
 
 type tickMsg time.Time
@@ -61,24 +61,24 @@ type modelTUI struct {
 	width  int
 	height int
 	keys   keyMap
-	cursor int          // selection in agents view
-	socket string       // daemon term socket (for terminals)
+	cursor int    // selection in agents view
+	socket string // daemon term socket (for terminals)
 }
 
 type keyMap struct {
-	Quit, Next, Prev, Refresh key.Binding
+	Quit, Next, Prev, Refresh  key.Binding
 	CursorUp, CursorDown, Term key.Binding
 }
 
 func defaultKeys() keyMap {
 	return keyMap{
-		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
-		Next:      key.NewBinding(key.WithKeys("tab", "l"), key.WithHelp("tab", "next view")),
-		Prev:      key.NewBinding(key.WithKeys("shift+tab", "h"), key.WithHelp("shift+tab", "prev view")),
-		Refresh:   key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
-		CursorUp:  key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑", "select agent")),
+		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Next:       key.NewBinding(key.WithKeys("tab", "l"), key.WithHelp("tab", "next view")),
+		Prev:       key.NewBinding(key.WithKeys("shift+tab", "h"), key.WithHelp("shift+tab", "prev view")),
+		Refresh:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
+		CursorUp:   key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑", "select agent")),
 		CursorDown: key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓", "select agent")),
-		Term:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "open terminal (agents view)")),
+		Term:       key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "open terminal (agents view)")),
 	}
 }
 

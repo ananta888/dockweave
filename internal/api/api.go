@@ -125,8 +125,6 @@ func actor(r *http.Request) string {
 	return "api"
 }
 
-
-
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "ok", "version": "v1", "time": time.Now().UTC(),

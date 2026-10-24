@@ -31,8 +31,8 @@ func (f fakeFS) exec(ctx context.Context, cmd []string) (string, error) {
 
 func TestCodexAdapter(t *testing.T) {
 	fs := fakeFS{dirs: map[string][]string{
-		"/memory/.codex":            {"sessions", "config.toml"},
-		"/memory/.codex/sessions":   {"2026"},
+		"/memory/.codex":               {"sessions", "config.toml"},
+		"/memory/.codex/sessions":      {"2026"},
 		"/memory/.codex/sessions/2026": {"10-22-a.json", "10-23-b.json"},
 	}}
 	ctx := context.Background()
@@ -52,8 +52,8 @@ func TestCodexAdapter(t *testing.T) {
 
 func TestClaudeAdapterActiveProject(t *testing.T) {
 	fs := fakeFS{dirs: map[string][]string{
-		"/memory/.claude":           {"projects"},
-		"/memory/.claude/projects":  {"-workspace-proj"},
+		"/memory/.claude":          {"projects"},
+		"/memory/.claude/projects": {"-workspace-proj"},
 	}}
 	ctx := context.Background()
 	a := ClaudeAdapter{}
@@ -77,11 +77,11 @@ func TestNoDetection(t *testing.T) {
 func TestOpencodeAndGemini(t *testing.T) {
 	ctx := context.Background()
 	fs := fakeFS{dirs: map[string][]string{
-		"/memory/.local/share/opencode":            {"storage"},
-		"/memory/.local/share/opencode/storage":     {"session"},
+		"/memory/.local/share/opencode":                 {"storage"},
+		"/memory/.local/share/opencode/storage":         {"session"},
 		"/memory/.local/share/opencode/storage/session": {"s2", "s1"},
-		"/memory/.gemini":      {"tmp"},
-		"/memory/.gemini/tmp":  {"g1"},
+		"/memory/.gemini":                               {"tmp"},
+		"/memory/.gemini/tmp":                           {"g1"},
 	}}
 	a := OpencodeAdapter{}
 	info, _ := a.SessionInfo(ctx, fs.exec)

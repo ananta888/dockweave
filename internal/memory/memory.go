@@ -285,7 +285,7 @@ func (m *Manager) Delete(memoryID, name string) error {
 
 // RetentionPolicy defines when old snapshots are pruned.
 type RetentionPolicy struct {
-	MaxCount int         // keep at most N newest (0 = unlimited)
+	MaxCount int           // keep at most N newest (0 = unlimited)
 	MaxAge   time.Duration // delete older than (0 = unlimited)
 }
 

@@ -54,9 +54,9 @@ type Agent struct {
 	AgentRO     bool       `json:"agent_ro"` // mount /agent read-only
 	UID         int        `json:"uid"`
 	GID         int        `json:"gid"`
-	CPULimit    float64    `json:"cpu_limit,omitempty"`   // cores, 0 = unlimited
-	MemoryMB    int64      `json:"memory_mb,omitempty"`   // 0 = unlimited
-	NetworkMode string     `json:"network_mode"`          // bridge|none|host(never default)
+	CPULimit    float64    `json:"cpu_limit,omitempty"` // cores, 0 = unlimited
+	MemoryMB    int64      `json:"memory_mb,omitempty"` // 0 = unlimited
+	NetworkMode string     `json:"network_mode"`        // bridge|none|host(never default)
 	State       AgentState `json:"state"`
 	ContainerID string     `json:"container_id,omitempty"` // current container, may change
 	CreatedAt   time.Time  `json:"created_at"`
@@ -190,8 +190,8 @@ type MountState struct {
 	ID         string      `json:"id"`
 	AgentID    string      `json:"agent_id"`
 	GrantID    string      `json:"grant_id"`
-	HostPath   string      `json:"host_path"`            // canonical source
-	TargetPath string      `json:"target_path"`          // host-side target under agent workspace tree
+	HostPath   string      `json:"host_path"`   // canonical source
+	TargetPath string      `json:"target_path"` // host-side target under agent workspace tree
 	Mode       AccessMode  `json:"mode"`
 	Status     MountStatus `json:"status"`
 	LastError  string      `json:"last_error,omitempty"`
@@ -202,40 +202,40 @@ type MountState struct {
 type EventType string
 
 const (
-	EventAgentCreated    EventType = "agent.created"
-	EventAgentStarted    EventType = "agent.started"
-	EventAgentStopped    EventType = "agent.stopped"
-	EventAgentIdentity   EventType = "agent.identity" // container uid policy (review-005)
-	EventAgentRemoved    EventType = "agent.removed"
-	EventWorkspaceAdded  EventType = "workspace.registered"
-	EventWorkspaceGone   EventType = "workspace.removed"
-	EventMemoryAttached  EventType = "memory.attached"
-	EventMemoryDetached  EventType = "memory.detached"
-	EventGrantCreated    EventType = "grant.created"
-	EventGrantRevoked    EventType = "grant.revoked"
-	EventGrantRevoking   EventType = "grant.revoking"
-	EventMountAdded      EventType = "mount.added"
-	EventMountRemoved    EventType = "mount.removed"
-	EventMountFailed     EventType = "mount.failed"
-	EventUnmountFailed   EventType = "mount.unmount_failed"
-	EventUnmountForced   EventType = "mount.unmount_forced" // audited MNT_DETACH (force flag)
-	EventRecovery        EventType = "recovery"
-	EventSecurityDeny    EventType = "security.denied"
-	EventConflict        EventType = "monitor.conflict"
+	EventAgentCreated   EventType = "agent.created"
+	EventAgentStarted   EventType = "agent.started"
+	EventAgentStopped   EventType = "agent.stopped"
+	EventAgentIdentity  EventType = "agent.identity" // container uid policy (review-005)
+	EventAgentRemoved   EventType = "agent.removed"
+	EventWorkspaceAdded EventType = "workspace.registered"
+	EventWorkspaceGone  EventType = "workspace.removed"
+	EventMemoryAttached EventType = "memory.attached"
+	EventMemoryDetached EventType = "memory.detached"
+	EventGrantCreated   EventType = "grant.created"
+	EventGrantRevoked   EventType = "grant.revoked"
+	EventGrantRevoking  EventType = "grant.revoking"
+	EventMountAdded     EventType = "mount.added"
+	EventMountRemoved   EventType = "mount.removed"
+	EventMountFailed    EventType = "mount.failed"
+	EventUnmountFailed  EventType = "mount.unmount_failed"
+	EventUnmountForced  EventType = "mount.unmount_forced" // audited MNT_DETACH (force flag)
+	EventRecovery       EventType = "recovery"
+	EventSecurityDeny   EventType = "security.denied"
+	EventConflict       EventType = "monitor.conflict"
 )
 
 // Event is an audit-log record. Events form a hash chain (PrevHash/Hash)
 // so tampering with stored history is detectable.
 type Event struct {
-	ID         string    `json:"id"`
-	Type       EventType `json:"type"`
-	Actor      string    `json:"actor"` // peer username or "daemon"
-	AgentID    string    `json:"agent_id,omitempty"`
-	WorkspaceID string   `json:"workspace_id,omitempty"`
-	Message    string    `json:"message"`
-	Timestamp  time.Time `json:"timestamp"`
-	PrevHash   string    `json:"prev_hash"`
-	Hash       string    `json:"hash"`
+	ID          string    `json:"id"`
+	Type        EventType `json:"type"`
+	Actor       string    `json:"actor"` // peer username or "daemon"
+	AgentID     string    `json:"agent_id,omitempty"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	Message     string    `json:"message"`
+	Timestamp   time.Time `json:"timestamp"`
+	PrevHash    string    `json:"prev_hash"`
+	Hash        string    `json:"hash"`
 }
 
 // ActivityLevel is the observed activity of an agent, derived from real
@@ -243,10 +243,10 @@ type Event struct {
 type ActivityLevel string
 
 const (
-	ActivityUnknown  ActivityLevel = "UNKNOWN"
-	ActivityIdle     ActivityLevel = "IDLE"
-	ActivityReading  ActivityLevel = "READING"
-	ActivityWriting  ActivityLevel = "WRITING"
+	ActivityUnknown ActivityLevel = "UNKNOWN"
+	ActivityIdle    ActivityLevel = "IDLE"
+	ActivityReading ActivityLevel = "READING"
+	ActivityWriting ActivityLevel = "WRITING"
 )
 
 // AgentActivity is the monitor's observed snapshot for one agent.
@@ -262,16 +262,16 @@ type AgentActivity struct {
 	// ("kernel" = kernel-reported path, "heuristic" = cwd/args inference).
 	FileEvidence map[string]string `json:"file_evidence,omitempty"`
 	Processes    int               `json:"processes"`
-	Available   bool          `json:"available"` // false => data source unavailable
-	Unavailable string        `json:"unavailable_reason,omitempty"`
-	Timestamp   time.Time     `json:"timestamp"`
+	Available    bool              `json:"available"` // false => data source unavailable
+	Unavailable  string            `json:"unavailable_reason,omitempty"`
+	Timestamp    time.Time         `json:"timestamp"`
 }
 
 // FileConflict reports multiple agents holding the same file open,
 // at least one of them for writing.
 type FileConflict struct {
-	Path     string   `json:"path"`
-	AgentIDs []string `json:"agent_ids"`
-	Writers  []string `json:"writers"`
+	Path     string    `json:"path"`
+	AgentIDs []string  `json:"agent_ids"`
+	Writers  []string  `json:"writers"`
 	Detected time.Time `json:"detected_at"`
 }

@@ -43,11 +43,11 @@ func TestAllViewsRenderWithoutPanic(t *testing.T) {
 	m := &modelTUI{keys: defaultKeys(), width: 100, height: 40}
 	m.data = sampleData()
 	markers := map[tab][]string{
-		tabDashboard:   {"alpha", "beta", "WRITING", "file conflict"},
-		tabAgents:      {"alpha", "beta", "img-a"},
-		tabWorkspaces:  {"proj", "/srv/proj"},
-		tabMounts:      {"ag1", "/srv/proj", "mounted"},
-		tabEvents:      {"grant.created", "grant on proj"},
+		tabDashboard:  {"alpha", "beta", "WRITING", "file conflict"},
+		tabAgents:     {"alpha", "beta", "img-a"},
+		tabWorkspaces: {"proj", "/srv/proj"},
+		tabMounts:     {"ag1", "/srv/proj", "mounted"},
+		tabEvents:     {"grant.created", "grant on proj"},
 	}
 	for i := 0; i < int(tabCount); i++ {
 		m.tab = tab(i)

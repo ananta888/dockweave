@@ -87,11 +87,11 @@ func (p *TetragonProvider) Available(ctx context.Context) error {
 
 // tetragonEvent is a tolerant subset of the Tetragon export JSON.
 type tetragonEvent struct {
-	Time            string `json:"time"`
-	Type            string `json:"event_type"` // older exports: "type"
-	TypeNum         *int   `json:"type"`
-	FunctionName    string `json:"function_name"`
-	Process         struct {
+	Time         string `json:"time"`
+	Type         string `json:"event_type"` // older exports: "type"
+	TypeNum      *int   `json:"type"`
+	FunctionName string `json:"function_name"`
+	Process      struct {
 		PID      int      `json:"pid"`
 		Binary   string   `json:"binary"`
 		Args     []string `json:"args"`
