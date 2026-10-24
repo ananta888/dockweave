@@ -32,10 +32,21 @@ mounts never propagate back to the host.
 ## Quick Start
 
 ```bash
-# Build
+# Build — needs the Go toolchain (>= 1.27) on your PATH or at
+# ~/.local/go/bin/go (the Makefile finds it there automatically)
 make build
 
-# Start the daemon (requires root, CAP_SYS_ADMIN)
+# Optional but recommended: install the CLI onto your PATH
+# (~/.local/bin — make sure it is on your PATH, e.g. via ~/.profile)
+make install
+
+# Daemon configuration: authorize your user for write access (admin role).
+# Without this, only root (uid 0) may use the write API; the monitor role
+# is read-only (GET/HEAD). Unknown UIDs are denied entirely.
+mkdir -p /etc/dockweave
+echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
+
+# Start the daemon (requires root, CAP_SYS_ADMIN) — keep this running
 sudo ./bin/dockweaved
 
 # Register a workspace
@@ -57,11 +68,16 @@ dockweave monitor activity
 dockweave tui
 ```
 
+If `go` is not on your `PATH` after installing it under `~/.local/go`:
+`export PATH="$HOME/.local/go/bin:$PATH"` (persist it in `~/.bashrc` /
+`~/.profile`) — or just rely on the Makefile fallback. If `dockweave` is
+not found, use `./bin/dockweave` instead of `make install`.
+
 ## Requirements
 
 - **Linux** (Kernel ≥ 5.12, native or WSL2 with systemd)
 - **Docker Engine** ≥ 24.0
-- **Go** ≥ 1.24 (for building from source)
+- **Go** ≥ 1.27 (for building from source)
 - Root / `CAP_SYS_ADMIN` for the daemon (mount operations)
 
 Windows, macOS, and Docker Desktop are **not supported**. The daemon performs

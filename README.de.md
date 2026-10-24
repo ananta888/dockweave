@@ -19,7 +19,22 @@ Jeder Agent erhält drei Bereiche:
 ## Schnellstart
 
 ```bash
+# Bauen — benötigt die Go-Toolchain (>= 1.27) im PATH oder unter
+# ~/.local/go/bin/go (das Makefile findet sie dort automatisch)
 make build
+
+# Optional, aber empfohlen: CLI dauerhaft in den PATH installieren
+# (~/.local/bin — muss im PATH stehen, z. B. über ~/.profile)
+make install
+
+# Daemon-Konfiguration: eigenen User für Schreibzugriffe freigeben
+# (Rolle admin). Ohne das darf nur root (uid 0) schreiben; die Rolle
+# monitor ist ausschließlich lesend (GET/HEAD). Unbekannte UIDs sind
+# grundsätzlich gesperrt.
+mkdir -p /etc/dockweave
+echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
+
+# Daemon starten (braucht root, CAP_SYS_ADMIN) — laufen lassen
 sudo ./bin/dockweaved
 
 dockweave workspace register meinprojekt /srv/projekte/meinprojekt
@@ -29,9 +44,15 @@ dockweave agent start codex-01
 dockweave tui
 ```
 
+Falls `go` nach einer Installation unter `~/.local/go` nicht gefunden wird:
+`export PATH="$HOME/.local/go/bin:$PATH"` (dauerhaft in `~/.bashrc` /
+`~/.profile`) — oder einfach den Makefile-Fallback nutzen. Falls
+`dockweave` nicht gefunden wird: `./bin/dockweave` statt `make install`
+verwenden.
+
 ## Voraussetzungen
 
-- Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.24
+- Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27
 - Root / `CAP_SYS_ADMIN` für den Daemon
 
 Windows, macOS und Docker Desktop werden **nicht unterstützt**.
