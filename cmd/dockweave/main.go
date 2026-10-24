@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -71,6 +72,7 @@ func agentCmd() *cobra.Command {
 
 	var spec sdk.AgentSpec
 	var ro bool
+	var execCmd string
 	create := &cobra.Command{
 		Use:   "create NAME --image IMAGE",
 		Short: "Create an agent identity",
@@ -78,6 +80,12 @@ func agentCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			spec.Name = args[0]
 			spec.AgentRO = &ro
+			if execCmd != "" {
+				if len(spec.Command) > 0 {
+					fail(errors.New("use either --cmd or --exec, not both"))
+				}
+				spec.Command = []string{"sh", "-c", execCmd}
+			}
 			a, err := client().CreateAgent(ctx(), spec)
 			if err != nil {
 				fail(err)
@@ -97,7 +105,8 @@ func agentCmd() *cobra.Command {
 	f.IntVar(&spec.GID, "gid", 0, "run as gid")
 	f.Float64Var(&spec.CPULimit, "cpus", 0, "CPU limit (cores)")
 	f.Int64Var(&spec.MemoryMB, "memory-mb", 0, "memory limit (MiB)")
-	f.StringSliceVar(&spec.Command, "cmd", nil, "override command (comma-separated argv)")
+	f.StringArrayVar(&spec.Command, "cmd", nil, "override command (repeatable, verbatim argv elements)")
+	f.StringVar(&execCmd, "exec", "", "shell command to run via sh -c (quote-safe alternative to --cmd)")
 	_ = create.MarkFlagRequired("image")
 
 	list := &cobra.Command{
