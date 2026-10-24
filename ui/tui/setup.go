@@ -22,6 +22,34 @@ import (
 
 var agentTypes = []string{"codex", "opencode", "claude", "gemini", "custom"}
 
+// agentPreset holds the default image and command per agent profile. The
+// packages are the verified npm distributions; installs go to $HOME/.local
+// so they persist in /memory.
+type agentPreset struct {
+	image   string
+	command string
+}
+
+var agentPresets = map[string]agentPreset{
+	"codex": {
+		image:   "node:22-bookworm",
+		command: `npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex"`,
+	},
+	"opencode": {
+		image:   "node:22-bookworm",
+		command: `npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"`,
+	},
+	"claude": {
+		image:   "node:22-bookworm",
+		command: `npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"`,
+	},
+	"gemini": {
+		image:   "node:22-bookworm",
+		command: `npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"`,
+	},
+	"custom": {},
+}
+
 // setupHit is a clickable region of the Setup view (plain columns/rows).
 type setupHit struct {
 	y, x0, x1 int
@@ -36,6 +64,10 @@ type setupForm struct {
 	agentType             int    // index into agentTypes
 	focus                 string // current hit action, "" = none
 	hits                  []setupHit
+	// touched marks fields the user typed into: type changes never
+	// overwrite them. seeded applies the defaults once on first entry.
+	touched map[string]bool
+	seeded  bool
 }
 
 func newSetupForm() setupForm {
@@ -48,13 +80,63 @@ func newSetupForm() setupForm {
 		return ti
 	}
 	return setupForm{
-		name:   mk("Name    ", "e.g. codex-02", 40),
-		image:  mk("Image   ", "node:22-bookworm", 80),
-		cmd:    mk("Command ", `sh -c '…'`+" or empty for the image default", 160),
-		uid:    mk("UID     ", "1000", 8),
-		wsName: mk("Name    ", "myproject", 40),
-		wsPath: mk("Path    ", "/srv/projects/myproject", 120),
+		name:    mk("Name    ", "e.g. codex-02", 40),
+		image:   mk("Image   ", "node:22-bookworm", 80),
+		cmd:     mk("Command ", `sh -c '…'`+" or empty for the image default", 160),
+		uid:     mk("UID     ", "1000", 8),
+		wsName:  mk("Name    ", "myproject", 40),
+		wsPath:  mk("Path    ", "/srv/projects/myproject", 120),
+		touched: map[string]bool{},
 	}
+}
+
+// applyTypeDefaults pre-fills name, image and command for the selected
+// agent profile. Fields the user typed into are never overwritten.
+func (m *modelTUI) applyTypeDefaults() {
+	f := &m.form
+	t := agentTypes[f.agentType]
+	p := agentPresets[t]
+	if !f.touched["name"] {
+		f.name.SetValue(m.nextAgentName(t))
+	}
+	if !f.touched["image"] && p.image != "" {
+		f.image.SetValue(p.image)
+	}
+	if !f.touched["cmd"] && p.command != "" {
+		f.cmd.SetValue(p.command)
+	}
+	if !f.touched["uid"] {
+		f.uid.SetValue("1000")
+	}
+	f.seeded = true
+}
+
+// nextAgentName suggests "<type>-NN" with the next free number.
+func (m *modelTUI) nextAgentName(t string) string {
+	used := map[string]bool{}
+	for _, a := range m.data.agents {
+		used[a.Name] = true
+	}
+	for n := 1; n < 100; n++ {
+		cand := fmt.Sprintf("%s-%02d", t, n)
+		if !used[cand] {
+			return cand
+		}
+	}
+	return t
+}
+
+// clearCreateForm resets the create form to the profile defaults.
+func (m *modelTUI) clearCreateForm() {
+	f := &m.form
+	for _, k := range []string{"name", "image", "cmd", "uid"} {
+		delete(f.touched, k)
+	}
+	f.name.SetValue("")
+	f.image.SetValue("")
+	f.cmd.SetValue("")
+	f.uid.SetValue("")
+	m.applyTypeDefaults()
 }
 
 // focusables lists the focusable actions in tab order.
@@ -146,6 +228,9 @@ func (m *modelTUI) grantFor(agentID, workspaceID string) *model.Grant {
 func (m *modelTUI) viewSetup() string {
 	var b strings.Builder
 	f := &m.form
+	if !f.seeded {
+		m.applyTypeDefaults()
+	}
 	f.hits = f.hits[:0]
 	row := m.setupRowBase()
 
@@ -281,6 +366,15 @@ func (m *modelTUI) updateSetup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if ti := f.focusedInput(); ti != nil {
 			var cmd tea.Cmd
 			*ti, cmd = ti.Update(msg)
+			// User input protects the field from default overwrites.
+			switch msg.String() {
+			case "backspace", "delete", "ctrl+u", "ctrl+k":
+				f.touched[strings.TrimPrefix(f.focus, "f-")] = true
+			default:
+				if len(msg.String()) == 1 || msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
+					f.touched[strings.TrimPrefix(f.focus, "f-")] = true
+				}
+			}
 			return m, cmd
 		}
 		return m, nil
@@ -298,13 +392,14 @@ func (m *modelTUI) updateSetup(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// cycleType cycles the agent type cycler.
+// cycleType cycles the agent type cycler and refreshes the defaults.
 func (m *modelTUI) cycleType(next bool) {
 	if next {
 		m.form.agentType = (m.form.agentType + 1) % len(agentTypes)
 	} else {
 		m.form.agentType = (m.form.agentType - 1 + len(agentTypes)) % len(agentTypes)
 	}
+	m.applyTypeDefaults()
 }
 
 // activate performs the action of a focused/clicked control.
@@ -318,10 +413,7 @@ func (m *modelTUI) activate(action, arg string) tea.Cmd {
 	case action == "create":
 		return m.submitAgent()
 	case action == "clear":
-		f.name.SetValue("")
-		f.image.SetValue("")
-		f.cmd.SetValue("")
-		f.uid.SetValue("")
+		m.clearCreateForm()
 		m.status = ""
 		return nil
 	case action == "register":

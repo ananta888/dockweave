@@ -573,33 +573,71 @@ func TestSetupFormTypingAndFocus(t *testing.T) {
 	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
 	m.data = sampleData()
 
-	// Click the name field: it takes focus, typing goes in.
-	_ = m.View() // build hit map
+	// Click the name field: it takes focus, typing goes in (the default
+	// suggestion stays, user input appends).
+	_ = m.View() // build hit map + seed defaults
 	_, cmd := m.Update(leftClick(4, 4))
 	_ = cmd
-	for _, r := range "coder2" {
+	for _, r := range "x" {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if m.form.name.Value() != "coder2" {
+	if !strings.HasPrefix(m.form.name.Value(), "codex-01") || !strings.HasSuffix(m.form.name.Value(), "x") {
 		t.Fatalf("name field = %q", m.form.name.Value())
 	}
 	// Tab moves focus on; typing no longer reaches name.
 	m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	if m.form.name.Value() != "coder2" {
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if !strings.HasSuffix(m.form.name.Value(), "x") {
 		t.Fatal("focus must leave the name field")
 	}
-	// The type cycler changes on click and keyboard.
-	start := m.form.agentType
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'\r'}}) // enter activates focused control
-	// Direct cycler click:
-	_, _ = m.Update(leftClick(56, 4))
-	if m.form.agentType == start {
-		// clicking the cycler may refocus only; keyboard cycles too:
-		m.Update(tea.KeyMsg{Type: tea.KeyRight})
+}
+
+func TestSetupTypeDefaultsPreFill(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 40, tab: tabSetup, form: newSetupForm()}
+	m.data = sampleData()
+
+	_ = m.View() // seeds codex defaults
+	if got := m.form.name.Value(); got != "codex-01" {
+		t.Fatalf("name default = %q, want codex-01", got)
 	}
-	if m.form.agentType == start {
-		t.Fatal("type cycler must change")
+	if got := m.form.image.Value(); got != "node:22-bookworm" {
+		t.Fatalf("image default = %q", got)
+	}
+	if !strings.Contains(m.form.cmd.Value(), "@openai/codex") {
+		t.Fatalf("cmd default = %q, want codex install", m.form.cmd.Value())
+	}
+
+	// Switching the profile updates all untouched fields.
+	m.cycleType(true) // -> opencode
+	if m.form.agentType != 1 {
+		t.Fatalf("type index = %d", m.form.agentType)
+	}
+	if got := m.form.name.Value(); got != "opencode-01" {
+		t.Fatalf("name after switch = %q", got)
+	}
+	if !strings.Contains(m.form.cmd.Value(), "opencode-ai") {
+		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
+	}
+
+	// A typed field survives later profile switches.
+	m.form.applyFocus("f-name")
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	typed := m.form.name.Value()
+	m.cycleType(true) // -> claude
+	if m.form.name.Value() != typed {
+		t.Fatalf("typed name must survive, got %q want %q", m.form.name.Value(), typed)
+	}
+	if !strings.Contains(m.form.cmd.Value(), "@anthropic-ai/claude-code") {
+		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
+	}
+	if got := m.form.image.Value(); got != "node:22-bookworm" {
+		t.Fatalf("image after switch = %q", got)
+	}
+
+	// Clear resets to the profile defaults.
+	m.activate("clear", "")
+	if m.form.name.Value() != "claude-01" || !strings.Contains(m.form.cmd.Value(), "claude-code") {
+		t.Fatalf("clear must restore defaults: name=%q cmd=%q", m.form.name.Value(), m.form.cmd.Value())
 	}
 }
 
