@@ -78,7 +78,8 @@ type setupForm struct {
 	folderOpen            bool   // the set-folder input is visible
 	editing               bool   // a field is being changed (typing/cycling)
 	savedValue            string // value before editing (esc restores)
-	focusIdx              int    // index into hits, -1 = nothing focused
+	focus                 string // action id of the selected control (stable)
+	focusIdx              int    // index into hits (order), -1 = none
 	hits                  []setupHit
 	// touched marks fields the user typed into: type changes never
 	// overwrite them. seeded applies the defaults once on first entry.
@@ -195,7 +196,7 @@ func (m *modelTUI) viewSetup() string {
 		f.hits = append(f.hits, setupHit{y: y, x0: x0, x1: x1, action: action, arg: arg})
 	}
 	focused := func(action string) bool {
-		return f.focusIdx >= 0 && f.focusIdx < len(f.hits) && f.hits[f.focusIdx].action == action
+		return f.focus == action
 	}
 
 	// -- agent tab area: click an agent to see and change its settings --
@@ -419,14 +420,14 @@ func (m *modelTUI) setupHintLine() string {
 }
 
 func cyclerView(label string, focused bool) string {
-	render := "‹ " + label + " ›"
 	if focused {
-		return tabActive.Render(render)
+		// Width-stable: the ▸ marker replaces the opening bracket.
+		return tabActive.Render("▸ " + label + " ›")
 	}
-	return tabIdle.Render(render)
+	return tabIdle.Render("‹ " + label + " ›")
 }
 
-// focusAction focuses the first hit with the given action (tests, buttons).
+// focusAction selects the first hit with the given action (tests, buttons).
 func (m *modelTUI) focusAction(action string) {
 	for i, h := range m.form.hits {
 		if h.action == action {
@@ -434,9 +435,11 @@ func (m *modelTUI) focusAction(action string) {
 			return
 		}
 	}
+	m.form.focus = action // not rendered yet: still mark it selected
 }
 
-// fieldView renders a text input with an unmissable selection marker.
+// fieldView renders a text input with an unmissable selection marker:
+// the marker and highlight replace the leading indent (same width).
 func fieldView(ti *textinput.Model, selected bool) string {
 	v := ti.View()
 	if selected {
@@ -447,7 +450,8 @@ func fieldView(ti *textinput.Model, selected bool) string {
 
 func buttonView(label string, focused bool) string {
 	if focused {
-		return tabActive.Render(" " + label + " ")
+		// Width-stable: the ▸ marker replaces the closing bracket.
+		return tabActive.Render("▸" + label + " ")
 	}
 	return dimStyle.Render("[" + label + "]")
 }
@@ -541,9 +545,17 @@ func (f *setupForm) allInputs() []*textinput.Model {
 	return []*textinput.Model{&f.name, &f.image, &f.cmd, &f.uid, &f.folder, &f.wsName, &f.wsPath}
 }
 
+// focusedHit returns the focused control from the last render's hit list.
 func (f *setupForm) focusedHit() *setupHit {
-	if f.focusIdx >= 0 && f.focusIdx < len(f.hits) {
-		return &f.hits[f.focusIdx]
+	return f.focusedHitByID()
+}
+
+// focusedHitByID returns the hit with the focused action.
+func (f *setupForm) focusedHitByID() *setupHit {
+	for i := range f.hits {
+		if f.hits[i].action == f.focus {
+			return &f.hits[i]
+		}
 	}
 	return nil
 }
@@ -581,13 +593,17 @@ func (f *setupForm) focusedInput() *textinput.Model {
 	return nil
 }
 
-// applyFocusTo focuses the text input of hit idx (blurs all others).
+// applyFocusTo selects the hit idx (blurs all text inputs first).
 func (m *modelTUI) applyFocusTo(idx int) {
 	f := &m.form
 	for _, ti := range f.allInputs() {
 		ti.Blur()
 	}
 	f.focusIdx = idx
+	f.focus = ""
+	if idx >= 0 && idx < len(f.hits) {
+		f.focus = f.hits[idx].action
+	}
 	if ti := f.focusedInput(); ti != nil {
 		ti.Focus()
 	}
