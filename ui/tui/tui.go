@@ -130,7 +130,10 @@ type embeddedReadyMsg struct {
 }
 
 // switchDoneMsg reports the outcome of switching the terminal pane.
-type switchDoneMsg struct{ err error }
+type switchDoneMsg struct {
+	agent string
+	err   error
+}
 
 func (m *modelTUI) Init() tea.Cmd {
 	if m.embedded {
@@ -162,24 +165,24 @@ func (m *modelTUI) collapseToBar() {
 }
 
 // switchBottom shows the selected agent's terminal in the bottom pane.
-// With focus it also moves keyboard focus into the terminal.
+// With focus it also moves keyboard focus into the terminal. On failure
+// the switch stays retryable (bottomAgent is only set on success).
 func (m *modelTUI) switchBottom(focus bool) tea.Cmd {
 	if m.cursor >= len(m.data.agents) {
 		return nil
 	}
 	a := m.data.agents[m.cursor]
 	pane, agent, sock := m.bottomPane, a.Name, m.socket
-	m.bottomAgent = agent
 	return func() tea.Msg {
 		if err := m.tmux.switchTerminal(pane, agent, sock); err != nil {
-			return switchDoneMsg{err: err}
+			return switchDoneMsg{agent: agent, err: err}
 		}
 		if focus {
 			if err := m.tmux.focusTerminal(pane); err != nil {
-				return switchDoneMsg{err: err}
+				return switchDoneMsg{agent: agent, err: err}
 			}
 		}
-		return switchDoneMsg{}
+		return switchDoneMsg{agent: agent}
 	}
 }
 
@@ -295,8 +298,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case switchDoneMsg:
 		if msg.err != nil {
+			// Keep bottomAgent empty so the next refresh retries.
 			m.status = "terminal switch: " + msg.err.Error()
 		} else {
+			m.bottomAgent = msg.agent
 			m.status = ""
 		}
 	case termDoneMsg:

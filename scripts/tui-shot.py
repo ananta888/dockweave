@@ -209,6 +209,10 @@ def main():
         pump(settle)
         dump(title)
 
+    if args.tmux_session:
+        # The 'q' must reach the DockWeave bar, not the agent terminal.
+        os.system("tmux select-pane -t %s:0.0 2>/dev/null" % args.tmux_session)
+        time.sleep(0.2)
     os.write(fd, b"q")
     deadline = time.time() + 2
     status = None

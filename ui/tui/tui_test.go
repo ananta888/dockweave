@@ -154,15 +154,16 @@ func TestUpdateDataAndTickDoNotPanic(t *testing.T) {
 // ---- mouse, compact details, menubar mode (tmux) ----
 
 type fakeTmux struct {
-	avail    bool
-	inTmux   bool
-	splits   []string
-	resized  []int
-	switched []string
-	focused  bool
-	quit     bool
-	bottom   string
-	setupErr error
+	avail       bool
+	inTmux      bool
+	splits      []string
+	resized     []int
+	switched    []string
+	focused     bool
+	selfFocused bool
+	quit        bool
+	bottom      string
+	setupErr    error
 }
 
 func (f *fakeTmux) available() bool { return f.avail }
@@ -184,7 +185,9 @@ func (f *fakeTmux) focusTerminal(pane string) error {
 	f.focused = true
 	return nil
 }
-func (f *fakeTmux) quitAll() { f.quit = true }
+
+func (f *fakeTmux) focusSelf() { f.selfFocused = true }
+func (f *fakeTmux) quitAll()   { f.quit = true }
 func (f *fakeTmux) splitAgent(agent, termSocket string) error {
 	f.splits = append(f.splits, agent)
 	return f.resizeSelf(3)

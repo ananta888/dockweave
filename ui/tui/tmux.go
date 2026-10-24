@@ -26,6 +26,8 @@ type tmuxCtl interface {
 	switchTerminal(pane, agent, termSocket string) error
 	// focusTerminal moves keyboard focus to the terminal pane.
 	focusTerminal(pane string) error
+	// focusSelf keeps keyboard focus on the TUI pane (menu bar).
+	focusSelf()
 	// quitAll tears the managed session down (embedded mode).
 	quitAll()
 	// resizeSelf changes the height of the TUI pane.
@@ -76,6 +78,8 @@ func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 	if err := t.resizeSelf(4); err != nil {
 		return pane, err
 	}
+	// Keep focus on the menu bar: keys must not leak into the agent UI.
+	t.focusSelf()
 	return pane, nil
 }
 
@@ -95,6 +99,12 @@ func (t *realTmux) switchTerminal(pane, agent, termSocket string) error {
 
 func (t *realTmux) focusTerminal(pane string) error {
 	return tmuxRun("select-pane", "-t", pane)
+}
+
+func (t *realTmux) focusSelf() {
+	if self := t.selfPaneID(); self != "" {
+		_ = tmuxRun("select-pane", "-t", self)
+	}
 }
 
 func (t *realTmux) quitAll() {
