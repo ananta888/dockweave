@@ -637,11 +637,23 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 			memPath = s.memDir(mem)
 		}
 	}
+	// Boot inside the first active project so the agent finds its
+	// AGENTS.md/skills and project files without manual navigation.
+	workDir := "/workspace"
+	if ms, err := s.Mounts.List(a.ID); err == nil {
+		for _, mt := range ms {
+			if mt.Status == model.MountActive {
+				workDir = "/workspace/" + filepath.Base(mt.TargetPath)
+				break
+			}
+		}
+	}
 	ncid, err := s.Docker.Create(ctx, dockerclient.ContainerSpec{
 		Agent:        &runtimeAgent,
 		AgentDir:     s.agentDir(a),
 		MemoryDir:    memPath,
 		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
+		WorkingDir:   workDir,
 	})
 	if err != nil {
 		return nil, err

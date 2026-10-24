@@ -66,6 +66,7 @@ type ContainerSpec struct {
 	AgentDir     string // host path -> /agent
 	MemoryDir    string // host path -> /memory
 	WorkspaceDir string // host path -> /workspace (bind-propagation rslave)
+	WorkingDir   string // container working dir (defaults to /workspace)
 }
 
 // ContainerName returns the deterministic container name for an agent.
@@ -118,6 +119,10 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 	// Always run with an explicit identity (review-005): UID 0 is only ever
 	// set when the daemon policy explicitly allows root containers.
 	user := fmt.Sprintf("%d:%d", a.UID, a.GID)
+	workDir := spec.WorkingDir
+	if workDir == "" {
+		workDir = "/workspace"
+	}
 	cfg := &container.Config{
 		Image:  a.Image,
 		Cmd:    cmd,
@@ -127,7 +132,7 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 		// project mounts (/workspace/<name>). Without this the container
 		// starts in the image default (/) and the agent cannot see its
 		// projects without manual navigation.
-		WorkingDir: "/workspace",
+		WorkingDir: workDir,
 		User:   user,
 		// Keep stdin open + tty for attach/exec based interactive use.
 		OpenStdin: true,
