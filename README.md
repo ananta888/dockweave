@@ -160,6 +160,12 @@ which host directory backs `/agent` (AGENTS.md, skills), `/memory`
 (long-term memory) and `/workspace` (project mounts) — the TUI detail
 card (click/enter on an agent) shows the same overview.
 
+All three folders are assignable in the TUI **Setup** tab (or CLI):
+`dockweave agent setdir NAME PATH` registers your own settings folder as
+`/agent` (empty path resets), `dockweave memory register PATH` registers
+an own long-term memory folder (then `memory attach` binds it), and
+projects are assigned with grants — one click per row in Setup.
+
 ```text
 dockweave agent create|start|stop|restart|remove|inspect|list
 dockweave workspace register|list|unregister

@@ -174,6 +174,18 @@ func (m *Manager) Check(agentID string) error {
 	return fmt.Errorf("workspace tree %q is not a mountpoint (run PrepareAgentTree / agent start)", tree)
 }
 
+// ValidateSource checks a user-supplied host directory (allowlist,
+// canonicalized, is-a-directory) and returns its canonical path. Used for
+// registered /agent and /memory folders.
+func (m *Manager) ValidateSource(path string) (string, error) {
+	canon, fd, err := ResolveSource(path, m.allowedRoots())
+	if err != nil {
+		return "", err
+	}
+	_ = unix.Close(fd)
+	return canon, nil
+}
+
 // ChownAgentTree recursively hands the agent's host tree (agent install,
 // memory, workspace) to the container identity (review-005). Must be called
 // at creation time, before workspace grants can have mounted foreign host

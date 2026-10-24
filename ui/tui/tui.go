@@ -284,21 +284,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
-		// Setup tab: keys go to the form (typing, focus cycling).
+		// Setup tab: keys go to the form (typing, focus cycling); 'q'
+		// still quits when no field is focused.
 		if m.tab == tabSetup {
-			if msg.String() == "esc" && m.form.focusedInput() != nil {
-				m.form.applyFocus("")
-				return m, nil
-			}
-			if m.form.focusedInput() != nil {
-				return m.updateSetup(msg)
-			}
-			switch msg.String() {
-			case "up", "down", "enter", "left", "right", "tab", "shift+tab":
-				if msg.String() == "tab" || msg.String() == "shift+tab" {
-					// No field focused: tab switches menu views (below).
-					break
-				}
+			if !(key.Matches(msg, m.keys.Quit) && m.form.focusedInput() == nil) {
 				return m.updateSetup(msg)
 			}
 		}

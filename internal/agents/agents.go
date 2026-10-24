@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	agentadapters "github.com/ananta888/dockweave/integrations/agents"
@@ -30,6 +31,7 @@ type MountOps interface {
 	Remove(agentID, targetName string, force bool) error
 	TeardownAgentTree(agentID string, force bool) (detached []string, err error)
 	ChownAgentTree(agentID string, uid, gid int) error
+	ValidateSource(path string) (string, error)
 }
 
 // DockerOps abstracts the Docker engine client (enables unit tests).
@@ -77,6 +79,7 @@ func (s *Service) boundMemory(ctx context.Context, agentID string) (*model.Memor
 	if err != nil {
 		return nil, fmt.Errorf("agent %s has no memory attached: %w", agentID, err)
 	}
+	_ = s.memDir(m) // keep snapshot manager in sync with custom folders
 	return m, nil
 }
 
@@ -444,11 +447,35 @@ func (s *Service) Get(ctx context.Context, idOrName string) (*model.Agent, error
 // host directory backs /agent (settings, AGENTS.md, skills), /memory
 // (long-term memory) and /workspace (project mounts).
 type AgentPaths struct {
-	AgentID      string `json:"agent_id"`
-	AgentDir     string `json:"agent_dir"` // host dir mounted at /agent
-	MemoryID     string `json:"memory_id,omitempty"`
-	MemoryDir    string `json:"memory_dir"`    // host dir mounted at /memory
-	WorkspaceDir string `json:"workspace_dir"` // host tree mounted at /workspace
+	AgentID        string `json:"agent_id"`
+	AgentDir       string `json:"agent_dir"` // host dir mounted at /agent
+	AgentDirCustom bool   `json:"agent_dir_custom"`
+	MemoryID       string `json:"memory_id,omitempty"`
+	MemoryDir      string `json:"memory_dir"` // host dir mounted at /memory
+	MemoryCustom   bool   `json:"memory_custom"`
+	WorkspaceDir   string `json:"workspace_dir"` // host tree mounted at /workspace
+}
+
+// agentDir resolves the /agent source: the registered custom folder or the
+// default tree directory.
+func (s *Service) agentDir(a *model.Agent) string {
+	if a.AgentDir != "" {
+		return a.AgentDir
+	}
+	return s.Mounts.AgentDir(a.ID)
+}
+
+// memDir resolves the /memory source of a memory identity and keeps the
+// snapshot manager in sync with registered custom folders.
+func (s *Service) memDir(mem *model.Memory) string {
+	if s.Memory == nil {
+		return ""
+	}
+	if mem.Path != "" {
+		s.Memory.SetPath(mem.ID, mem.Path)
+		return mem.Path
+	}
+	return s.Memory.Path(mem.ID)
 }
 
 // AgentPaths resolves the folder assignments of one agent.
@@ -458,17 +485,67 @@ func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths,
 		return nil, err
 	}
 	p := &AgentPaths{
-		AgentID:      a.ID,
-		AgentDir:     s.Mounts.AgentDir(a.ID),
-		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
+		AgentID:        a.ID,
+		AgentDir:       s.agentDir(a),
+		AgentDirCustom: a.AgentDir != "",
+		WorkspaceDir:   s.Mounts.WorkspaceTree(a.ID),
 	}
 	if s.Memory != nil {
 		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
 			p.MemoryID = mem.ID
-			p.MemoryDir = s.Memory.Path(mem.ID)
+			p.MemoryDir = s.memDir(mem)
+			p.MemoryCustom = mem.Path != ""
 		}
 	}
 	return p, nil
+}
+
+// SetAgentDir registers a custom host directory as the /agent source
+// (settings, AGENTS.md, skills). An empty path restores the default. The
+// change takes effect at the next agent start.
+func (s *Service) SetAgentDir(ctx context.Context, idOrName, path, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	dir := ""
+	if strings.TrimSpace(path) != "" {
+		if dir, err = s.Mounts.ValidateSource(path); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.Store.UpdateAgentDir(ctx, a.ID, dir); err != nil {
+		return nil, err
+	}
+	a.AgentDir = dir
+	msg := "agent folder reset to default"
+	if dir != "" {
+		msg = "agent folder set to " + dir
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, msg+" (restart to apply)")
+	return a, nil
+}
+
+// RegisterMemory registers a host directory as a long-term memory store.
+// The memory is created unbound; attach it to an agent to make it the
+// single writer.
+func (s *Service) RegisterMemory(ctx context.Context, path, actor string) (*model.Memory, error) {
+	if s.Memory == nil {
+		return nil, ErrMemoryUnavailable
+	}
+	canon, err := s.Mounts.ValidateSource(path)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	mem := &model.Memory{ID: model.NewID("mem"), Path: canon, CreatedAt: now}
+	if err := s.Store.CreateMemory(ctx, mem); err != nil {
+		return nil, err
+	}
+	s.Memory.SetPath(mem.ID, canon)
+	s.event(ctx, model.EventMemoryAttached, actor, "",
+		fmt.Sprintf("memory folder registered: %s (%s)", mem.ID, canon))
+	return mem, nil
 }
 
 // List returns all agents.
@@ -520,17 +597,18 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 		// recreate to guarantee the three-mount layout and hardening.
 		_ = s.Docker.Remove(ctx, cid, true)
 	}
-	// /memory comes from the bound memory store (review-009); legacy agents
-	// without an identity fall back to the per-agent tree directory.
+	// Folder assignments (review follow-up): registered custom folders win
+	// over the default tree layout; /memory comes from the bound memory
+	// store (review-009).
 	memPath := s.Mounts.MemoryDir(a.ID)
 	if s.Memory != nil {
 		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
-			memPath = s.Memory.Path(mem.ID)
+			memPath = s.memDir(mem)
 		}
 	}
 	ncid, err := s.Docker.Create(ctx, dockerclient.ContainerSpec{
 		Agent:        &runtimeAgent,
-		AgentDir:     s.Mounts.AgentDir(a.ID),
+		AgentDir:     s.agentDir(a),
 		MemoryDir:    memPath,
 		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
 	})

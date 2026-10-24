@@ -287,17 +287,20 @@ type SnapshotInfo struct {
 type MemoryInfo struct {
 	ID           string `json:"id"`
 	OwnerAgentID string `json:"owner_agent_id,omitempty"`
+	Path         string `json:"path,omitempty"`
 	CreatedAt    string `json:"created_at"`
 	AttachedAt   string `json:"attached_at,omitempty"`
 }
 
 // AgentPathsInfo describes an agent's folder assignments (API shape).
 type AgentPathsInfo struct {
-	AgentID      string `json:"agent_id"`
-	AgentDir     string `json:"agent_dir"`
-	MemoryID     string `json:"memory_id,omitempty"`
-	MemoryDir    string `json:"memory_dir"`
-	WorkspaceDir string `json:"workspace_dir"`
+	AgentID        string `json:"agent_id"`
+	AgentDir       string `json:"agent_dir"`
+	AgentDirCustom bool   `json:"agent_dir_custom"`
+	MemoryID       string `json:"memory_id,omitempty"`
+	MemoryDir      string `json:"memory_dir"`
+	MemoryCustom   bool   `json:"memory_custom"`
+	WorkspaceDir   string `json:"workspace_dir"`
 }
 
 // AgentPaths resolves which host directories back /agent, /memory and
@@ -305,6 +308,26 @@ type AgentPathsInfo struct {
 func (c *Client) AgentPaths(ctx context.Context, idOrName string) (*AgentPathsInfo, error) {
 	var out AgentPathsInfo
 	if err := c.do(ctx, "GET", "/api/v1/agents/"+idOrName+"/paths", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetAgentDir registers a custom host folder as the /agent source
+// (settings, AGENTS.md, skills); empty restores the default.
+func (c *Client) SetAgentDir(ctx context.Context, idOrName, path string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/agent-dir",
+		map[string]string{"path": path}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RegisterMemory registers a host folder as a long-term memory store.
+func (c *Client) RegisterMemory(ctx context.Context, path string) (*MemoryInfo, error) {
+	var out MemoryInfo
+	if err := c.do(ctx, "POST", "/api/v1/memories", map[string]string{"path": path}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

@@ -72,6 +72,13 @@ func (f *fakeMounts) TeardownAgentTree(_ string, force bool) ([]string, error) {
 	return nil, nil
 }
 
+func (f *fakeMounts) ValidateSource(path string) (string, error) {
+	if strings.Contains(path, "forbidden") {
+		return "", errors.New("path not allowed")
+	}
+	return path, nil
+}
+
 func (f *fakeMounts) ChownAgentTree(_ string, uid, gid int) error {
 	f.chown = append(f.chown, [2]int{uid, gid})
 	return nil

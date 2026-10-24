@@ -54,6 +54,7 @@ type Agent struct {
 	AgentRO     bool       `json:"agent_ro"` // mount /agent read-only
 	UID         int        `json:"uid"`
 	GID         int        `json:"gid"`
+	AgentDir    string     `json:"agent_dir,omitempty"` // custom /agent source; empty = default tree
 	CPULimit    float64    `json:"cpu_limit,omitempty"` // cores, 0 = unlimited
 	MemoryMB    int64      `json:"memory_mb,omitempty"` // 0 = unlimited
 	NetworkMode string     `json:"network_mode"`        // bridge|none|host(never default)
@@ -116,6 +117,7 @@ func (w *Workspace) Validate() error {
 type Memory struct {
 	ID           string     `json:"id"`
 	OwnerAgentID string     `json:"owner_agent_id,omitempty"` // exactly one writer; empty = unbound
+	Path         string     `json:"path,omitempty"`           // custom store dir; empty = <root>/memories/<id>
 	CreatedAt    time.Time  `json:"created_at"`
 	AttachedAt   *time.Time `json:"attached_at,omitempty"`
 }

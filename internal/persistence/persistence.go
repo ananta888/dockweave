@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -108,6 +108,10 @@ var migrations = []string{
 		created_at TEXT NOT NULL,
 		attached_at TEXT
 	);`,
+	// 4: custom folder assignments (review follow-up): /agent and /memory
+	// may point at user-registered host directories; empty = default layout.
+	`ALTER TABLE agents ADD COLUMN agent_dir TEXT NOT NULL DEFAULT '';
+	ALTER TABLE memories ADD COLUMN path TEXT NOT NULL DEFAULT '';`,
 }
 
 // Store is the DockWeave registry.
@@ -190,11 +194,11 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 	cmd, _ := json.Marshal(a.Command)
 	env, _ := json.Marshal(a.Env)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO agents
-		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,state,container_id,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.Name, a.Type, a.Image, string(cmd), string(env), a.EnvFile, a.AgentRO,
 		a.UID, a.GID, a.CPULimit, a.MemoryMB, a.NetworkMode, string(a.State), a.ContainerID,
-		ts(a.CreatedAt), ts(a.UpdatedAt))
+		a.AgentDir, ts(a.CreatedAt), ts(a.UpdatedAt))
 	if isUniqueErr(err) {
 		return fmt.Errorf("%w: agent name %q", ErrConflict, a.Name)
 	}
@@ -207,7 +211,7 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 // GetAgent fetches an agent by ID or name (name lookup if no ID match).
 func (s *Store) GetAgent(ctx context.Context, idOrName string) (*model.Agent, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,created_at,updated_at
+		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at
 		FROM agents WHERE id=? OR name=?`, idOrName, idOrName)
 	return scanAgent(row)
 }
@@ -219,7 +223,7 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	var cmd, env, ca, ua, state string
 	var ro bool
 	if err := row.Scan(&a.ID, &a.Name, &a.Type, &a.Image, &cmd, &env, &a.EnvFile, &ro,
-		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &state, &a.ContainerID, &ca, &ua); err != nil {
+		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &state, &a.ContainerID, &a.AgentDir, &ca, &ua); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -234,10 +238,25 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	return &a, nil
 }
 
+// UpdateAgentDir sets (or with an empty dir clears) the custom /agent
+// source directory of an agent.
+func (s *Store) UpdateAgentDir(ctx context.Context, id, dir string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET agent_dir=?, updated_at=? WHERE id=?`,
+		dir, ts(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("update agent dir: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListAgents returns all agents ordered by name.
 func (s *Store) ListAgents(ctx context.Context) ([]*model.Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,created_at,updated_at FROM agents ORDER BY name`)
+		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}
@@ -509,9 +528,13 @@ func (s *Store) CreateMemory(ctx context.Context, m *model.Memory) error {
 		a := ts(*m.AttachedAt)
 		attached = &a
 	}
+	var path string
+	if m.Path != "" {
+		path = m.Path
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO memories(id,owner_agent_id,created_at,attached_at) VALUES(?,?,?,?)`,
-		m.ID, owner, ts(m.CreatedAt), attached)
+		`INSERT INTO memories(id,owner_agent_id,path,created_at,attached_at) VALUES(?,?,?,?,?)`,
+		m.ID, owner, path, ts(m.CreatedAt), attached)
 	if isUniqueErr(err) {
 		return fmt.Errorf("%w: agent already owns a memory", ErrConflict)
 	}
@@ -523,14 +546,15 @@ func (s *Store) CreateMemory(ctx context.Context, m *model.Memory) error {
 
 func scanMemory(row scanner) (*model.Memory, error) {
 	var m model.Memory
-	var owner, ca, aa sql.NullString
-	if err := row.Scan(&m.ID, &owner, &ca, &aa); err != nil {
+	var owner, ca, aa, path sql.NullString
+	if err := row.Scan(&m.ID, &owner, &path, &ca, &aa); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("scan memory: %w", err)
 	}
 	m.OwnerAgentID = owner.String
+	m.Path = path.String
 	m.CreatedAt, _ = parseTS(ca.String)
 	if aa.Valid {
 		if t, err := parseTS(aa.String); err == nil {
@@ -540,7 +564,7 @@ func scanMemory(row scanner) (*model.Memory, error) {
 	return &m, nil
 }
 
-const memoryCols = `id,owner_agent_id,created_at,attached_at`
+const memoryCols = `id,owner_agent_id,path,created_at,attached_at`
 
 // GetMemory fetches a memory identity by ID.
 func (s *Store) GetMemory(ctx context.Context, id string) (*model.Memory, error) {

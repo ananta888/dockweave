@@ -217,6 +217,25 @@ func agentCmd() *cobra.Command {
 		},
 	}
 
+	setdir := &cobra.Command{
+		Use:   "setdir NAME|ID [PATH]",
+		Short: "Set the /agent folder (AGENTS.md, skills); empty resets to default",
+		Args:  cobra.RangeArgs(1, 2),
+		Run: func(cmd *cobra.Command, args []string) {
+			path := ""
+			if len(args) == 2 {
+				path = args[1]
+			}
+			a, err := client().SetAgentDir(ctx(), args[0], path)
+			if err != nil {
+				fail(err)
+			}
+			out(a, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "AGENT\t%s\nAGENT FOLDER\t%s\n", a.Name, a.AgentDir)
+			})
+		},
+	}
+
 	var attachTermSocket string
 	attach := &cobra.Command{
 		Use:   "attach NAME|ID [-- CMD...]",
@@ -237,7 +256,7 @@ func agentCmd() *cobra.Command {
 		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
 	attach.Flags().SetInterspersed(false)
 
-	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, attach)
+	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, attach)
 	return cmd
 }
 
@@ -598,7 +617,21 @@ func memoryCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.AddCommand(snapshot, list, restore, del, attach, detach, memories)
+	register := &cobra.Command{
+		Use:   "register PATH",
+		Short: "Register a host folder as a long-term memory store",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			mem, err := client().RegisterMemory(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			out(mem, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "MEMORY\t%s\nPATH\t%s\nOWNER\t%s\n", mem.ID, mem.Path, mem.OwnerAgentID)
+			})
+		},
+	}
+	cmd.AddCommand(snapshot, list, restore, del, attach, detach, memories, register)
 	return cmd
 }
 

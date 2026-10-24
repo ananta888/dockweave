@@ -620,7 +620,7 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 	}
 
 	// A typed field survives later profile switches.
-	m.form.applyFocus("f-name")
+	m.focusAction("f-name")
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
 	typed := m.form.name.Value()
 	m.cycleType(true) // -> claude
@@ -635,7 +635,7 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 	}
 
 	// Clear resets to the profile defaults.
-	m.activate("clear", "")
+	m.activate(setupHit{action: "clear"})
 	if m.form.name.Value() != "claude-01" || !strings.Contains(m.form.cmd.Value(), "claude-code") {
 		t.Fatalf("clear must restore defaults: name=%q cmd=%q", m.form.name.Value(), m.form.cmd.Value())
 	}

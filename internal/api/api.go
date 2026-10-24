@@ -100,6 +100,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/memories", s.listMemories)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/session", s.agentSession)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/paths", s.agentPaths)
+	s.mux.HandleFunc("PUT /api/v1/agents/{id}/agent-dir", s.setAgentDir)
+	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
 	s.mux.HandleFunc("DELETE /api/v1/workspaces/{id}", s.unregisterWorkspace)
@@ -432,6 +434,38 @@ func (s *Server) deleteMemorySnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 // ---- memory identities (review-009) ----
+
+func (s *Server) setAgentDir(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain path"))
+		return
+	}
+	a, err := s.Agents.SetAgentDir(r.Context(), r.PathValue("id"), req.Path, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) registerMemory(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain path"))
+		return
+	}
+	mem, err := s.Agents.RegisterMemory(r.Context(), req.Path, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, mem)
+}
 
 func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
 	list, err := s.Agents.ListMemories(r.Context())

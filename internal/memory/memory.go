@@ -29,8 +29,33 @@ var ErrNotFound = errors.New("snapshot not found")
 type Manager struct {
 	// Root is the dockweave state root (snapshots live under <root>/snapshots).
 	Root string
-	// MemoryDir resolves the host path of a memory ID.
+	// MemoryDir resolves the host path of a memory ID (default layout).
 	MemoryDir func(memoryID string) string
+	// overrides holds registered custom store directories (review
+	// follow-up: own memory folders).
+	overrides map[string]string
+}
+
+// SetPath registers a custom storage directory for a memory (empty clears
+// the override and restores the default layout).
+func (m *Manager) SetPath(memoryID, dir string) {
+	if m.overrides == nil {
+		m.overrides = map[string]string{}
+	}
+	if dir == "" {
+		delete(m.overrides, memoryID)
+		return
+	}
+	m.overrides[memoryID] = dir
+}
+
+// Path returns the store directory of a memory: the registered custom
+// directory when set, the default layout otherwise.
+func (m *Manager) Path(memoryID string) string {
+	if p, ok := m.overrides[memoryID]; ok {
+		return p
+	}
+	return m.MemoryDir(memoryID)
 }
 
 // New creates a Manager.
@@ -57,12 +82,9 @@ func (m *Manager) snapshotsDir(memoryID string) string {
 	return filepath.Join(m.Root, "snapshots", memoryID)
 }
 
-// Path returns the host directory of a memory store.
-func (m *Manager) Path(memoryID string) string { return m.MemoryDir(memoryID) }
-
 // EnsureDir creates the memory store directory if missing.
 func (m *Manager) EnsureDir(memoryID string) error {
-	if err := os.MkdirAll(m.MemoryDir(memoryID), 0o700); err != nil {
+	if err := os.MkdirAll(m.Path(memoryID), 0o700); err != nil {
 		return fmt.Errorf("create memory dir for %s: %w", memoryID, err)
 	}
 	return nil
@@ -73,7 +95,7 @@ func (m *Manager) EnsureDir(memoryID string) error {
 // callers enforce this — Create itself refuses nothing for testability but
 // documents the contract.
 func (m *Manager) Create(memoryID string) (*Snapshot, error) {
-	src := m.MemoryDir(memoryID)
+	src := m.Path(memoryID)
 	if _, err := os.Stat(src); err != nil {
 		return nil, fmt.Errorf("memory dir: %w", err)
 	}
@@ -210,7 +232,7 @@ func (m *Manager) Restore(memoryID, name string) error {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 
-	dst := m.MemoryDir(memoryID)
+	dst := m.Path(memoryID)
 	if _, err := os.Stat(dst); err == nil {
 		bak := dst + ".bak-" + time.Now().UTC().Format("20060102-150405")
 		if err := os.Rename(dst, bak); err != nil {

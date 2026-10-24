@@ -147,6 +147,13 @@ welches Host-Verzeichnis hinter `/agent` (AGENTS.md, Skills), `/memory`
 (Langzeitgedächtnis) und `/workspace` (Projekt-Mounts) liegt — die
 TUI-Detailcard (Klick/`enter` auf einen Agenten) zeigt dasselbe.
 
+Alle drei Ordner sind im TUI-Tab **Setup** zuweis- und registrierbar
+(oder per CLI): `dockweave agent setdir NAME PATH` legt einen eigenen
+Settings-Ordner als `/agent` fest (leerer Pfad setzt zurück),
+`dockweave memory register PATH` registriert einen eigenen
+Langzeitgedächtnis-Ordner (`memory attach` bindet ihn), Projekte
+werden per Grant zugeordnet — in Setup ein Klick pro Zeile.
+
 ## Lizenz
 
 BSD-3-Clause. Siehe [LICENSE](LICENSE).
