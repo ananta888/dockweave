@@ -31,29 +31,31 @@ type agentPreset struct {
 }
 
 var agentPresets = map[string]agentPreset{
+	// All presets start in YOLO mode (no approval prompts): the DockWeave
+	// container *is* the sandbox (non-root, CapDrop ALL, no-new-privileges).
 	"codex": {
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex"`,
+		command: `npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex" --dangerously-bypass-approvals-and-sandbox`,
 	},
 	"opencode": {
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"`,
+		command: `npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto`,
 	},
 	"claude": {
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"`,
+		command: `npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude" --dangerously-skip-permissions`,
 	},
 	"antigravity": {
 		// Google's current coding agent (gemini-cli is legacy). Official
 		// installer from antigravity.google/docs/getting-started; the
 		// binary lands in $HOME/.local/bin/agy (= /memory, persistent).
 		image:   "node:22-bookworm",
-		command: `curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy"`,
+		command: `curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy" --dangerously-skip-permissions`,
 	},
 	"gemini": {
 		// Legacy (Google: "Migrating from Gemini CLI").
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"`,
+		command: `npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini" --yolo`,
 	},
 	"custom": {},
 }

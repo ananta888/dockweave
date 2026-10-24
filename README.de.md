@@ -32,23 +32,23 @@ dockweave workspace register meinprojekt /srv/projekte/meinprojekt
 # "$HOME/.local" und überleben damit die Container-Neuanlage.
 # Codex CLI (npm-Paket @openai/codex)
 dockweave agent create codex-01 --type codex --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex"'
+  --exec 'npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex" --dangerously-bypass-approvals-and-sandbox'
 
 # Claude Code (npm-Paket @anthropic-ai/claude-code)
 dockweave agent create claude-01 --type claude --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"'
+  --exec 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude" --dangerously-skip-permissions'
 
 # opencode (npm-Paket opencode-ai)
 dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"'
+  --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto'
 
 # Google Antigravity (agy) — Googles aktueller Coding-Agent
 dockweave agent create gravity-01 --type antigravity --image node:22-bookworm \
-  --exec 'curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy"'
+  --exec 'curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy" --dangerously-skip-permissions'
 
 # Gemini CLI — Legacy (Google: "Migrating from Gemini CLI")
 dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"
+  --exec 'npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini" --yolo'
 
 # API-Keys o. Ä. über Env-File:  --env-file DATEI  (KEY=VALUE-Zeilen),
 # z. B. ANTHROPIC_API_KEY=... für claude-01

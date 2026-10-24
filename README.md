@@ -45,23 +45,23 @@ dockweave workspace register myproject /srv/projects/myproject
 # with HOME=/memory: npm tools install into "$HOME/.local" and therefore
 # persist across container recreation.
 dockweave agent create codex-01 --type codex --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex"'
+  --exec 'npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex" --dangerously-bypass-approvals-and-sandbox'
 
 # Claude Code (npm package @anthropic-ai/claude-code)
 dockweave agent create claude-01 --type claude --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"'
+  --exec 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude" --dangerously-skip-permissions'
 
 # opencode (npm package opencode-ai)
 dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"'
+  --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto'
 
 # Google Antigravity (agy) — Google's current coding agent
 dockweave agent create gravity-01 --type antigravity --image node:22-bookworm \
-  --exec 'curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy"'
+  --exec 'curl -fsSL https://antigravity.google/cli/install.sh | bash && exec "$HOME/.local/bin/agy" --dangerously-skip-permissions'
 
 # Gemini CLI — legacy (Google: "Migrating from Gemini CLI")
 dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"'
+  --exec 'npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini" --yolo'
 
 # API keys etc. via env file: add  --env-file FILE  (KEY=VALUE lines),
 # e.g. ANTHROPIC_API_KEY=... for claude-01

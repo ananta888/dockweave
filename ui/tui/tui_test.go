@@ -973,3 +973,24 @@ func TestDeadPaneIsRepairedOnSwitch(t *testing.T) {
 		t.Fatalf("live pane must not respawn: %v", ft.switched)
 	}
 }
+
+func TestAllPresetsStartInYoloMode(t *testing.T) {
+	// Every profile must start without approval prompts — the DockWeave
+	// container is the sandbox (non-root, CapDrop ALL, no-new-privileges).
+	want := map[string]string{
+		"codex":       "--dangerously-bypass-approvals-and-sandbox",
+		"opencode":    "--auto",
+		"claude":      "--dangerously-skip-permissions",
+		"antigravity": "--dangerously-skip-permissions",
+		"gemini":      "--yolo",
+	}
+	for name, flag := range want {
+		p, ok := agentPresets[name]
+		if !ok {
+			t.Fatalf("preset %s missing", name)
+		}
+		if !strings.Contains(p.command, flag) {
+			t.Fatalf("preset %s must pass %s (YOLO): %q", name, flag, p.command)
+		}
+	}
+}
