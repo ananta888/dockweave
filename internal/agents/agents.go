@@ -29,6 +29,7 @@ type MountOps interface {
 	List(agentID string) ([]model.MountState, error)
 	Remove(agentID, targetName string, force bool) error
 	TeardownAgentTree(agentID string, force bool) (detached []string, err error)
+	ChownAgentTree(agentID string, uid, gid int) error
 }
 
 // DockerOps abstracts the Docker engine client (enables unit tests).
@@ -52,6 +53,12 @@ type Service struct {
 	// Memory performs snapshot/restore on agent memory directories.
 	// Optional: if nil, memory operations return an error.
 	Memory *memory.Manager
+	// DefaultUID/DefaultGID is the container identity assigned to agents
+	// without an explicit UID (review-005: non-root containers by default).
+	DefaultUID, DefaultGID int
+	// AllowRootContainer permits UID 0 containers; every root container is
+	// audited. Root is refused otherwise and the default identity applied.
+	AllowRootContainer bool
 }
 
 // ErrMemoryUnavailable is returned when memory snapshotting is not configured.
@@ -113,6 +120,16 @@ func (s *Service) RestoreMemorySnapshot(ctx context.Context, idOrName, name, act
 	}
 	if err := s.Memory.Restore(a.ID, name); err != nil {
 		return err
+	}
+	// Restored files are written by the daemon (root); hand them back to the
+	// container identity so the non-root agent can use its memory.
+	if err := os.Chown(s.Mounts.MemoryDir(a.ID), a.UID, a.GID); err == nil {
+		_ = filepath.Walk(s.Mounts.MemoryDir(a.ID), func(p string, _ os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			return os.Chown(p, a.UID, a.GID)
+		})
 	}
 	s.event(ctx, "memory.restore", actor, a.ID, "restored "+name)
 	return nil
@@ -188,6 +205,7 @@ func (s *Service) Create(ctx context.Context, a *model.Agent, actor string) (*mo
 	if a.Type == "" {
 		a.Type = "custom"
 	}
+	s.applyContainerIdentity(ctx, a, actor)
 	if err := s.Store.CreateAgent(ctx, a); err != nil {
 		return nil, err
 	}
@@ -196,8 +214,38 @@ func (s *Service) Create(ctx context.Context, a *model.Agent, actor string) (*mo
 		_ = s.Store.DeleteAgent(ctx, a.ID)
 		return nil, fmt.Errorf("prepare agent tree: %w", err)
 	}
+	// The non-root container identity needs access to its host tree.
+	if err := s.Mounts.ChownAgentTree(a.ID, a.UID, a.GID); err != nil {
+		_ = s.Store.DeleteAgent(ctx, a.ID)
+		return nil, err
+	}
 	s.event(ctx, model.EventAgentCreated, actor, a.ID, fmt.Sprintf("agent %q created (image %s)", a.Name, a.Image))
 	return a, nil
+}
+
+// applyContainerIdentity enforces the container identity policy
+// (review-005): agents without an explicit UID are assigned the configured
+// non-root default. Root (0:0) is only honored when the daemon explicitly
+// allows root containers — and audited in both cases.
+func (s *Service) applyContainerIdentity(ctx context.Context, a *model.Agent, actor string) {
+	if a.UID != 0 {
+		return // explicit non-root identity, honored as-is
+	}
+	if s.AllowRootContainer {
+		s.event(ctx, model.EventAgentIdentity, actor, a.ID,
+			fmt.Sprintf("agent %q runs as root (0:0) — AllowRootContainer is enabled", a.Name))
+		return
+	}
+	du, dg := s.DefaultUID, s.DefaultGID
+	if du == 0 {
+		du = 1000
+	}
+	if dg == 0 {
+		dg = 1000
+	}
+	a.UID, a.GID = du, dg
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID,
+		fmt.Sprintf("agent %q identity defaulted to %d:%d (root containers not allowed)", a.Name, a.UID, a.GID))
 }
 
 // Get resolves an agent by ID or name.

@@ -102,10 +102,9 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 	if len(cmd) == 0 {
 		cmd = []string{"/bin/sh", "-c", "while :; do sleep 3600; done"}
 	}
-	user := ""
-	if a.UID != 0 {
-		user = fmt.Sprintf("%d:%d", a.UID, a.GID)
-	}
+	// Always run with an explicit identity (review-005): UID 0 is only ever
+	// set when the daemon policy explicitly allows root containers.
+	user := fmt.Sprintf("%d:%d", a.UID, a.GID)
 	cfg := &container.Config{
 		Image:  a.Image,
 		Cmd:    cmd,

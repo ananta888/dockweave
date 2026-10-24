@@ -97,8 +97,13 @@ func run(cfgPath string) error {
 		return err
 	}
 
-	agentSvc := &agents.Service{Store: store, Mounts: mountMgr, Docker: docker, Memory: memoryMgr}
+	agentSvc := &agents.Service{
+		Store: store, Mounts: mountMgr, Docker: docker, Memory: memoryMgr,
+		DefaultUID: cfg.AgentUID, DefaultGID: cfg.AgentGID,
+		AllowRootContainer: cfg.AllowRootContainer,
+	}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
+	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs)
 
 	lookup := &containerLookup{store: store, docker: docker}
 	dockerProv := monitor.NewDockerProvider(docker, lookup)
@@ -144,7 +149,7 @@ func run(cfgPath string) error {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 
-	handler := api.PeerAuthMiddleware(api.NewServer(agentSvc, wsSvc, mon, store))
+	handler := api.PeerAuthMiddleware(authPolicy, api.NewServer(agentSvc, wsSvc, mon, store))
 	srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}
 
 	// Terminal stream server (interactive PTY sessions; separate raw socket).
@@ -152,6 +157,7 @@ func run(cfgPath string) error {
 	termSrv := api.NewTermServer(api.TermConfig{
 		SocketPath: termSock,
 		Docker:     docker,
+		Auth:       authPolicy,
 		FindContainer: func(ctx context.Context, idOrName string) (string, error) {
 			a, err := store.GetAgent(ctx, idOrName)
 			if err != nil {

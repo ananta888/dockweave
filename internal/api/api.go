@@ -7,14 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"os/user"
-	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/ananta888/dockweave/internal/agents"
 	"github.com/ananta888/dockweave/internal/memory"
@@ -127,44 +122,7 @@ func actor(r *http.Request) string {
 	return "api"
 }
 
-type peerKey struct{}
 
-// PeerAuthMiddleware injects the SO_PEERCRED-derived username for unix
-// socket connections. TCP listeners (if ever enabled) must supply their own
-// auth layer before this handler.
-func PeerAuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Context().Value(peerKey{}) == nil {
-			r = r.WithContext(context.WithValue(r.Context(), peerKey{}, "unknown"))
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// PeerConnContext implements http.Server.ConnContext for unix listeners,
-// resolving the peer credentials of each connection.
-func PeerConnContext(ctx context.Context, c net.Conn) context.Context {
-	uc, ok := c.(*net.UnixConn)
-	if !ok {
-		return ctx
-	}
-	raw, err := uc.SyscallConn()
-	if err != nil {
-		return ctx
-	}
-	var cred *unix.Ucred
-	_ = raw.Control(func(fd uintptr) {
-		cred, err = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-	})
-	if err != nil || cred == nil {
-		return ctx
-	}
-	name := fmt.Sprintf("uid:%d", cred.Uid)
-	if u, err := user.LookupId(strconv.Itoa(int(cred.Uid))); err == nil {
-		name = u.Username
-	}
-	return context.WithValue(ctx, peerKey{}, name)
-}
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{

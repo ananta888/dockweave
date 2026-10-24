@@ -14,6 +14,19 @@ type Config struct {
 	SocketPath   string   // unix socket, default /run/dockweave/dockweaved.sock
 	DBPath       string   // sqlite path, default <root>/dockweave.db
 	AllowedRoots []string // additional allowed mount source roots
+
+	// AdminUIDs may use the full API (mounts, grants, mutations).
+	// MonitorUIDs get read-only access. Unknown UIDs are denied.
+	AdminUIDs   []uint32
+	MonitorUIDs []uint32
+
+	// AgentUID/AgentGID is the container identity used when an agent has
+	// no explicit UID (review-005: non-root containers by default).
+	AgentUID int
+	AgentGID int
+	// AllowRootContainer permits UID 0 containers (explicitly configured;
+	// the daemon audits every root container).
+	AllowRootContainer bool
 }
 
 // Default returns the default configuration.
@@ -25,6 +38,11 @@ func Default() Config {
 		AllowedRoots: []string{
 			"/srv", "/home", "/opt/projects", "/var/lib/dockweave/shared",
 		},
+		AdminUIDs:         []uint32{0},
+		MonitorUIDs:       nil,
+		AgentUID:          1000,
+		AgentGID:          1000,
+		AllowRootContainer: false,
 	}
 }
 
@@ -74,6 +92,32 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.DBPath = v
 		case "ALLOWED_ROOTS":
 			cfg.AllowedRoots = strings.Split(v, ":")
+		case "ADMIN_UIDS":
+			cfg.AdminUIDs = parseUIDList(v)
+		case "MONITOR_UIDS":
+			cfg.MonitorUIDs = parseUIDList(v)
+		case "AGENT_UID":
+			fmt.Sscanf(v, "%d", &cfg.AgentUID)
+		case "AGENT_GID":
+			fmt.Sscanf(v, "%d", &cfg.AgentGID)
+		case "ALLOW_ROOT_CONTAINER":
+			cfg.AllowRootContainer = v == "true" || v == "1"
 		}
 	}
+}
+
+// parseUIDList parses a colon-separated list of numeric UIDs.
+func parseUIDList(v string) []uint32 {
+	var out []uint32
+	for _, p := range strings.Split(v, ":") {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		var n uint32
+		if _, err := fmt.Sscanf(p, "%d", &n); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
 }

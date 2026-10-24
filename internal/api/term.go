@@ -21,7 +21,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -35,6 +34,9 @@ type TermConfig struct {
 	Docker     *dockerclient.Client
 	// FindContainer resolves an agent ID or name to a running container ID.
 	FindContainer func(ctx context.Context, idOrName string) (string, error)
+	// Auth authorizes peers. Terminal access requires the admin role
+	// (an interactive agent shell is never read-only).
+	Auth AuthPolicy
 }
 
 // TermServer serves interactive terminal sessions.
@@ -281,8 +283,8 @@ func handleControlFrame(frame []byte, resize func(rows, cols int)) {
 	}
 }
 
-// authorize enforces the same SO_PEERCRED rule as the HTTP socket:
-// root and members of the daemon group (gid) are allowed.
+// authorize enforces the AuthPolicy on the terminal socket: only admin-role
+// peers (SO_PEERCRED) may open an interactive agent shell.
 func (s *TermServer) authorize(conn net.Conn) error {
 	uc, ok := conn.(*net.UnixConn)
 	if !ok {
@@ -300,16 +302,8 @@ func (s *TermServer) authorize(conn net.Conn) error {
 	if cerr != nil || cred == nil {
 		return errors.New("no peer credentials")
 	}
-	if cred.Uid == 0 {
-		return nil
+	if s.cfg.Auth.RoleOf(cred.Uid) != RoleAdmin {
+		return fmt.Errorf("uid %d not authorized (terminal requires admin role)", cred.Uid)
 	}
-	// Members of the socket's owning group.
-	st, err := os.Stat(s.cfg.SocketPath)
-	if err != nil {
-		return err
-	}
-	if sys, ok := st.Sys().(*syscall.Stat_t); ok && cred.Gid == sys.Gid {
-		return nil
-	}
-	return fmt.Errorf("uid %d not authorized", cred.Uid)
+	return nil
 }

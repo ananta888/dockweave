@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,10 +23,18 @@ type fakeMounts struct {
 	forcedErr      error
 	teardownErr    error
 	teardownDetach string
+	chown          [][2]int
 	calls          []string
 }
 
-func (f *fakeMounts) PrepareAgentTree(string) error                  { return nil }
+func (f *fakeMounts) PrepareAgentTree(id string) error {
+	for _, d := range []string{f.AgentDir(id), f.MemoryDir(id), f.WorkspaceTree(id)} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (f *fakeMounts) AgentDir(id string) string                      { return filepath.Join(f.root, "agents", id, "agent") }
 func (f *fakeMounts) MemoryDir(id string) string                     { return filepath.Join(f.root, "agents", id, "memory") }
 func (f *fakeMounts) WorkspaceTree(id string) string                 { return filepath.Join(f.root, "agents", id, "workspace") }
@@ -39,6 +48,11 @@ func (f *fakeMounts) TeardownAgentTree(_ string, force bool) ([]string, error) {
 		return []string{f.teardownDetach}, nil
 	}
 	return nil, nil
+}
+
+func (f *fakeMounts) ChownAgentTree(_ string, uid, gid int) error {
+	f.chown = append(f.chown, [2]int{uid, gid})
+	return nil
 }
 
 func (f *fakeMounts) Remove(_ string, targetName string, force bool) error {
@@ -225,5 +239,82 @@ func TestRemoveAbortsWithoutPruneWhenContainerRemoveFails(t *testing.T) {
 	// Record kept: no dangling container without a record.
 	if _, err := st.GetAgent(ctx, a.ID); err != nil {
 		t.Fatalf("agent record must be kept: %v", err)
+	}
+}
+
+func TestCreateDefaultsToNonRootIdentity(t *testing.T) {
+	svc, fm, _, st := setup(t)
+	svc.DefaultUID, svc.DefaultGID = 1000, 1000
+	ctx := context.Background()
+
+	a := &model.Agent{Name: "n1", Type: "custom", Image: "img"}
+	got, err := svc.Create(ctx, a, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UID != 1000 || got.GID != 1000 {
+		t.Fatalf("identity = %d:%d, want 1000:1000 (non-root default)", got.UID, got.GID)
+	}
+	if !hasEvent(t, st, model.EventAgentIdentity) {
+		t.Fatal("identity defaulting must be audited")
+	}
+	if len(fm.chown) != 1 || fm.chown[0] != [2]int{1000, 1000} {
+		t.Fatalf("host tree must be handed to the container identity, got %v", fm.chown)
+	}
+}
+
+func TestCreateHonorsExplicitNonRootUID(t *testing.T) {
+	svc, _, _, st := setup(t)
+	ctx := context.Background()
+
+	a := &model.Agent{Name: "n2", Type: "custom", Image: "img", UID: 42, GID: 42}
+	got, err := svc.Create(ctx, a, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UID != 42 || got.GID != 42 {
+		t.Fatalf("identity = %d:%d, want 42:42", got.UID, got.GID)
+	}
+	if hasEvent(t, st, model.EventAgentIdentity) {
+		t.Fatal("explicit non-root identity must not be overridden (no identity event)")
+	}
+}
+
+func TestCreateRootOnlyWhenAllowedAndAudited(t *testing.T) {
+	svc, _, _, st := setup(t)
+	ctx := context.Background()
+
+	// Root refused (default): identity is defaulted.
+	a := &model.Agent{Name: "n3", Type: "custom", Image: "img"}
+	got, err := svc.Create(ctx, a, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UID == 0 {
+		t.Fatal("root container must not be created without AllowRootContainer")
+	}
+
+	// Root allowed explicitly: honored and audited.
+	svc.AllowRootContainer = true
+	b := &model.Agent{Name: "n4", Type: "custom", Image: "img"}
+	got, err = svc.Create(ctx, b, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UID != 0 || got.GID != 0 {
+		t.Fatalf("explicit root must be honored when allowed, got %d:%d", got.UID, got.GID)
+	}
+	evs, err := st.ListEvents(ctx, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootAudit bool
+	for _, e := range evs {
+		if e.Type == model.EventAgentIdentity && strings.Contains(e.Message, "root") {
+			rootAudit = true
+		}
+	}
+	if !rootAudit {
+		t.Fatal("root container must be audited")
 	}
 }
