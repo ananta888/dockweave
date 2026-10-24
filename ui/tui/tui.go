@@ -198,8 +198,8 @@ func (m *modelTUI) switchBottom(focus bool) tea.Cmd {
 	}
 	a := m.data.agents[m.cursor]
 	pane, agent, sock := m.bottomPane, a.Name, m.socket
-	if m.bottomAgent == agent {
-		// Already showing this agent: avoid killing the terminal session.
+	if m.bottomAgent == agent && !m.tmux.paneDead(pane) {
+		// Already showing this agent in a live pane: no respawn needed.
 		if focus {
 			return func() tea.Msg {
 				if err := m.tmux.focusTerminal(pane); err != nil {
@@ -390,12 +390,20 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.data = msg
 		// Embedded layout: show the first running agent as soon as data
 		// arrives (the layout may be ready before the first refresh).
+		// Only running agents: a stopped one must not respawn-loop.
 		if m.embedded && m.bottomPane != "" && m.bottomAgent == "" {
 			for i, a := range m.data.agents {
 				if a.State == model.AgentRunning {
 					m.cursor = i
 					return m, m.switchBottom(false)
 				}
+			}
+		}
+		// A dead pane for the selected running agent gets repaired.
+		if m.embedded && m.bottomPane != "" && m.bottomAgent != "" && m.tmux.paneDead(m.bottomPane) {
+			if a := m.selectedAgent(); a != nil && a.State == model.AgentRunning {
+				m.bottomAgent = ""
+				return m, m.switchBottom(false)
 			}
 		}
 	}

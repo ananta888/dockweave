@@ -22,8 +22,11 @@ type tmuxCtl interface {
 	// setupEmbedded splits the current window: the TUI shrinks to the top
 	// bar and the returned pane below hosts the agent terminal.
 	setupEmbedded(placeholder string) (string, error)
-	// switchTerminal respawns the bottom pane with the agent's session.
+	// switchTerminal respawns the bottom pane with the agent's terminal.
 	switchTerminal(pane, agent, termSocket string) error
+	// paneDead reports whether the pane's process has exited (the pane
+	// itself stays because of remain-on-exit).
+	paneDead(pane string) bool
 	// focusTerminal moves keyboard focus to the terminal pane.
 	focusTerminal(pane string) error
 	// focusSelf keeps keyboard focus on the TUI pane (menu bar).
@@ -70,6 +73,7 @@ func (t *realTmux) setupEmbedded(placeholder string) (string, error) {
 		return "", fmt.Errorf("tmux split: %w", err)
 	}
 	pane := strings.TrimSpace(out)
+	_ = tmuxRun("set-option", "-p", "-t", pane, "remain-on-exit", "on")
 	t.splitOpen = true
 	if err := t.resizeSelf(4); err != nil {
 		return pane, err
@@ -87,7 +91,19 @@ func (t *realTmux) switchTerminal(pane, agent, termSocket string) error {
 	// no nested tmux attach (which needs $TMUX unset and races a
 	// kill/recreate against the display). The agent's UI keeps running in
 	// the container; only the viewer restarts.
+	//
+	// remain-on-exit keeps the pane in place when the attach exits (e.g.
+	// "agent not running") — a dead pane must never tear the layout down.
+	_ = tmuxRun("set-option", "-p", "-t", pane, "remain-on-exit", "on")
 	return tmuxRun("respawn-pane", "-k", "-t", pane, agentCmd(agent, termSocket))
+}
+
+func (t *realTmux) paneDead(pane string) bool {
+	out, err := tmuxOutput("display-message", "-p", "-t", pane, "#{pane_dead}")
+	if err != nil {
+		return true // unknown pane counts as dead: forces a respawn
+	}
+	return strings.TrimSpace(out) == "1"
 }
 
 func (t *realTmux) focusTerminal(pane string) error {

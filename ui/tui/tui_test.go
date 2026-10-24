@@ -165,6 +165,7 @@ type fakeTmux struct {
 	focused     bool
 	selfFocused bool
 	mouseOn     bool
+	dead        bool
 	quit        bool
 	bottom      string
 	setupErr    error
@@ -189,6 +190,8 @@ func (f *fakeTmux) focusTerminal(pane string) error {
 	f.focused = true
 	return nil
 }
+
+func (f *fakeTmux) paneDead(pane string) bool { return f.dead }
 
 func (f *fakeTmux) focusSelf() { f.selfFocused = true }
 
@@ -930,5 +933,43 @@ func TestAgentsViewLifecycleActions(t *testing.T) {
 	m.data.agents[0].State = model.AgentExited
 	if !strings.Contains(stripANSI(m.View()), "▸s start") {
 		t.Fatal("stopped agent must emphasise start")
+	}
+}
+
+func TestDeadPaneIsRepairedOnSwitch(t *testing.T) {
+	// Regression: clicking the same agent again must respawn the terminal
+	// when the pane died (e.g. the agent was stopped and the attach
+	// exited) — previously the switch was skipped and the pane stayed dead.
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tmux: ft, embedded: true}
+	m.data = sampleData()
+	_, cmd := m.Update(embeddedReadyMsg{pane: "pane1"})
+	if cmd != nil {
+		if sd, ok := cmd().(switchDoneMsg); ok {
+			m.Update(sd)
+		}
+	}
+	before := len(ft.switched)
+
+	// The pane dies (attach exited) but the same agent stays selected.
+	_ = m.View() // build agent tab spans
+	ft.dead = true
+	m.cursor = 0
+	m.bottomAgent = m.data.agents[0].Name
+	_, cmd = m.Update(leftClick(m.agentSpans[0].x0+1, 2))
+	if cmd != nil {
+		cmd()
+	}
+	if len(ft.switched) != before+1 {
+		t.Fatalf("dead pane must be respawned on switch: %v", ft.switched)
+	}
+	// A live pane for the same agent is not churned.
+	ft.dead = false
+	_, cmd = m.Update(leftClick(m.agentSpans[0].x0+1, 2))
+	if cmd != nil {
+		cmd()
+	}
+	if len(ft.switched) != before+1 {
+		t.Fatalf("live pane must not respawn: %v", ft.switched)
 	}
 }
