@@ -27,6 +27,12 @@ type Config struct {
 	// AllowRootContainer permits UID 0 containers (explicitly configured;
 	// the daemon audits every root container).
 	AllowRootContainer bool
+
+	// SocketGroup is the group that may connect to the unix sockets
+	// (mode 0660, owner root). Empty keeps root:root; "dockweave" is the
+	// default so an admin group can be created without config changes.
+	// Roles still apply on top of socket access.
+	SocketGroup string
 }
 
 // Default returns the default configuration.
@@ -38,11 +44,12 @@ func Default() Config {
 		AllowedRoots: []string{
 			"/srv", "/home", "/opt/projects", "/var/lib/dockweave/shared",
 		},
-		AdminUIDs:         []uint32{0},
-		MonitorUIDs:       nil,
-		AgentUID:          1000,
-		AgentGID:          1000,
+		AdminUIDs:          []uint32{0},
+		MonitorUIDs:        nil,
+		AgentUID:           1000,
+		AgentGID:           1000,
 		AllowRootContainer: false,
+		SocketGroup:        "dockweave",
 	}
 }
 
@@ -88,6 +95,8 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.Root = v
 		case "SOCKET_PATH":
 			cfg.SocketPath = v
+		case "SOCKET_GROUP":
+			cfg.SocketGroup = v
 		case "DB_PATH":
 			cfg.DBPath = v
 		case "ALLOWED_ROOTS":

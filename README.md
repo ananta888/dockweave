@@ -40,9 +40,13 @@ make build
 # (~/.local/bin — make sure it is on your PATH, e.g. via ~/.profile)
 make install
 
-# Daemon configuration: authorize your user for write access (admin role).
-# Without this, only root (uid 0) may use the write API; the monitor role
-# is read-only (GET/HEAD). Unknown UIDs are denied entirely.
+# Daemon configuration: authorize your user for write access (admin role)
+# and put it into the socket group. Without ADMIN_UIDS only root (uid 0)
+# may use the write API; the monitor role is read-only (GET/HEAD) and
+# unknown UIDs are denied entirely. The sockets are 0660 root:SOCKET_GROUP
+# (default group: "dockweave").
+sudo groupadd -f dockweave
+sudo usermod -aG dockweave "$(whoami)"   # re-login afterwards
 mkdir -p /etc/dockweave
 echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
 
@@ -72,6 +76,11 @@ If `go` is not on your `PATH` after installing it under `~/.local/go`:
 `export PATH="$HOME/.local/go/bin:$PATH"` (persist it in `~/.bashrc` /
 `~/.profile`) — or just rely on the Makefile fallback. If `dockweave` is
 not found, use `./bin/dockweave` instead of `make install`.
+
+If the CLI reports `permission denied` on the socket: your user is not in
+the socket group yet (`sudo usermod -aG dockweave $USER`, then re-login) —
+or, without a group setup, `sudo chmod 666 /run/dockweave/dockweaved.sock`
+as a temporary workaround (the UID→role policy still applies).
 
 ## Requirements
 

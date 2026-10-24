@@ -35,6 +35,34 @@ ALLOW_ROOT_CONTAINER=false
 	if cfg.AllowRootContainer {
 		t.Fatal("root containers must be opt-in")
 	}
+	if cfg.SocketGroup != "dockweave" {
+		t.Fatalf("socket group = %q, want dockweave", cfg.SocketGroup)
+	}
+}
+
+func TestSocketGroupOverride(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "dockweaved.conf")
+	if err := os.WriteFile(p, []byte("SOCKET_GROUP=ops\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SocketGroup != "ops" {
+		t.Fatalf("socket group = %q, want ops", cfg.SocketGroup)
+	}
+	// Empty keeps root:root.
+	if err := os.WriteFile(p, []byte("SOCKET_GROUP=\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SocketGroup != "" {
+		t.Fatalf("empty socket group must mean root:root, got %q", cfg.SocketGroup)
+	}
 }
 
 func TestDefaultsAreNonRootAndAdminOnlyRoot(t *testing.T) {

@@ -28,9 +28,12 @@ make build
 make install
 
 # Daemon-Konfiguration: eigenen User für Schreibzugriffe freigeben
-# (Rolle admin). Ohne das darf nur root (uid 0) schreiben; die Rolle
-# monitor ist ausschließlich lesend (GET/HEAD). Unbekannte UIDs sind
-# grundsätzlich gesperrt.
+# (Rolle admin) und in die Socket-Gruppe aufnehmen. Ohne ADMIN_UIDS darf
+# nur root (uid 0) schreiben; die Rolle monitor ist ausschließlich lesend
+# (GET/HEAD), unbekannte UIDs sind gesperrt. Die Sockets sind 0660
+# root:SOCKET_GROUP (Standard-Gruppe: "dockweave").
+sudo groupadd -f dockweave
+sudo usermod -aG dockweave "$(whoami)"   # danach neu anmelden
 mkdir -p /etc/dockweave
 echo "ADMIN_UIDS=0:$(id -u)" | sudo tee /etc/dockweave/dockweaved.conf
 
@@ -49,6 +52,12 @@ Falls `go` nach einer Installation unter `~/.local/go` nicht gefunden wird:
 `~/.profile`) — oder einfach den Makefile-Fallback nutzen. Falls
 `dockweave` nicht gefunden wird: `./bin/dockweave` statt `make install`
 verwenden.
+
+Falls die CLI `permission denied` am Socket meldet: der User ist noch
+nicht in der Socket-Gruppe (`sudo usermod -aG dockweave $USER`, danach
+neu anmelden) — oder als Übergangslösung ohne Gruppen-Setup:
+`sudo chmod 666 /run/dockweave/dockweaved.sock` (die UID→Rollen-Policy
+gilt weiterhin).
 
 ## Voraussetzungen
 

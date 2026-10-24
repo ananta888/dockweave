@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -150,9 +152,14 @@ func run(cfgPath string) error {
 	if err != nil {
 		return fmt.Errorf("listen %q: %w", cfg.SocketPath, err)
 	}
-	// Root + group access; the group may be tightened by the installer.
+	// Root + group access; the group is configurable (SOCKET_GROUP,
+	// default "dockweave") so non-root admins can connect. The role policy
+	// still gates what a connected peer may do.
 	if err := os.Chmod(cfg.SocketPath, 0o660); err != nil {
 		return fmt.Errorf("chmod socket: %w", err)
+	}
+	if err := applySocketGroup(cfg.SocketPath, cfg.SocketGroup); err != nil {
+		log.Printf("socket group: %v (socket stays root:root)", err)
 	}
 
 	handler := api.PeerAuthMiddleware(authPolicy, api.NewServer(agentSvc, wsSvc, mon, store))
@@ -182,6 +189,9 @@ func run(cfgPath string) error {
 	})
 	if err := termSrv.Listen(); err != nil {
 		return err
+	}
+	if err := applySocketGroup(termSock, cfg.SocketGroup); err != nil {
+		log.Printf("term socket group: %v (socket stays root:root)", err)
 	}
 	go func() {
 		if err := termSrv.Serve(); err != nil {
@@ -250,4 +260,26 @@ func storePath(store *persistence.Store) string {
 	// The DB lives at <root>/dockweave.db; DSN parsing would be overkill here,
 	// so the store exposes its path via a small accessor contract.
 	return store.Path()
+}
+
+// applySocketGroup hands a 0660 unix socket to the configured admin group
+// (SOCKET_GROUP, default "dockweave"). With an empty group the socket stays
+// root:root; a missing group is reported so operators create it explicitly.
+// Access is still gated by the UID→role policy on top of socket mode.
+func applySocketGroup(path, group string) error {
+	if group == "" {
+		return nil
+	}
+	g, err := user.LookupGroup(group)
+	if err != nil {
+		return fmt.Errorf("group %q not found (create it: groupadd %s): %w", group, group, err)
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return fmt.Errorf("group %q has non-numeric gid %q: %w", group, g.Gid, err)
+	}
+	if err := os.Chown(path, -1, gid); err != nil {
+		return fmt.Errorf("chown %s to group %s: %w", path, group, err)
+	}
+	return nil
 }
