@@ -109,18 +109,34 @@ func (w *Workspace) Validate() error {
 	return nil
 }
 
+// GrantStatus is the lifecycle state of a grant. A grant is only *active*
+// (permission in effect) after its kernel mount has been applied; every
+// intermediate state is visible and resolvable (see todo/review-2026-10.json
+// review-002).
+type GrantStatus string
+
+const (
+	GrantMounting      GrantStatus = "mounting"       // creation in progress (crash-recoverable)
+	GrantActive        GrantStatus = "active"         // mount applied, permission live
+	GrantMountFailed   GrantStatus = "mount_failed"   // creation failed, cleanup pending
+	GrantRevoking      GrantStatus = "revoking"       // revoke in progress
+	GrantUnmountFailed GrantStatus = "unmount_failed" // revoke retryable, mount may still be live
+	GrantRevoked       GrantStatus = "revoked"        // terminal
+)
+
 // Grant authorizes one agent to access one workspace with a mode.
 // The grant is the *intent*; the actual mount state lives in MountState.
 type Grant struct {
-	ID          string     `json:"id"`
-	WorkspaceID string     `json:"workspace_id"`
-	AgentID     string     `json:"agent_id"`
-	Mode        AccessMode `json:"mode"`
-	Exclusive   bool       `json:"exclusive"` // exclusive write (enforced on grant creation)
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	CreatedBy   string     `json:"created_by"` // peer user or "api"
-	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
+	ID          string      `json:"id"`
+	WorkspaceID string      `json:"workspace_id"`
+	AgentID     string      `json:"agent_id"`
+	Mode        AccessMode  `json:"mode"`
+	Exclusive   bool        `json:"exclusive"` // exclusive write (enforced on grant creation)
+	Status      GrantStatus `json:"status"`
+	ExpiresAt   *time.Time  `json:"expires_at,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+	CreatedBy   string      `json:"created_by"` // peer user or "api"
+	RevokedAt   *time.Time  `json:"revoked_at,omitempty"`
 }
 
 // Expired reports whether the grant has a set expiry in the past.
@@ -128,9 +144,24 @@ func (g *Grant) Expired(now time.Time) bool {
 	return g.ExpiresAt != nil && now.After(*g.ExpiresAt)
 }
 
-// Active reports whether the grant is neither revoked nor expired.
+// Active reports whether the grant is in effect: its mount is applied and it
+// is neither revoked nor expired.
 func (g *Grant) Active(now time.Time) bool {
-	return g.RevokedAt == nil && !g.Expired(now)
+	return g.Status == GrantActive && g.RevokedAt == nil && !g.Expired(now)
+}
+
+// Pending reports whether the grant still claims its (workspace, agent) pair:
+// it is neither revoked nor terminally failed. Mounting, active, revoking and
+// unmount_failed all hold the claim (used for conflict detection).
+func (g *Grant) Pending(now time.Time) bool {
+	if g.RevokedAt != nil || g.Expired(now) {
+		return false
+	}
+	switch g.Status {
+	case GrantMounting, GrantActive, GrantRevoking, GrantUnmountFailed:
+		return true
+	}
+	return false
 }
 
 // MountStatus describes the reconciliation state of a single mount.
@@ -168,9 +199,11 @@ const (
 	EventWorkspaceGone   EventType = "workspace.removed"
 	EventGrantCreated    EventType = "grant.created"
 	EventGrantRevoked    EventType = "grant.revoked"
+	EventGrantRevoking   EventType = "grant.revoking"
 	EventMountAdded      EventType = "mount.added"
 	EventMountRemoved    EventType = "mount.removed"
 	EventMountFailed     EventType = "mount.failed"
+	EventUnmountFailed   EventType = "mount.unmount_failed"
 	EventRecovery        EventType = "recovery"
 	EventSecurityDeny    EventType = "security.denied"
 	EventConflict        EventType = "monitor.conflict"

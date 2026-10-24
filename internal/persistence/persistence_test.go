@@ -158,12 +158,29 @@ func TestEventHashChain(t *testing.T) {
 func TestGrantExpiry(t *testing.T) {
 	past := time.Now().Add(-time.Hour)
 	future := time.Now().Add(time.Hour)
-	g := &model.Grant{ExpiresAt: &future}
+	g := &model.Grant{Status: model.GrantActive, ExpiresAt: &future}
 	if g.Expired(time.Now()) || !g.Active(time.Now()) {
 		t.Fatal("future expiry should be active")
+	}
+	if !g.Pending(time.Now()) {
+		t.Fatal("future expiry should be pending")
 	}
 	g.ExpiresAt = &past
 	if !g.Expired(time.Now()) || g.Active(time.Now()) {
 		t.Fatal("past expiry should be inactive")
+	}
+	if g.Pending(time.Now()) {
+		t.Fatal("past expiry should not be pending")
+	}
+	// A failed creation must never read as active but may claim the pair
+	// only in its own lifetime; mount_failed is terminal-failed: not pending.
+	g2 := &model.Grant{Status: model.GrantMountFailed}
+	if g2.Active(time.Now()) || g2.Pending(time.Now()) {
+		t.Fatal("mount_failed grant must be neither active nor pending")
+	}
+	// unmount_failed: not active (revoke requested) but still claims the pair.
+	g3 := &model.Grant{Status: model.GrantUnmountFailed}
+	if g3.Active(time.Now()) || !g3.Pending(time.Now()) {
+		t.Fatal("unmount_failed grant must be pending but not active")
 	}
 }

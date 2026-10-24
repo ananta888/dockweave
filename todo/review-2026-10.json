@@ -50,7 +50,7 @@
         "Unit mit injiziertem Unmount-Fehler: Status unmount_failed, Retry-Revoke löst auf",
         "Integration: Reconcile räumt halbfertige Grants/Mounts nach Daemon-Neustart auf"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-003",

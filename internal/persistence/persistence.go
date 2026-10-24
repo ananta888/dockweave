@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -92,6 +92,14 @@ var migrations = []string{
 		hash TEXT NOT NULL DEFAULT ''
 	);
 	CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+	// 2: grant lifecycle status (review-002). Failed creations must not block
+	// retries: the uniqueness claim covers only non-terminal, non-failed states.
+	`ALTER TABLE grants ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+	UPDATE grants SET status='revoked' WHERE revoked_at IS NOT NULL;
+	DROP INDEX IF EXISTS idx_grants_active;
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_grants_active
+		ON grants(workspace_id, agent_id)
+		WHERE revoked_at IS NULL AND status IN ('mounting','active','revoking','unmount_failed');`,
 }
 
 // Store is the DockWeave registry.
@@ -329,18 +337,22 @@ func (s *Store) DeleteWorkspace(ctx context.Context, id string) error {
 // ---- Grants ----
 
 // CreateGrant inserts a grant. The partial unique index prevents duplicate
-// active grants for the same (workspace, agent) pair.
+// pending grants for the same (workspace, agent) pair.
 func (s *Store) CreateGrant(ctx context.Context, g *model.Grant) error {
 	var exp *string
 	if g.ExpiresAt != nil {
 		e := ts(*g.ExpiresAt)
 		exp = &e
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO grants(id,workspace_id,agent_id,mode,exclusive,expires_at,created_at,created_by)
-		VALUES(?,?,?,?,?,?,?,?)`,
-		g.ID, g.WorkspaceID, g.AgentID, string(g.Mode), g.Exclusive, exp, ts(g.CreatedAt), g.CreatedBy)
+	status := g.Status
+	if status == "" {
+		status = model.GrantActive
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO grants(id,workspace_id,agent_id,mode,exclusive,status,expires_at,created_at,created_by)
+		VALUES(?,?,?,?,?,?,?,?,?)`,
+		g.ID, g.WorkspaceID, g.AgentID, string(g.Mode), g.Exclusive, string(status), exp, ts(g.CreatedAt), g.CreatedBy)
 	if isUniqueErr(err) {
-		return fmt.Errorf("%w: active grant for workspace/agent pair exists", ErrConflict)
+		return fmt.Errorf("%w: pending grant for workspace/agent pair exists", ErrConflict)
 	}
 	if err != nil {
 		return fmt.Errorf("insert grant: %w", err)
@@ -348,12 +360,14 @@ func (s *Store) CreateGrant(ctx context.Context, g *model.Grant) error {
 	return nil
 }
 
+const grantCols = `id,workspace_id,agent_id,mode,exclusive,status,expires_at,created_at,created_by,revoked_at`
+
 func scanGrant(row scanner) (*model.Grant, error) {
 	var g model.Grant
-	var exp, rev, ca sql.NullString
+	var exp, rev, ca, status sql.NullString
 	var excl bool
 	var mode string
-	if err := row.Scan(&g.ID, &g.WorkspaceID, &g.AgentID, &mode, &excl, &exp, &ca, &g.CreatedBy, &rev); err != nil {
+	if err := row.Scan(&g.ID, &g.WorkspaceID, &g.AgentID, &mode, &excl, &status, &exp, &ca, &g.CreatedBy, &rev); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -361,6 +375,10 @@ func scanGrant(row scanner) (*model.Grant, error) {
 	}
 	g.Mode = model.AccessMode(mode)
 	g.Exclusive = excl
+	g.Status = model.GrantStatus(status.String)
+	if g.Status == "" {
+		g.Status = model.GrantActive
+	}
 	g.CreatedAt, _ = parseTS(ca.String)
 	if exp.Valid {
 		if t, err := parseTS(exp.String); err == nil {
@@ -377,14 +395,13 @@ func scanGrant(row scanner) (*model.Grant, error) {
 
 // GetGrant fetches a grant by ID.
 func (s *Store) GetGrant(ctx context.Context, id string) (*model.Grant, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,workspace_id,agent_id,mode,exclusive,expires_at,created_at,created_by,revoked_at
-		FROM grants WHERE id=?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT `+grantCols+` FROM grants WHERE id=?`, id)
 	return scanGrant(row)
 }
 
 // ListGrants returns grants, optionally filtered by workspace or agent.
 func (s *Store) ListGrants(ctx context.Context, workspaceID, agentID string, includeRevoked bool) ([]*model.Grant, error) {
-	q := `SELECT id,workspace_id,agent_id,mode,exclusive,expires_at,created_at,created_by,revoked_at FROM grants WHERE 1=1`
+	q := `SELECT ` + grantCols + ` FROM grants WHERE 1=1`
 	var args []any
 	if workspaceID != "" {
 		q += ` AND workspace_id=?`
@@ -413,9 +430,34 @@ func (s *Store) ListGrants(ctx context.Context, workspaceID, agentID string, inc
 	return out, rows.Err()
 }
 
+// UpdateGrantStatus transitions a grant to a new lifecycle status.
+func (s *Store) UpdateGrantStatus(ctx context.Context, id string, status model.GrantStatus) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE grants SET status=? WHERE id=?`, string(status), id)
+	if err != nil {
+		return fmt.Errorf("update grant status: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// FailMountingGrants marks all grants stuck in 'mounting' for a
+// (workspace, agent) pair as 'mount_failed' so a retry is not blocked by the
+// uniqueness index. Used before creating a new grant and by recovery.
+func (s *Store) FailMountingGrants(ctx context.Context, workspaceID, agentID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE grants SET status='mount_failed' WHERE workspace_id=? AND agent_id=? AND status='mounting'`,
+		workspaceID, agentID)
+	if err != nil {
+		return fmt.Errorf("fail mounting grants: %w", err)
+	}
+	return nil
+}
+
 // RevokeGrant marks a grant revoked.
 func (s *Store) RevokeGrant(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE grants SET revoked_at=? WHERE id=? AND revoked_at IS NULL`,
+	res, err := s.db.ExecContext(ctx, `UPDATE grants SET revoked_at=?, status='revoked' WHERE id=? AND revoked_at IS NULL`,
 		ts(time.Now()), id)
 	if err != nil {
 		return fmt.Errorf("revoke grant: %w", err)

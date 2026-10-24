@@ -126,6 +126,8 @@ func run(cfgPath string) error {
 	if err := sup.Recover(recCtx); err != nil {
 		log.Printf("recovery incomplete: %v", err)
 	}
+	// Converge interrupted grant lifecycles (mounting/revoking/unmount_failed).
+	wsSvc.ReconcileGrants(recCtx)
 	recCancel()
 
 	// Unix socket with peer auth.

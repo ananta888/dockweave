@@ -9,15 +9,17 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
 )
 
 // fakeExecutor records mount operations without touching the kernel.
 type fakeExecutor struct {
-	added   []string
-	removed []string
-	roots   []string
-	addErr  error
+	added     []string
+	removed   []string
+	roots     []string
+	addErr    error
+	removeErr error
 }
 
 func (f *fakeExecutor) Add(agentID, source, targetName string, mode model.AccessMode) (string, error) {
@@ -29,6 +31,9 @@ func (f *fakeExecutor) Add(agentID, source, targetName string, mode model.Access
 }
 
 func (f *fakeExecutor) Remove(agentID, targetName string, force bool) error {
+	if f.removeErr != nil {
+		return f.removeErr
+	}
 	f.removed = append(f.removed, agentID+":"+targetName)
 	return nil
 }
@@ -184,5 +189,156 @@ func TestUnregisterRequiresRevoke(t *testing.T) {
 	}
 	if err := svc.Unregister(ctx, w.Name, "test"); err != nil {
 		t.Fatalf("unregister after revoke: %v", err)
+	}
+}
+
+func TestGrantMountFailureLeavesNoActivePermission(t *testing.T) {
+	svc, fx, dir := setup(t)
+	ctx := context.Background()
+	w, err := svc.Register(ctx, "proj", dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := mkAgent(t, svc, "a1")
+
+	fx.addErr = errors.New("mount exploded")
+	g, err := svc.Grant(ctx, w.Name, a.Name, model.ModeRO, false, 0, "test")
+	if err == nil {
+		t.Fatal("grant with failing mount must return an error")
+	}
+	if g != nil {
+		t.Fatalf("no grant record expected in return, got %+v", g)
+	}
+	// The record exists but must not be an active permission.
+	grants, err := svc.Store.ListGrants(ctx, w.ID, a.ID, true)
+	if err != nil || len(grants) != 1 {
+		t.Fatalf("expected 1 recorded grant, got %d (%v)", len(grants), err)
+	}
+	got := grants[0]
+	if got.Status != model.GrantMountFailed {
+		t.Fatalf("status = %q, want mount_failed", got.Status)
+	}
+	if got.Active(time.Now()) {
+		t.Fatal("mount_failed grant must not be active")
+	}
+
+	// Retry must not be blocked by the failed record.
+	fx.addErr = nil
+	g2, err := svc.Grant(ctx, w.Name, a.Name, model.ModeRO, false, 0, "test")
+	if err != nil {
+		t.Fatalf("retry grant: %v", err)
+	}
+	if g2.Status != model.GrantActive || !g2.Active(time.Now()) {
+		t.Fatalf("retry grant must be active, got %q", g2.Status)
+	}
+}
+
+func TestRevokeUnmountFailureKeepsClaim(t *testing.T) {
+	svc, fx, dir := setup(t)
+	ctx := context.Background()
+	w, err := svc.Register(ctx, "proj", dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a1 := mkAgent(t, svc, "a1")
+	a2 := mkAgent(t, svc, "a2")
+	g, err := svc.Grant(ctx, w.Name, a1.Name, model.ModeRW, false, 0, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fx.removeErr = mounts.ErrBusy
+	err = svc.Revoke(ctx, g.ID, "test", false)
+	if err == nil {
+		t.Fatal("revoke with busy unmount must fail")
+	}
+	// The grant must NOT be revoked while the mount is still live.
+	got, err := svc.Store.GetGrant(ctx, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RevokedAt != nil {
+		t.Fatal("grant must not be revoked when unmount failed")
+	}
+	if got.Status != model.GrantUnmountFailed {
+		t.Fatalf("status = %q, want unmount_failed", got.Status)
+	}
+	if !got.Pending(time.Now()) {
+		t.Fatal("unmount_failed grant must still claim the pair")
+	}
+	// A new grant for the same agent must conflict (claim held).
+	if _, err := svc.Grant(ctx, w.Name, a1.Name, model.ModeRW, false, 0, "test"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected conflict while unmount_failed, got %v", err)
+	}
+	// Another agent is unaffected (per-pair claim).
+	if _, err := svc.Grant(ctx, w.Name, a2.Name, model.ModeRO, false, 0, "test"); err != nil {
+		t.Fatalf("other agent grant while unmount_failed: %v", err)
+	}
+
+	// Retry succeeds and finalizes the revoke.
+	fx.removeErr = nil
+	if err := svc.Revoke(ctx, g.ID, "test", false); err != nil {
+		t.Fatalf("retry revoke: %v", err)
+	}
+	got, _ = svc.Store.GetGrant(ctx, g.ID)
+	if got.RevokedAt == nil || got.Status != model.GrantRevoked {
+		t.Fatalf("after retry: status=%q revoked=%v", got.Status, got.RevokedAt)
+	}
+	if _, err := svc.Grant(ctx, w.Name, a1.Name, model.ModeRW, false, 0, "test"); err != nil {
+		t.Fatalf("grant after completed revoke: %v", err)
+	}
+}
+
+func TestReconcileGrantsConvergesInterruptedLifecycles(t *testing.T) {
+	svc, fx, dir := setup(t)
+	ctx := context.Background()
+	w, err := svc.Register(ctx, "proj", dir, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := mkAgent(t, svc, "a1")
+	now := time.Now()
+
+	// Simulate a crash during creation: 'mounting' row, no mount applied.
+	gMounting := &model.Grant{
+		ID: model.NewID("gr"), WorkspaceID: w.ID, AgentID: a.ID,
+		Mode: model.ModeRO, Status: model.GrantMounting, CreatedAt: now, CreatedBy: "test",
+	}
+	if err := svc.Store.CreateGrant(ctx, gMounting); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a crash during revoke: 'revoking' row, mount still live.
+	gRevoking := &model.Grant{
+		ID: model.NewID("gr"), WorkspaceID: w.ID, AgentID: a.ID,
+		Mode: model.ModeRW, Status: model.GrantRevoking, CreatedAt: now, CreatedBy: "test",
+	}
+	// The unique index allows one pending pair claim — create via direct
+	// insert semantics: revoke the mounting one first would change states;
+	// instead use a second agent for the revoking scenario.
+	a2 := mkAgent(t, svc, "a2")
+	gRevoking.AgentID = a2.ID
+	if err := svc.Store.CreateGrant(ctx, gRevoking); err != nil {
+		t.Fatal(err)
+	}
+
+	svc.ReconcileGrants(ctx)
+
+	g1, _ := svc.Store.GetGrant(ctx, gMounting.ID)
+	if g1.Status != model.GrantMountFailed {
+		t.Fatalf("interrupted mounting: status=%q, want mount_failed", g1.Status)
+	}
+	g2, _ := svc.Store.GetGrant(ctx, gRevoking.ID)
+	if g2.RevokedAt == nil || g2.Status != model.GrantRevoked {
+		t.Fatalf("interrupted revoking: status=%q revoked=%v, want revoked", g2.Status, g2.RevokedAt)
+	}
+	// The revoking mount was unmounted exactly once, the mounting one cleaned.
+	foundRevoking := false
+	for _, r := range fx.removed {
+		if r == a2.ID+":proj" {
+			foundRevoking = true
+		}
+	}
+	if !foundRevoking {
+		t.Fatalf("expected unmount of revoking grant's target, got %v", fx.removed)
 	}
 }
