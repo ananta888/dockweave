@@ -894,3 +894,41 @@ func TestSelectedFieldIsMarked(t *testing.T) {
 		t.Fatal("hint must describe the field actions")
 	}
 }
+
+func TestAgentsViewLifecycleActions(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabAgents,
+		client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = sampleData()
+	out := m.View()
+	for _, want := range []string{"s start", "x stop", "restart", "remove", "state: running", "keys: s start"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("action bar missing %q:\n%s", want, out)
+		}
+	}
+	// State-aware emphasis: a running agent emphasises "stop".
+	if !strings.Contains(stripANSI(out), "▸x stop") {
+		t.Fatalf("running agent must emphasise stop:\n%s", out)
+	}
+	// 's' and 'x' keys issue lifecycle commands with status feedback.
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	if cmd == nil {
+		t.Fatal("s must trigger start")
+	}
+	if !strings.Contains(m.status, "start") {
+		t.Fatalf("status must show progress: %q", m.status)
+	}
+	msg := cmd()
+	sd, ok := msg.(setupDoneMsg)
+	if !ok || sd.what == "" {
+		t.Fatalf("expected setupDoneMsg with outcome, got %#v", msg)
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	if cmd == nil {
+		t.Fatal("x must trigger stop")
+	}
+	// A stopped agent emphasises "start".
+	m.data.agents[0].State = model.AgentExited
+	if !strings.Contains(stripANSI(m.View()), "▸s start") {
+		t.Fatal("stopped agent must emphasise start")
+	}
+}

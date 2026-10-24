@@ -177,9 +177,10 @@ func (m *modelTUI) grantFor(agentID, workspaceID string) *model.Grant {
 	return nil
 }
 
-// setupDoneMsg reports the outcome of a Setup action.
+// setupDoneMsg reports the outcome of a lifecycle/setup action.
 type setupDoneMsg struct {
-	err error
+	err  error
+	what string // e.g. "started", "stopped" — shown in the status line
 }
 
 // ---- view ----
@@ -889,15 +890,27 @@ func (m *modelTUI) submitAgentUpdate() tea.Cmd {
 	}
 }
 
-// submitAgentAction starts/stops/removes the selected agent.
+// lifecycle runs a start/stop/restart/remove for the selected agent with
+// visible feedback in the status line.
+func (m *modelTUI) lifecycle(action string) tea.Cmd {
+	a := m.selectedAgent()
+	if a == nil {
+		m.status = "no agent selected"
+		return nil
+	}
+	m.status = action + " " + a.Name + " …"
+	return m.submitAgentAction(action)
+}
+
+// submitAgentAction starts/stops/restarts/removes the selected agent.
 func (m *modelTUI) submitAgentAction(action string) tea.Cmd {
 	a := m.selectedAgent()
 	if a == nil {
 		return nil
 	}
-	client, id := m.client, a.ID
+	client, id, name := m.client, a.ID, a.Name
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		var err error
 		switch action {
@@ -905,10 +918,17 @@ func (m *modelTUI) submitAgentAction(action string) tea.Cmd {
 			_, err = client.AgentAction(ctx, id, "start")
 		case "stop":
 			err = client.StopAgent(ctx, id)
+		case "restart":
+			_, err = client.AgentAction(ctx, id, "restart")
 		case "remove":
 			err = client.RemoveAgent(ctx, id, false, false)
 		}
-		return setupDoneMsg{err: err}
+		what := map[string]string{"start": "started", "stop": "stopped",
+			"restart": "restarted", "remove": "removed"}[action]
+		if err != nil {
+			return setupDoneMsg{err: err, what: action + " " + name}
+		}
+		return setupDoneMsg{what: what + " " + name}
 	}
 }
 

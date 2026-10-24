@@ -81,6 +81,8 @@ type modelTUI struct {
 	expanded bool
 	// status is a transient message line (e.g. terminal attach errors).
 	status string
+	// actionHits: clickable lifecycle buttons of the Agents view.
+	actionHits []setupHit
 	// form state of the Setup tab.
 	form setupForm
 	// menubar mode: only the menu bar is rendered (tmux hosts the
@@ -317,6 +319,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
 			return m, m.openTerminal()
+		case msg.String() == "s" && m.tab == tabAgents && !m.menubar:
+			return m, m.lifecycle("start")
+		case msg.String() == "x" && m.tab == tabAgents && !m.menubar:
+			return m, m.lifecycle("stop")
 		case m.tab == tabSetup:
 			return m.updateSetup(msg)
 		case msg.String() == "enter" && m.tab == tabAgents && !m.menubar:
@@ -368,7 +374,10 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = "setup: " + msg.err.Error()
 		} else {
-			m.status = "done"
+			m.status = msg.what
+			if m.status == "" {
+				m.status = "done"
+			}
 		}
 		return m, m.refresh()
 	case termDoneMsg:
@@ -444,6 +453,14 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.tab == tabSetup {
 		return m.updateSetup(msg)
+	}
+	// Lifecycle buttons of the Agents view.
+	if m.tab == tabAgents {
+		for _, h := range m.actionHits {
+			if msg.Y == h.y && msg.X >= h.x0 && msg.X < h.x1 {
+				return m, m.lifecycle(h.action)
+			}
+		}
 	}
 	if m.menubar {
 		// Bar mode: a click outside the two bars goes to the agent
@@ -687,10 +704,50 @@ func (m *modelTUI) viewAgents() string {
 	}
 	if m.expanded && m.cursor < len(m.data.agents) {
 		b.WriteString("\n" + m.viewAgentDetail(m.data.agents[m.cursor]))
-	} else {
+	}
+	if m.cursor < len(m.data.agents) {
+		b.WriteString(m.viewAgentActions(m.data.agents[m.cursor]))
+	} else if !m.expanded {
 		b.WriteString("\n" + dimStyle.Render("t: terminal • enter/click: details"))
 	}
 	return b.String()
+}
+
+// viewAgentActions renders the lifecycle actions of the selected agent:
+// state-aware (the meaningful action is emphasised), clickable and bound
+// to s/x keys.
+func (m *modelTUI) viewAgentActions(a *model.Agent) string {
+	running := a.State == model.AgentRunning
+	startEm, stopEm := !running, running
+	m.actionHits = m.actionHits[:0]
+	var b strings.Builder
+	b.WriteString("\n  ")
+	m.writeActionButton(&b, "s start", "start", startEm)
+	b.WriteString("  ")
+	m.writeActionButton(&b, "x stop", "stop", stopEm)
+	b.WriteString("  ")
+	m.writeActionButton(&b, "restart", "restart", false)
+	b.WriteString("  ")
+	m.writeActionButton(&b, "remove", "remove", false)
+	state := "stopped"
+	if running {
+		state = "running"
+	}
+	b.WriteString("   " + dimStyle.Render("state: "+state))
+	b.WriteString("\n" + dimStyle.Render("keys: s start • x stop • t: terminal • enter: details"))
+	return b.String()
+}
+
+// writeActionButton renders one lifecycle button and records its click
+// region (x of the label start, on the current last line).
+func (m *modelTUI) writeActionButton(b *strings.Builder, label, action string, emph bool) {
+	start := len(b.String())
+	if emph {
+		b.WriteString(tabActive.Render("▸" + label + " "))
+	} else {
+		b.WriteString(dimStyle.Render("[" + label + "]"))
+	}
+	m.actionHits = append(m.actionHits, setupHit{y: strings.Count(b.String(), "\n"), x0: start, x1: len(b.String()), action: action})
 }
 
 // renderAgentTabs draws the running-agent tab row (line 2, clickable).
