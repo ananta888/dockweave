@@ -31,7 +31,9 @@ dockweave workspace register meinprojekt /srv/projekte/meinprojekt
 # mit der Agent-CLI funktioniert; der Daemon setzt HOME=/memory, damit
 # Tool-State persistiert und die Session-Adapter (codex|opencode|claude|
 # gemini) ihre Marker finden:
-dockweave agent create codex-01 --type codex --image ghcr.io/openai/codex:latest
+# Codex CLI (npm-Paket @openai/codex)
+dockweave agent create codex-01 --type codex --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @openai/codex && exec codex"
 
 # Claude Code (npm-Paket @anthropic-ai/claude-code)
 dockweave agent create claude-01 --type claude --image node:22-bookworm \

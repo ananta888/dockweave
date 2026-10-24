@@ -44,7 +44,9 @@ dockweave workspace register myproject /srv/projects/myproject
 # Create agents — examples for all supported profiles. Any image with the
 # agent CLI works; the daemon sets HOME=/memory so tool state persists and
 # the session adapters (codex|opencode|claude|gemini) find their markers.
-dockweave agent create codex-01 --type codex --image ghcr.io/openai/codex:latest
+# Codex CLI (npm package @openai/codex)
+dockweave agent create codex-01 --type codex --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @openai/codex && exec codex"
 
 # Claude Code (npm package @anthropic-ai/claude-code)
 dockweave agent create claude-01 --type claude --image node:22-bookworm \
