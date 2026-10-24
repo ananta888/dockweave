@@ -172,6 +172,25 @@ func (m *Manager) Check(agentID string) error {
 	return fmt.Errorf("workspace tree %q is not a mountpoint (run PrepareAgentTree / agent start)", tree)
 }
 
+// ChownAgentTree recursively hands the agent's host tree (agent install,
+// memory, workspace) to the container identity (review-005). Must be called
+// at creation time, before workspace grants can have mounted foreign host
+// directories beneath the tree.
+func (m *Manager) ChownAgentTree(agentID string, uid, gid int) error {
+	for _, dir := range []string{m.AgentDir(agentID), m.MemoryDir(agentID), m.WorkspaceTree(agentID)} {
+		err := filepath.Walk(dir, func(p string, _ os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			return os.Chown(p, uid, gid)
+		})
+		if err != nil {
+			return fmt.Errorf("chown %s to %d:%d: %w", dir, uid, gid, err)
+		}
+	}
+	return nil
+}
+
 // TeardownAgentTree unmounts everything beneath the agent workspace tree
 // and the tree's self-bind (deepest first). Used by tests and agent pruning;
 // never touches mounts outside the tree. Busy mounts are only lazily

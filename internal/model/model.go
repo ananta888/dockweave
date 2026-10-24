@@ -194,6 +194,7 @@ const (
 	EventAgentCreated    EventType = "agent.created"
 	EventAgentStarted    EventType = "agent.started"
 	EventAgentStopped    EventType = "agent.stopped"
+	EventAgentIdentity   EventType = "agent.identity" // container uid policy (review-005)
 	EventAgentRemoved    EventType = "agent.removed"
 	EventWorkspaceAdded  EventType = "workspace.registered"
 	EventWorkspaceGone   EventType = "workspace.removed"
@@ -244,7 +245,10 @@ type AgentActivity struct {
 	MemoryBytes uint64        `json:"memory_bytes"`
 	Workspace   string        `json:"workspace,omitempty"` // observed primary project
 	OpenFiles   []string      `json:"open_files,omitempty"`
-	Processes   int           `json:"processes"`
+	// FileEvidence maps observed host paths to their evidence strength
+	// ("kernel" = kernel-reported path, "heuristic" = cwd/args inference).
+	FileEvidence map[string]string `json:"file_evidence,omitempty"`
+	Processes    int               `json:"processes"`
 	Available   bool          `json:"available"` // false => data source unavailable
 	Unavailable string        `json:"unavailable_reason,omitempty"`
 	Timestamp   time.Time     `json:"timestamp"`

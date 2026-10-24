@@ -149,7 +149,7 @@
         "Unit: stale PID-Map-Einträge werden verworfen/invalidiert",
         "Unit: Fixture-Events (file-write) => korrekte Agent-Zuordnung ohne Args-Heuristik"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-007",

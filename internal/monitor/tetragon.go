@@ -36,15 +36,29 @@ type TetragonProvider struct {
 	WorkspaceRoots func() map[string]string
 	// PIDResolver optionally maps host PIDs to agent IDs (docker Top based).
 	PIDResolver func(ctx context.Context) map[int]string
+	// PIDCacheTTL bounds how long a PID snapshot is reused (default 5s).
+	// Each refresh *replaces* the snapshot completely, so PIDs of dead or
+	// restarted containers disappear (review-006).
+	PIDCacheTTL time.Duration
 
-	mu   sync.Mutex
-	seen map[string]fileAccess // key: agentID|path -> latest access
+	mu     sync.Mutex
+	seen   map[string]fileAccess // key: agentID|path -> latest access
+	offset int64                 // JSONL read offset (incremental ingest)
+	pidAt  time.Time
+	pidMap map[int]string
 }
 
+// Evidence strength of a file attribution (review-006).
+const (
+	EvidenceKernel    = "kernel"    // kernel-reported path (kprobe arg)
+	EvidenceHeuristic = "heuristic" // cwd/args inference (fallback only)
+)
+
 type fileAccess struct {
-	Path    string
-	Write   bool
-	At      time.Time
+	Path       string
+	Write      bool
+	At         time.Time
+	Confidence string
 }
 
 // NewTetragonProvider creates the provider; eventsPath may be empty (then
@@ -106,7 +120,9 @@ func (e *tetragonEvent) kind() string {
 }
 
 // Observe implements Provider: ingests recent export lines and enriches the
-// activity record with observed file accesses.
+// activity record with observed file accesses. Kernel-reported paths take
+// precedence; heuristic (cwd/args) attributions are flagged and used only as
+// fallback for the activity level (review-006).
 func (p *TetragonProvider) Observe(ctx context.Context, act *model.AgentActivity) error {
 	if err := p.Available(ctx); err != nil {
 		return err
@@ -115,7 +131,9 @@ func (p *TetragonProvider) Observe(ctx context.Context, act *model.AgentActivity
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var paths []string
-	writing := false
+	evidence := map[string]string{}
+	kernelWrite, heurWrite := false, false
+	kernelRead, heurRead := false, false
 	for key, fa := range p.seen {
 		if !strings.HasPrefix(key, act.AgentID+"|") {
 			continue
@@ -124,69 +142,96 @@ func (p *TetragonProvider) Observe(ctx context.Context, act *model.AgentActivity
 			continue // stale evidence
 		}
 		paths = append(paths, fa.Path)
-		if fa.Write {
-			writing = true
+		evidence[fa.Path] = fa.Confidence
+		kernel := fa.Confidence != EvidenceHeuristic
+		switch {
+		case fa.Write && kernel:
+			kernelWrite = true
+		case fa.Write:
+			heurWrite = true
+		case kernel:
+			kernelRead = true
+		default:
+			heurRead = true
 		}
 	}
 	if len(paths) > 0 {
 		act.OpenFiles = append(act.OpenFiles, paths...)
-		act.Activity = model.ActivityReading
-		if writing {
+		act.FileEvidence = evidence
+		switch {
+		case kernelWrite:
 			act.Activity = model.ActivityWriting
+		case kernelRead:
+			act.Activity = model.ActivityReading
+		case heurWrite:
+			act.Activity = model.ActivityWriting
+		case heurRead:
+			act.Activity = model.ActivityReading
 		}
 	}
 	return nil
 }
 
-// ingest reads all lines currently present in the export file and records
-// file accesses. Files rotate; partial last lines are tolerated.
+// pidSnapshotLocked returns a cached PID map, refreshing (fully replacing)
+// it at most every PIDCacheTTL. mu must be held. Replacement semantics drop
+// stale entries of dead or restarted containers instead of accumulating
+// them (review-006).
+func (p *TetragonProvider) pidSnapshotLocked(ctx context.Context) map[int]string {
+	if p.PIDResolver == nil {
+		return nil
+	}
+	ttl := p.PIDCacheTTL
+	if ttl == 0 {
+		ttl = 5 * time.Second
+	}
+	if p.pidMap != nil && time.Now().Before(p.pidAt) {
+		return p.pidMap
+	}
+	p.pidMap = p.PIDResolver(ctx) // full replace: stale PIDs are dropped
+	p.pidAt = time.Now().Add(ttl)
+	return p.pidMap
+}
+
+// ingest reads new lines from the export file and records file accesses.
+// The read offset advances only past complete lines; a truncation resets it.
+// Historical lines are never re-attributed with a newer PID map.
 func (p *TetragonProvider) ingest() {
 	f, err := os.Open(p.EventsPath)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 1<<20), 1<<20)
-	var pidMap map[int]string
-	if p.PIDResolver != nil {
-		pidMap = p.PIDResolver(context.Background())
+	st, err := f.Stat()
+	if err != nil {
+		return
 	}
-	roots := p.WorkspaceRoots()
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 || line[0] != '{' {
-			continue
+	if st.Size() < p.offset {
+		p.offset = 0 // file rotated/truncated
+	}
+	if _, err := f.Seek(p.offset, 0); err != nil {
+		return
+	}
+	var pidMap map[int]string
+	if p.PIDResolver != nil {
+		pidMap = p.pidSnapshotLocked(context.Background())
+	}
+	roots := p.WorkspaceRoots()
+	r := bufio.NewReader(f)
+	var consumed int64
+	for {
+		line, err := r.ReadBytes('\n')
+		if len(line) == 0 {
+			break
 		}
-		var ev tetragonEvent
-		if err := json.Unmarshal(line, &ev); err != nil {
-			continue // tolerate non-JSON noise in shared export files
+		if line[len(line)-1] != '\n' {
+			break // incomplete last line: re-read on next ingest
 		}
-		if ev.kind() != "process_kprobe" && ev.kind() != "process_exec" {
-			continue
-		}
-		ts := time.Now()
-		if t, err := time.Parse(time.RFC3339Nano, ev.Time); err == nil {
-			ts = t
-		}
-		// Candidate paths: explicit field, cwd, binary, args.
-		candidates := []string{ev.Fields["path"], ev.Process.Cwd, ev.Fields["filename"]}
-		candidates = append(candidates, ev.Process.Args...)
-		write := strings.Contains(ev.Fields["open_flags"], "WRONLY") ||
-			strings.Contains(ev.Fields["open_flags"], "RDWR") ||
-			strings.Contains(strings.Join(ev.Process.Args, " "), ">")
-		for _, cand := range candidates {
-			if cand == "" {
-				continue
-			}
-			agentID, hostPath := attribute(cand, ev.Process.PID, pidMap, roots)
-			if agentID == "" {
-				continue
-			}
-			key := agentID + "|" + hostPath
-			p.seen[key] = fileAccess{Path: hostPath, Write: write, At: ts}
+		consumed += int64(len(line))
+		p.ingestLine(line[:len(line)-1], pidMap, roots)
+		if err != nil {
+			break
 		}
 	}
 	// Bound memory: drop evidence older than 10 minutes.
@@ -194,6 +239,60 @@ func (p *TetragonProvider) ingest() {
 		if time.Since(fa.At) > 10*time.Minute {
 			delete(p.seen, k)
 		}
+	}
+	p.offset += consumed
+}
+
+// ingestLine parses and records one export line.
+func (p *TetragonProvider) ingestLine(line []byte, pidMap map[int]string, roots map[string]string) {
+	if len(line) == 0 || line[0] != '{' {
+		return
+	}
+	var ev tetragonEvent
+	if err := json.Unmarshal(line, &ev); err != nil {
+		return // tolerate non-JSON noise in shared export files
+	}
+	if ev.kind() != "process_kprobe" && ev.kind() != "process_exec" {
+		return
+	}
+	ts := time.Now()
+	if t, err := time.Parse(time.RFC3339Nano, ev.Time); err == nil {
+		ts = t
+	}
+	// Kernel-reported paths (kprobe args) are strong evidence; cwd and
+	// args are heuristics and always flagged as such.
+	write := strings.Contains(ev.Fields["open_flags"], "WRONLY") ||
+		strings.Contains(ev.Fields["open_flags"], "RDWR")
+	kernelCands := []string{ev.Fields["path"], ev.Fields["filename"]}
+	heurCands := append([]string{ev.Process.Cwd}, ev.Process.Args...)
+	heurWrite := write || strings.Contains(strings.Join(ev.Process.Args, " "), ">")
+	p.recordCandidates(kernelCands, ev.Process.PID, pidMap, roots, EvidenceKernel, write, ts)
+	p.recordCandidates(heurCands, ev.Process.PID, pidMap, roots, EvidenceHeuristic, heurWrite, ts)
+}
+
+// recordCandidates attributes candidate paths and stores the evidence.
+// Kernel confidence is never downgraded by a later heuristic match; a later
+// kernel match upgrades a heuristic one.
+func (p *TetragonProvider) recordCandidates(cands []string, pid int, pidMap map[int]string, roots map[string]string, conf string, write bool, ts time.Time) {
+	for _, cand := range cands {
+		if cand == "" {
+			continue
+		}
+		agentID, hostPath := attribute(cand, pid, pidMap, roots)
+		if agentID == "" {
+			continue
+		}
+		key := agentID + "|" + hostPath
+		if old, ok := p.seen[key]; ok {
+			if old.Confidence == EvidenceKernel && conf == EvidenceHeuristic {
+				// Keep kernel evidence; merge write flag and timestamp.
+				old.Write = old.Write || write
+				old.At = ts
+				p.seen[key] = old
+				continue
+			}
+		}
+		p.seen[key] = fileAccess{Path: hostPath, Write: write, At: ts, Confidence: conf}
 	}
 }
 

@@ -8,8 +8,13 @@
 #   tetra getevents --follow > /var/lib/dockweave/tetragon-events.jsonl
 # and start dockweaved with DOCKWEAVE_TETRAGON_EVENTS=/var/lib/dockweave/tetragon-events.jsonl
 #
-# Limitations: eBPF event delivery is best-effort; only security_file_open
-# is captured here (not every read/write syscall).
+# Limitations: eBPF event delivery is best-effort; only file-open syscalls
+# are captured here (not every read/write syscall).
+#
+# Evidence model (review-006): the captured syscall path argument becomes
+# the "path"/"filename" field of the export event. DockWeave classifies
+# these fields as kernel evidence ("kernel"); paths guessed from process
+# cwd/args are classified as "heuristic" and used only as fallback.
 apiVersion: cilium.io/v1alpha1
 kind: TracingPolicy
 metadata:
@@ -23,6 +28,16 @@ spec:
           type: "string"
       returnArgAction: "Save"
     - call: "__x64_sys_openat"
+      syscall: true
+      args:
+        - index: 0
+          type: "int"
+        - index: 1
+          type: "string"
+        - index: 2
+          type: "int"
+      returnArgAction: "Save"
+    - call: "__x64_sys_openat2"
       syscall: true
       args:
         - index: 0
