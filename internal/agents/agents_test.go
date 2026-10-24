@@ -332,6 +332,9 @@ func setupWithMemory(t *testing.T) (*Service, *fakeMounts, *fakeDocker, *persist
 		t.Fatal(err)
 	}
 	svc.Memory = mm
+	// Use the effective identity so chown-to-self works unprivileged
+	// (CI runners do not run as uid 1000).
+	svc.DefaultUID, svc.DefaultGID = os.Getuid(), os.Getgid()
 	return svc, fm, fd, st, mm
 }
 
