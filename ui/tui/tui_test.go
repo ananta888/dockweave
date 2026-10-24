@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -780,3 +781,24 @@ func TestAntigravityPreset(t *testing.T) {
 		t.Fatalf("antigravity defaults missing: %q", m.form.cmd.Value())
 	}
 }
+
+func TestFolderDotsMeanAssigned(t *testing.T) {
+	// Green dots mark active/assigned folders for all three rows alike.
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	out := stripANSI(m.View())
+	for _, row := range []string{"/agent  ←", "/memory ←", "/workspace/proj"} {
+		i := strings.Index(out, row)
+		if i < 0 {
+			t.Fatalf("row %s missing", row)
+		}
+		if !strings.Contains(out[max(0, i-16):i], "●") {
+			t.Fatalf("assigned row %s must show a green dot:\n%s", row, out)
+		}
+	}
+}
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+
+func stripANSI(s string) string { return ansiRE.ReplaceAllString(s, "") }

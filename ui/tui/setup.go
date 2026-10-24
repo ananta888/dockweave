@@ -257,11 +257,14 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 	b.WriteString("  " + tabActive.Render(" folders ") + "\n")
 	*row++
 	p := m.data.paths[a.ID]
-	am := "   "
+	// Green dot = the folder is active/assigned (all three rows alike);
+	// own folders are marked with a note.
+	am := okStyle.Render("● ")
+	agentNote := "(AGENTS.md, skills)"
 	if p.AgentDirCustom {
-		am = okStyle.Render("● ")
+		agentNote = "(AGENTS.md, skills · own folder)"
 	}
-	fmt.Fprintf(&b, "  %s%-8s /agent  ← %s %s %s %s\n", am, "agent", p.AgentDir, dimStyle.Render("(AGENTS.md, skills)"),
+	fmt.Fprintf(&b, "  %s%-8s /agent  ← %s %s %s %s\n", am, "agent", p.AgentDir, dimStyle.Render(agentNote),
 		buttonView("set folder", focused("folder-agent")), buttonView("reset", focused("folder-reset")))
 	hit(*row, 2, 66, "folder-agent", "")
 	hit(*row, 68, 80, "folder-reset", "")
@@ -271,10 +274,13 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 		mm = okStyle.Render("● ")
 	}
 	mp := p.MemoryDir
+	memNote := "(long-term memory)"
 	if mp == "" {
 		mp = "—"
+	} else if p.MemoryCustom {
+		memNote = "(long-term memory · own folder)"
 	}
-	fmt.Fprintf(&b, "  %s%-8s /memory ← %s %s  %s %s\n", mm, "memory", mp, dimStyle.Render("(long-term memory)"),
+	fmt.Fprintf(&b, "  %s%-8s /memory ← %s %s  %s %s\n", mm, "memory", mp, dimStyle.Render(memNote),
 		buttonView("detach", focused("mem-detach")), buttonView("change", focused("change")))
 	hit(*row, 2, 66, "mem-detach", "")
 	hit(*row, 68, 82, "change", "")
