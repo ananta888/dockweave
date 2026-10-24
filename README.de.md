@@ -27,25 +27,24 @@ Jeder Agent erhält drei Bereiche:
 
 dockweave workspace register meinprojekt /srv/projekte/meinprojekt
 
-# Agenten anlegen — Beispiele für alle unterstützten Profile. Jedes Image
-# mit der Agent-CLI funktioniert; der Daemon setzt HOME=/memory, damit
-# Tool-State persistiert und die Session-Adapter (codex|opencode|claude|
-# gemini) ihre Marker finden:
+# Agenten anlegen — Beispiele für alle unterstützten Profile. Agenten
+# laufen non-root mit HOME=/memory: npm-Tools installieren nach
+# "$HOME/.local" und überleben damit die Container-Neuanlage.
 # Codex CLI (npm-Paket @openai/codex)
 dockweave agent create codex-01 --type codex --image node:22-bookworm \
-  --cmd "sh,-c,npm install -g @openai/codex && exec codex"
+  --cmd 'sh,-c,npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex"'
 
 # Claude Code (npm-Paket @anthropic-ai/claude-code)
 dockweave agent create claude-01 --type claude --image node:22-bookworm \
-  --cmd "sh,-c,npm install -g @anthropic-ai/claude-code && exec claude"
+  --cmd 'sh,-c,npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude"'
 
 # opencode (npm-Paket opencode-ai)
 dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
-  --cmd "sh,-c,npm install -g opencode-ai && exec opencode"
+  --cmd 'sh,-c,npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode"'
 
 # Gemini CLI (npm-Paket @google/gemini-cli)
 dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
-  --cmd "sh,-c,npm install -g @google/gemini-cli && exec gemini"
+  --cmd 'sh,-c,npm install -g --prefix "$HOME/.local" @google/gemini-cli && exec "$HOME/.local/bin/gemini"
 
 # API-Keys o. Ä. über Env-File:  --env-file DATEI  (KEY=VALUE-Zeilen),
 # z. B. ANTHROPIC_API_KEY=... für claude-01
