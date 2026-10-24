@@ -75,6 +75,7 @@ type setupForm struct {
 	folderTarget          int    // 0 = /agent folder, 1 = new memory folder
 	mode                  int    // 0 = agent settings, 1 = new agent, 2 = workspaces
 	showStores            bool   // memory store list expanded
+	folderOpen            bool   // the set-folder input is visible
 	editing               bool   // a field is being changed (typing/cycling)
 	savedValue            string // value before editing (esc restores)
 	focusIdx              int    // index into hits, -1 = nothing focused
@@ -252,7 +253,7 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 	hit(*row, 22, 76, "f-image", "")
 	hit(*row, 78, 92, "f-uid", "")
 	*row++
-	b.WriteString("  " + f.cmd.View() + "\n")
+	b.WriteString(fieldView(&f.cmd, focused("f-cmd")) + "\n")
 	hit(*row, 2, 92, "f-cmd", "")
 	*row++
 	b.WriteString("  " + buttonView("Apply", focused("apply-config")) + "\n")
@@ -285,10 +286,12 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 	} else if p.MemoryCustom {
 		memNote = "(long-term memory · own folder)"
 	}
-	fmt.Fprintf(&b, "  %s%-8s /memory ← %s %s  %s %s\n", mm, "memory", mp, dimStyle.Render(memNote),
-		buttonView("detach", focused("mem-detach")), buttonView("change", focused("change")))
+	fmt.Fprintf(&b, "  %s%-8s /memory ← %s %s  %s %s %s\n", mm, "memory", mp, dimStyle.Render(memNote),
+		buttonView("detach", focused("mem-detach")), buttonView("change", focused("change")),
+		buttonView("use own", focused("folder-memory")))
 	hit(*row, 2, 66, "mem-detach", "")
 	hit(*row, 68, 82, "change", "")
+	hit(*row, 84, 100, "folder-memory", "")
 	*row++
 	for _, w := range m.data.workspaces {
 		mark := "   "
@@ -301,6 +304,21 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 			buttonView(label, focused(action)))
 		hit(*row, 55, 72, action, w.ID)
 		*row++
+	}
+
+	// The set-folder input appears on demand ([set folder]/[use own]).
+	if f.folderOpen {
+		*row++
+		b.WriteString("  " + tabActive.Render(" set folder ") + "\n")
+		*row++
+		targets := []string{"agent", "memory"}
+		b.WriteString("  folder for " + cyclerView(targets[f.folderTarget], focused("target")) + "  " + fieldView(&f.folder, focused("f-folder")) + "\n")
+		hit(*row, 2, 24, "target", "")
+		hit(*row, 26, 110, "f-folder", "")
+		*row++
+		b.WriteString("  " + buttonView("Apply", focused("apply-folder")) + "  " + buttonView("cancel", focused("folder-cancel")) + "\n")
+		hit(*row, 2, 14, "apply-folder", "")
+		hit(*row, 16, 30, "folder-cancel", "")
 	}
 
 	// Memory stores appear only on demand ([change]).
@@ -336,15 +354,15 @@ func (m *modelTUI) viewSetupNew(row *int, hit func(int, int, int, string, string
 	f := &m.form
 	b.WriteString("\n  " + tabActive.Render(" new agent ") + "\n")
 	*row++
-	b.WriteString("  " + f.name.View() + "   " + cyclerView(agentTypes[f.agentType], focused("type")) + "\n")
+	b.WriteString(fieldView(&f.name, focused("f-name")) + "   " + cyclerView(agentTypes[f.agentType], focused("type")) + "\n")
 	hit(*row, 2, 42, "f-name", "")
 	hit(*row, 52, 74, "type", "")
 	*row++
-	b.WriteString("  " + f.image.View() + "   " + f.uid.View() + "\n")
+	b.WriteString(fieldView(&f.image, focused("f-image")) + "   " + fieldView(&f.uid, focused("f-uid")) + "\n")
 	hit(*row, 2, 52, "f-image", "")
 	hit(*row, 52, 68, "f-uid", "")
 	*row++
-	b.WriteString("  " + f.cmd.View() + "\n")
+	b.WriteString(fieldView(&f.cmd, focused("f-cmd")) + "\n")
 	hit(*row, 2, 92, "f-cmd", "")
 	*row++
 	b.WriteString("  " + buttonView("Create", focused("create")) + "  " + buttonView("Clear", focused("clear")) + "\n")
@@ -373,7 +391,7 @@ func (m *modelTUI) viewSetupWorkspaces(row *int, hit func(int, int, int, string,
 	*row++
 	b.WriteString("  " + tabActive.Render(" register workspace ") + "\n")
 	*row++
-	b.WriteString("  " + f.wsName.View() + "  " + f.wsPath.View() + "\n")
+	b.WriteString(fieldView(&f.wsName, focused("f-wsname")) + "  " + fieldView(&f.wsPath, focused("f-wspath")) + "\n")
 	hit(*row, 2, 52, "f-wsname", "")
 	hit(*row, 52, 130, "f-wspath", "")
 	*row++
@@ -382,7 +400,7 @@ func (m *modelTUI) viewSetupWorkspaces(row *int, hit func(int, int, int, string,
 	*row += 2
 	b.WriteString("  " + tabActive.Render(" register memory folder ") + "\n")
 	*row++
-	b.WriteString("  " + f.folder.View() + "\n")
+	b.WriteString(fieldView(&f.folder, focused("f-folder")) + "\n")
 	hit(*row, 2, 110, "f-folder", "")
 	*row++
 	b.WriteString("  " + buttonView("Register memory", focused("apply-memory")) + "\n")
@@ -416,6 +434,15 @@ func (m *modelTUI) focusAction(action string) {
 			return
 		}
 	}
+}
+
+// fieldView renders a text input with an unmissable selection marker.
+func fieldView(ti *textinput.Model, selected bool) string {
+	v := ti.View()
+	if selected {
+		return tabActive.Render("▸ ") + v
+	}
+	return "  " + v
 }
 
 func buttonView(label string, focused bool) string {
@@ -758,9 +785,23 @@ func (m *modelTUI) activate(h setupHit) tea.Cmd {
 	case h.action == "register":
 		return m.submitWorkspace()
 	case h.action == "folder-agent":
-		// Focus the shared folder input with target "/agent".
+		// Open the shared folder input for the /agent source.
 		f.folderTarget = 0
+		f.folderOpen = true
+		_ = m.viewSetup() // rebuild hits so the input is focusable now
 		m.focusAction("f-folder")
+		m.startEdit()
+		return nil
+	case h.action == "folder-memory":
+		// Open the shared folder input for registering an own memory folder.
+		f.folderTarget = 1
+		f.folderOpen = true
+		_ = m.viewSetup() // rebuild hits so the input is focusable now
+		m.focusAction("f-folder")
+		m.startEdit()
+		return nil
+	case h.action == "folder-cancel":
+		f.folderOpen = false
 		return nil
 	case h.action == "folder-reset":
 		return m.submitFolder("")

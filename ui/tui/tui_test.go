@@ -851,3 +851,46 @@ func TestSetupKeyboardInteractionModel(t *testing.T) {
 		t.Fatal("selected control must be marked")
 	}
 }
+
+func TestFolderInputVisibleOnSetFolder(t *testing.T) {
+	// Regression: the path input must actually be rendered and focusable
+	// after [set folder] — it used to be focused while invisible.
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 50, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	_ = m.View()
+	if strings.Contains(m.View(), "set folder \n") {
+		t.Fatal("folder input must be closed initially")
+	}
+	clickHit(t, m, "folder-agent")
+	out := m.View()
+	if !strings.Contains(out, "folder for") || !strings.Contains(out, "Apply") {
+		t.Fatalf("set-folder input must be visible after [set folder]:\n%s", out)
+	}
+	if m.form.focusedInput() == nil {
+		t.Fatal("the folder field must be focused and editable")
+	}
+	// Typing goes into the path field.
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	if !strings.HasPrefix(m.form.folder.Value(), "/") {
+		t.Fatalf("folder field not editable: %q", m.form.folder.Value())
+	}
+}
+
+func TestSelectedFieldIsMarked(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 50, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	_ = m.View()
+	m.focusAction("f-image")
+	out := m.View()
+	// The selected field carries the marker; unselected ones do not.
+	if strings.Count(out, "▸") < 1 {
+		t.Fatalf("selected field must be marked:\n%s", out)
+	}
+	h := m.form.focusedHit()
+	if h == nil || !strings.Contains(m.setupHint(h), "enter: edit") {
+		t.Fatal("hint must describe the field actions")
+	}
+}
