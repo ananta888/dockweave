@@ -12,3 +12,8 @@ coverage.*
 .vscode/
 .idea/
 .opencode/
+
+# stray build outputs at repo root
+/dockweave
+/dockweave-tui
+/dockweaved
