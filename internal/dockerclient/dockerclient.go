@@ -91,6 +91,19 @@ func (c *Client) EnsureImage(ctx context.Context, ref string, out io.Writer) err
 }
 
 // Create creates (but does not start) the hardened agent container.
+// containerEnv assembles the container environment. Long-term memory is
+// the agent's home: tool state (~/.claude, ~/.codex, …) must land under
+// /memory where it persists and where the adapter markers live. An
+// explicit HOME in the agent env wins.
+func containerEnv(agentEnv []string) []string {
+	for _, e := range agentEnv {
+		if strings.HasPrefix(e, "HOME=") {
+			return agentEnv
+		}
+	}
+	return append([]string{"HOME=/memory"}, agentEnv...)
+}
+
 func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error) {
 	a := spec.Agent
 	labels := map[string]string{
@@ -108,7 +121,7 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 	cfg := &container.Config{
 		Image:  a.Image,
 		Cmd:    cmd,
-		Env:    a.Env,
+		Env:    containerEnv(a.Env),
 		Labels: labels,
 		User:   user,
 		// Keep stdin open + tty for attach/exec based interactive use.

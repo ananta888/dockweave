@@ -41,8 +41,25 @@ mounts never propagate back to the host.
 # Register a workspace
 dockweave workspace register myproject /srv/projects/myproject
 
-# Create an agent
+# Create agents — examples for all supported profiles. Any image with the
+# agent CLI works; the daemon sets HOME=/memory so tool state persists and
+# the session adapters (codex|opencode|claude|gemini) find their markers.
 dockweave agent create codex-01 --type codex --image ghcr.io/openai/codex:latest
+
+# Claude Code (npm package @anthropic-ai/claude-code)
+dockweave agent create claude-01 --type claude --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @anthropic-ai/claude-code && exec claude"
+
+# opencode (npm package opencode-ai)
+dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g opencode-ai && exec opencode"
+
+# Gemini CLI (npm package @google/gemini-cli)
+dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @google/gemini-cli && exec gemini"
+
+# API keys etc. via env file: add  --env-file FILE  (KEY=VALUE lines),
+# e.g. ANTHROPIC_API_KEY=... for claude-01
 
 # Grant read-write access
 dockweave grant create myproject codex-01 --mode rw

@@ -97,7 +97,7 @@ func agentCmd() *cobra.Command {
 	f.IntVar(&spec.GID, "gid", 0, "run as gid")
 	f.Float64Var(&spec.CPULimit, "cpus", 0, "CPU limit (cores)")
 	f.Int64Var(&spec.MemoryMB, "memory-mb", 0, "memory limit (MiB)")
-	f.StringSliceVar(&spec.Command, "cmd", nil, "override command")
+	f.StringSliceVar(&spec.Command, "cmd", nil, "override command (comma-separated argv)")
 	_ = create.MarkFlagRequired("image")
 
 	list := &cobra.Command{

@@ -26,7 +26,28 @@ Jeder Agent erhält drei Bereiche:
 ./scripts/install.sh
 
 dockweave workspace register meinprojekt /srv/projekte/meinprojekt
+
+# Agenten anlegen — Beispiele für alle unterstützten Profile. Jedes Image
+# mit der Agent-CLI funktioniert; der Daemon setzt HOME=/memory, damit
+# Tool-State persistiert und die Session-Adapter (codex|opencode|claude|
+# gemini) ihre Marker finden:
 dockweave agent create codex-01 --type codex --image ghcr.io/openai/codex:latest
+
+# Claude Code (npm-Paket @anthropic-ai/claude-code)
+dockweave agent create claude-01 --type claude --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @anthropic-ai/claude-code && exec claude"
+
+# opencode (npm-Paket opencode-ai)
+dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g opencode-ai && exec opencode"
+
+# Gemini CLI (npm-Paket @google/gemini-cli)
+dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
+  --cmd "sh,-c,npm install -g @google/gemini-cli && exec gemini"
+
+# API-Keys o. Ä. über Env-File:  --env-file DATEI  (KEY=VALUE-Zeilen),
+# z. B. ANTHROPIC_API_KEY=... für claude-01
+
 dockweave grant create meinprojekt codex-01 --mode rw
 dockweave agent start codex-01
 dockweave tui
