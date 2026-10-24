@@ -1,7 +1,7 @@
 # DockWeave — Makefile
 # Requires: Go >= 1.27, Docker Engine
 
-GO        ?= go
+GO        ?= $(shell command -v go 2>/dev/null || echo $(HOME)/.local/go/bin/go)
 GOFLAGS   ?=
 BIN_DIR   := bin
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
