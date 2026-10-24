@@ -1,6 +1,8 @@
-// Package memory implements snapshotting, restore and retention for agent
-// memory directories. Snapshots are deterministic tar.gz archives stored
-// under <root>/snapshots/<agentID>/.
+// Package memory implements snapshotting, restore and retention for
+// long-term memory stores. Memories have their own identity (memory IDs),
+// decoupled from agent identities (review-009). Snapshots are deterministic
+// tar.gz archives stored under <root>/snapshots/<memoryID>/. All methods
+// key by memory ID.
 package memory
 
 import (
@@ -16,8 +18,8 @@ import (
 	"time"
 )
 
-// ErrBusy is returned when the agent is running and a mutation of its
-// memory directory is unsafe.
+// ErrBusy is returned when the owning agent is running and a mutation of
+// the memory store is unsafe.
 var ErrBusy = errors.New("agent is running")
 
 // ErrNotFound is returned when a snapshot does not exist.
@@ -27,8 +29,8 @@ var ErrNotFound = errors.New("snapshot not found")
 type Manager struct {
 	// Root is the dockweave state root (snapshots live under <root>/snapshots).
 	Root string
-	// MemoryDir resolves the host memory path of an agent ID.
-	MemoryDir func(agentID string) string
+	// MemoryDir resolves the host path of a memory ID.
+	MemoryDir func(memoryID string) string
 }
 
 // New creates a Manager.
@@ -44,27 +46,38 @@ func New(root string, memoryDir func(string) string) (*Manager, error) {
 
 // Snapshot describes one stored snapshot archive.
 type Snapshot struct {
-	AgentID   string    `json:"agent_id"`
+	MemoryID  string    `json:"memory_id"`
 	Name      string    `json:"name"` // file name (timestamp-based)
 	Path      string    `json:"path"`
 	SizeBytes int64     `json:"size_bytes"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (m *Manager) snapshotsDir(agentID string) string {
-	return filepath.Join(m.Root, "snapshots", agentID)
+func (m *Manager) snapshotsDir(memoryID string) string {
+	return filepath.Join(m.Root, "snapshots", memoryID)
+}
+
+// Path returns the host directory of a memory store.
+func (m *Manager) Path(memoryID string) string { return m.MemoryDir(memoryID) }
+
+// EnsureDir creates the memory store directory if missing.
+func (m *Manager) EnsureDir(memoryID string) error {
+	if err := os.MkdirAll(m.MemoryDir(memoryID), 0o700); err != nil {
+		return fmt.Errorf("create memory dir for %s: %w", memoryID, err)
+	}
+	return nil
 }
 
 // Create writes a tar.gz snapshot of the agent's memory directory.
 // The agent should be stopped (running agents may mutate files concurrently);
 // callers enforce this — Create itself refuses nothing for testability but
 // documents the contract.
-func (m *Manager) Create(agentID string) (*Snapshot, error) {
-	src := m.MemoryDir(agentID)
+func (m *Manager) Create(memoryID string) (*Snapshot, error) {
+	src := m.MemoryDir(memoryID)
 	if _, err := os.Stat(src); err != nil {
 		return nil, fmt.Errorf("memory dir: %w", err)
 	}
-	dir := m.snapshotsDir(agentID)
+	dir := m.snapshotsDir(memoryID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create snapshot dir: %w", err)
 	}
@@ -142,7 +155,7 @@ func (m *Manager) Create(agentID string) (*Snapshot, error) {
 		return nil, fmt.Errorf("finalize snapshot: %w", err)
 	}
 	st, _ := os.Stat(final)
-	snap := &Snapshot{AgentID: agentID, Name: name, Path: final, CreatedAt: time.Now().UTC()}
+	snap := &Snapshot{MemoryID: memoryID, Name: name, Path: final, CreatedAt: time.Now().UTC()}
 	if st != nil {
 		snap.SizeBytes = st.Size()
 		snap.CreatedAt = st.ModTime()
@@ -151,8 +164,8 @@ func (m *Manager) Create(agentID string) (*Snapshot, error) {
 }
 
 // List returns snapshots of an agent, newest first.
-func (m *Manager) List(agentID string) ([]Snapshot, error) {
-	dir := m.snapshotsDir(agentID)
+func (m *Manager) List(memoryID string) ([]Snapshot, error) {
+	dir := m.snapshotsDir(memoryID)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -170,7 +183,7 @@ func (m *Manager) List(agentID string) ([]Snapshot, error) {
 			continue
 		}
 		out = append(out, Snapshot{
-			AgentID: agentID, Name: e.Name(), Path: filepath.Join(dir, e.Name()),
+			MemoryID: memoryID, Name: e.Name(), Path: filepath.Join(dir, e.Name()),
 			SizeBytes: info.Size(), CreatedAt: info.ModTime(),
 		})
 	}
@@ -180,8 +193,8 @@ func (m *Manager) List(agentID string) ([]Snapshot, error) {
 
 // Restore extracts a snapshot into the agent's memory directory. The target
 // directory is REPLACED (previous contents moved to a .bak-<ts> sibling).
-func (m *Manager) Restore(agentID, name string) error {
-	src := filepath.Join(m.snapshotsDir(agentID), name)
+func (m *Manager) Restore(memoryID, name string) error {
+	src := filepath.Join(m.snapshotsDir(memoryID), name)
 	f, err := os.Open(src)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -197,7 +210,7 @@ func (m *Manager) Restore(agentID, name string) error {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 
-	dst := m.MemoryDir(agentID)
+	dst := m.MemoryDir(memoryID)
 	if _, err := os.Stat(dst); err == nil {
 		bak := dst + ".bak-" + time.Now().UTC().Format("20060102-150405")
 		if err := os.Rename(dst, bak); err != nil {
@@ -259,8 +272,8 @@ func (m *Manager) Restore(agentID, name string) error {
 }
 
 // Delete removes one snapshot.
-func (m *Manager) Delete(agentID, name string) error {
-	p := filepath.Join(m.snapshotsDir(agentID), name)
+func (m *Manager) Delete(memoryID, name string) error {
+	p := filepath.Join(m.snapshotsDir(memoryID), name)
 	if err := os.Remove(p); err != nil {
 		if os.IsNotExist(err) {
 			return ErrNotFound
@@ -278,8 +291,8 @@ type RetentionPolicy struct {
 
 // ApplyRetention prunes snapshots of an agent according to the policy.
 // Returns the names of removed snapshots.
-func (m *Manager) ApplyRetention(agentID string, pol RetentionPolicy) ([]string, error) {
-	list, err := m.List(agentID)
+func (m *Manager) ApplyRetention(memoryID string, pol RetentionPolicy) ([]string, error) {
+	list, err := m.List(memoryID)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +307,7 @@ func (m *Manager) ApplyRetention(agentID string, pol RetentionPolicy) ([]string,
 		if !overCount && !overAge {
 			continue
 		}
-		if err := m.Delete(agentID, s.Name); err != nil {
+		if err := m.Delete(memoryID, s.Name); err != nil {
 			return removed, err
 		}
 		removed = append(removed, s.Name)

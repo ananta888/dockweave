@@ -1,8 +1,30 @@
 # Memory: Snapshots, Restore, Backup & Retention
 
-Every agent identity owns a memory directory
-(`/var/lib/dockweave/agents/<id>/memory`), bound 1:1 to that identity. It
-survives container recreation, workspace changes and agent upgrades.
+Every memory store has its own identity (`mem_<id>`) under
+`/var/lib/dockweave/memories/<mem-id>`, decoupled from agent identities
+(review-009). Exactly one agent is the *write owner* at a time; a second
+writer is rejected (AGENTS rule 6). The store survives container
+recreation, workspace changes and agent upgrades — and can be attached to
+a replacement agent without data loss.
+
+## Identity, attach & detach
+
+```bash
+dockweave memory memories              # list memories and their write owners
+dockweave memory detach codex-01       # unbind (data is kept)
+dockweave memory attach codex-02 mem_ab12…   # bind to a replacement agent
+```
+
+- Attach/detach are refused while the agent container runs (its `/memory`
+  mount is live); stop the agent first.
+- A memory can only be attached when it is unbound (or already owned by the
+  target agent); an agent holds at most one memory. Both rules are enforced
+  by the registry (UNIQUE constraints) — not just by convention.
+- Every attach/detach is written to the audit log (`memory.attached`,
+  `memory.detached`).
+- On daemon start, legacy per-agent directories
+  (`agents/<id>/memory`) are migrated to memory identities automatically
+  (atomic rename; no data loss).
 
 ## Snapshots
 

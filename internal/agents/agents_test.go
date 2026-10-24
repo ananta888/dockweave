@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/persistence"
 )
@@ -316,5 +317,145 @@ func TestCreateRootOnlyWhenAllowedAndAudited(t *testing.T) {
 	}
 	if !rootAudit {
 		t.Fatal("root container must be audited")
+	}
+}
+
+// ---- memory identity lifecycle (review-009) ----
+
+func setupWithMemory(t *testing.T) (*Service, *fakeMounts, *fakeDocker, *persistence.Store, *memory.Manager) {
+	t.Helper()
+	svc, fm, fd, st := setup(t)
+	mm, err := memory.New(fm.root, func(memID string) string {
+		return filepath.Join(fm.root, "memories", memID)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Memory = mm
+	return svc, fm, fd, st, mm
+}
+
+func TestCreateBindsDedicatedMemory(t *testing.T) {
+	svc, _, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+	a := &model.Agent{Name: "m1", Type: "custom", Image: "img"}
+	if _, err := svc.Create(ctx, a, "test"); err != nil {
+		t.Fatal(err)
+	}
+	mem, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("agent must own a memory identity: %v", err)
+	}
+	if _, err := os.Stat(mm.Path(mem.ID)); err != nil {
+		t.Fatalf("memory store dir missing: %v", err)
+	}
+}
+
+func TestMemoryAttachDetachAndSingleWriter(t *testing.T) {
+	svc, _, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+
+	a := &model.Agent{Name: "ma", Type: "custom", Image: "img"}
+	b := &model.Agent{Name: "mb", Type: "custom", Image: "img"}
+	for _, x := range []*model.Agent{a, b} {
+		if _, err := svc.Create(ctx, x, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	memA, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memB, err := st.GetMemoryByAgent(ctx, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Second writer on memA must be rejected while a owns it.
+	if _, err := svc.AttachMemory(ctx, b.Name, memA.ID, "test"); !errors.Is(err, ErrMemoryInUse) {
+		t.Fatalf("second writer must be rejected, got %v", err)
+	}
+	// An agent cannot hold two memories at once.
+	if _, err := svc.AttachMemory(ctx, a.Name, memB.ID, "test"); !errors.Is(err, ErrMemoryInUse) {
+		t.Fatalf("second memory per agent must be rejected, got %v", err)
+	}
+	// Running agent: attach/detach refused (fake: not running -> ok below).
+	// Detach keeps the data on disk.
+	if err := os.WriteFile(filepath.Join(mm.Path(memA.ID), "notes.md"), []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	det, err := svc.DetachMemory(ctx, a.Name, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if det.ID != memA.ID || det.OwnerAgentID != "" {
+		t.Fatalf("detach result wrong: %+v", det)
+	}
+	if b, _ := os.ReadFile(filepath.Join(mm.Path(memA.ID), "notes.md")); string(b) != "keep me" {
+		t.Fatal("detach must not touch the data")
+	}
+
+	// Replacement agent: free b's default memory, then attach memA.
+	if _, err := svc.DetachMemory(ctx, b.Name, "test"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.AttachMemory(ctx, b.Name, memA.ID, "test")
+	if err != nil {
+		t.Fatalf("attach to replacement agent: %v", err)
+	}
+	if got.OwnerAgentID != b.ID {
+		t.Fatalf("owner after attach: %+v", got)
+	}
+	// Data survived the migration.
+	if bb, _ := os.ReadFile(filepath.Join(mm.Path(memA.ID), "notes.md")); string(bb) != "keep me" {
+		t.Fatal("migration must not lose data")
+	}
+	// Audit trail covers attach and detach.
+	if !hasEvent(t, st, model.EventMemoryAttached) || !hasEvent(t, st, model.EventMemoryDetached) {
+		t.Fatal("attach/detach must be audited")
+	}
+	// The detached memB is free for reuse.
+	if _, err := svc.AttachMemory(ctx, a.Name, memB.ID, "test"); err != nil {
+		t.Fatalf("rebind freed memory: %v", err)
+	}
+}
+
+func TestEnsureMemoryIdentitiesMigratesLegacyDirs(t *testing.T) {
+	svc, fm, _, st, mm := setupWithMemory(t)
+	ctx := context.Background()
+	a := &model.Agent{ID: model.NewID("ag"), Name: "legacy", Type: "custom", Image: "img"}
+	if err := st.CreateAgent(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	// Legacy layout: agents/<id>/memory with data, no memory record.
+	legacy := fm.MemoryDir(a.ID)
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "db.sqlite"), []byte("legacy data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.EnsureMemoryIdentities(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mem, err := st.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("identity not created: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(mm.Path(mem.ID), "db.sqlite"))
+	if err != nil || string(got) != "legacy data" {
+		t.Fatalf("legacy data not migrated: %q %v", got, err)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatal("legacy dir should have been moved away")
+	}
+	// Idempotent: second run changes nothing.
+	if err := svc.EnsureMemoryIdentities(ctx); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := st.ListMemories(ctx)
+	if len(list) != 1 {
+		t.Fatalf("expected exactly one memory identity, got %d", len(list))
 	}
 }

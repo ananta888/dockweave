@@ -46,7 +46,7 @@ func classify(err error) (int, string) {
 	switch {
 	case errors.Is(err, persistence.ErrNotFound), errors.Is(err, memory.ErrNotFound):
 		return http.StatusNotFound, "not_found"
-	case errors.Is(err, persistence.ErrConflict), errors.Is(err, workspaces.ErrConflict):
+	case errors.Is(err, persistence.ErrConflict), errors.Is(err, workspaces.ErrConflict), errors.Is(err, agents.ErrMemoryInUse):
 		return http.StatusConflict, "conflict"
 	case errors.Is(err, mounts.ErrBusy), errors.Is(err, memory.ErrBusy):
 		return http.StatusConflict, "busy"
@@ -95,6 +95,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/memory/snapshots", s.listMemorySnapshots)
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/restore", s.restoreMemory)
 	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/memory/snapshots/{name}", s.deleteMemorySnapshot)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/attach", s.attachMemory)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/memory/detach", s.detachMemory)
+	s.mux.HandleFunc("GET /api/v1/memories", s.listMemories)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/session", s.agentSession)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
@@ -427,6 +430,42 @@ func (s *Server) deleteMemorySnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- memory identities (review-009) ----
+
+func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListMemories(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) attachMemory(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MemoryID string `json:"memory_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.MemoryID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain memory_id"))
+		return
+	}
+	mem, err := s.Agents.AttachMemory(r.Context(), r.PathValue("id"), req.MemoryID, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mem)
+}
+
+func (s *Server) detachMemory(w http.ResponseWriter, r *http.Request) {
+	mem, err := s.Agents.DetachMemory(r.Context(), r.PathValue("id"), actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mem)
 }
 
 func (s *Server) agentSession(w http.ResponseWriter, r *http.Request) {

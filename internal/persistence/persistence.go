@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 2
+const schemaVersion = 3
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -100,6 +100,14 @@ var migrations = []string{
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_grants_active
 		ON grants(workspace_id, agent_id)
 		WHERE revoked_at IS NULL AND status IN ('mounting','active','revoking','unmount_failed');`,
+	// 3: memory identities decoupled from agents (review-009). Exactly one
+	// write owner per memory; unbound memories have a NULL owner.
+	`CREATE TABLE IF NOT EXISTS memories (
+		id TEXT PRIMARY KEY,
+		owner_agent_id TEXT UNIQUE,
+		created_at TEXT NOT NULL,
+		attached_at TEXT
+	);`,
 }
 
 // Store is the DockWeave registry.
@@ -473,6 +481,115 @@ func (s *Store) PurgeGrants(ctx context.Context, workspaceID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM grants WHERE workspace_id=?`, workspaceID)
 	if err != nil {
 		return fmt.Errorf("purge grants: %w", err)
+	}
+	return nil
+}
+
+// ---- Memories (decoupled identity, single write owner) ----
+
+// CreateMemory inserts a memory identity. ownerAgentID may be empty
+// (unbound).
+func (s *Store) CreateMemory(ctx context.Context, m *model.Memory) error {
+	var owner, attached *string
+	if m.OwnerAgentID != "" {
+		owner = &m.OwnerAgentID
+	}
+	if m.AttachedAt != nil {
+		a := ts(*m.AttachedAt)
+		attached = &a
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO memories(id,owner_agent_id,created_at,attached_at) VALUES(?,?,?,?)`,
+		m.ID, owner, ts(m.CreatedAt), attached)
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: agent already owns a memory", ErrConflict)
+	}
+	if err != nil {
+		return fmt.Errorf("insert memory: %w", err)
+	}
+	return nil
+}
+
+func scanMemory(row scanner) (*model.Memory, error) {
+	var m model.Memory
+	var owner, ca, aa sql.NullString
+	if err := row.Scan(&m.ID, &owner, &ca, &aa); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("scan memory: %w", err)
+	}
+	m.OwnerAgentID = owner.String
+	m.CreatedAt, _ = parseTS(ca.String)
+	if aa.Valid {
+		if t, err := parseTS(aa.String); err == nil {
+			m.AttachedAt = &t
+		}
+	}
+	return &m, nil
+}
+
+const memoryCols = `id,owner_agent_id,created_at,attached_at`
+
+// GetMemory fetches a memory identity by ID.
+func (s *Store) GetMemory(ctx context.Context, id string) (*model.Memory, error) {
+	return scanMemory(s.db.QueryRowContext(ctx, `SELECT `+memoryCols+` FROM memories WHERE id=?`, id))
+}
+
+// GetMemoryByAgent returns the memory currently owned by an agent.
+func (s *Store) GetMemoryByAgent(ctx context.Context, agentID string) (*model.Memory, error) {
+	return scanMemory(s.db.QueryRowContext(ctx, `SELECT `+memoryCols+` FROM memories WHERE owner_agent_id=?`, agentID))
+}
+
+// ListMemories returns all memory identities.
+func (s *Store) ListMemories(ctx context.Context) ([]*model.Memory, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+memoryCols+` FROM memories ORDER BY created_at`)
+	if err != nil {
+		return nil, fmt.Errorf("list memories: %w", err)
+	}
+	defer rows.Close()
+	var out []*model.Memory
+	for rows.Next() {
+		m, err := scanMemory(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SetMemoryOwner binds a memory to an agent (or unbinds when agentID is
+// empty). The single-writer rule is enforced in both directions: a memory
+// cannot be taken from another owner (no steal) and an agent cannot own a
+// second memory (UNIQUE owner_agent_id). Violations surface as ErrConflict.
+func (s *Store) SetMemoryOwner(ctx context.Context, id, agentID string) error {
+	now := ts(time.Now())
+	var res sql.Result
+	var err error
+	if agentID == "" {
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE memories SET owner_agent_id=NULL, attached_at=NULL WHERE id=?`, id)
+	} else {
+		// Bind only when unbound or already bound to the same agent: taking
+		// over a memory owned by a different agent is rejected.
+		res, err = s.db.ExecContext(ctx,
+			`UPDATE memories SET owner_agent_id=?, attached_at=? WHERE id=? AND (owner_agent_id IS NULL OR owner_agent_id=?)`,
+			agentID, now, id, agentID)
+	}
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: memory already has a writer or agent already owns a memory", ErrConflict)
+	}
+	if err != nil {
+		return fmt.Errorf("set memory owner: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// Distinguish "no such memory" from "already owned by someone else".
+		var exists string
+		if err := s.db.QueryRowContext(ctx, `SELECT id FROM memories WHERE id=?`, id).Scan(&exists); err != nil {
+			return ErrNotFound
+		}
+		return fmt.Errorf("%w: memory %s is owned by another agent", ErrConflict, id)
 	}
 	return nil
 }

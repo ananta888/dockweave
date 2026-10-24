@@ -64,8 +64,169 @@ type Service struct {
 // ErrMemoryUnavailable is returned when memory snapshotting is not configured.
 var ErrMemoryUnavailable = errors.New("memory snapshotting not configured on daemon")
 
-// SnapshotMemory creates a memory snapshot for an agent and applies the
-// retention policy afterwards.
+// ErrMemoryInUse is returned when a memory attach/detach would violate the
+// single-writer rule (AGENTS rule 6).
+var ErrMemoryInUse = errors.New("memory already has a write owner")
+
+// boundMemory returns the memory identity currently owned by the agent.
+func (s *Service) boundMemory(ctx context.Context, agentID string) (*model.Memory, error) {
+	m, err := s.Store.GetMemoryByAgent(ctx, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("agent %s has no memory attached: %w", agentID, err)
+	}
+	return m, nil
+}
+
+// chownMemory hands a memory store to the container identity.
+func (s *Service) chownMemory(a *model.Agent, memID string) error {
+	dir := s.Memory.Path(memID)
+	err := filepath.Walk(dir, func(p string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(p, a.UID, a.GID)
+	})
+	if err != nil {
+		return fmt.Errorf("chown memory %s to %d:%d: %w", memID, a.UID, a.GID, err)
+	}
+	return nil
+}
+
+// AttachMemory binds a memory store to an agent as its single writer
+// (review-009). Refuses while the agent runs and while the memory has a
+// different owner — detach first. Audited.
+func (s *Service) AttachMemory(ctx context.Context, idOrName, memoryID, actor string) (*model.Memory, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureStopped(ctx, a); err != nil {
+		return nil, err
+	}
+	mem, err := s.Store.GetMemory(ctx, memoryID)
+	if err != nil {
+		return nil, fmt.Errorf("memory %q: %w", memoryID, err)
+	}
+	if mem.OwnerAgentID != "" && mem.OwnerAgentID != a.ID {
+		return nil, fmt.Errorf("%w: memory %s is owned by agent %s (detach first)", ErrMemoryInUse, mem.ID, mem.OwnerAgentID)
+	}
+	if cur, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil && cur.ID != mem.ID {
+		return nil, fmt.Errorf("%w: agent %s already owns memory %s (detach first)", ErrMemoryInUse, a.Name, cur.ID)
+	}
+	if err := s.Store.SetMemoryOwner(ctx, mem.ID, a.ID); err != nil {
+		return nil, err
+	}
+	if s.Memory != nil {
+		_ = s.Memory.EnsureDir(mem.ID)
+		_ = s.chownMemory(a, mem.ID)
+	}
+	now := time.Now()
+	mem.OwnerAgentID = a.ID
+	mem.AttachedAt = &now
+	s.event(ctx, model.EventMemoryAttached, actor, a.ID,
+		fmt.Sprintf("memory %s attached to agent %q", mem.ID, a.Name))
+	return mem, nil
+}
+
+// DetachMemory unbinds the agent's memory; the data is kept and the store
+// can be attached to a replacement agent later. Refuses while the agent
+// runs. Audited.
+func (s *Service) DetachMemory(ctx context.Context, idOrName, actor string) (*model.Memory, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureStopped(ctx, a); err != nil {
+		return nil, err
+	}
+	mem, err := s.Store.GetMemoryByAgent(ctx, a.ID)
+	if err != nil {
+		return nil, fmt.Errorf("agent %s has no memory attached: %w", a.Name, err)
+	}
+	if err := s.Store.SetMemoryOwner(ctx, mem.ID, ""); err != nil {
+		return nil, err
+	}
+	mem.OwnerAgentID = ""
+	mem.AttachedAt = nil
+	s.event(ctx, model.EventMemoryDetached, actor, a.ID,
+		fmt.Sprintf("memory %s detached from agent %q", mem.ID, a.Name))
+	return mem, nil
+}
+
+// ListMemories returns all memory identities and their write owners.
+func (s *Service) ListMemories(ctx context.Context) ([]*model.Memory, error) {
+	return s.Store.ListMemories(ctx)
+}
+
+// ensureStopped refuses memory identity changes while the agent runs
+// (a running container holds its /memory mount and may write).
+func (s *Service) ensureStopped(ctx context.Context, a *model.Agent) error {
+	cid, err := s.Docker.FindByAgent(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if cid != "" {
+		if st, err := s.Docker.State(ctx, cid); err == nil && st == "running" {
+			return memory.ErrBusy
+		}
+	}
+	return nil
+}
+
+// EnsureMemoryIdentities migrates the legacy per-agent memory directories
+// (agents/<id>/memory) to decoupled memory stores (<root>/memories/<id>,
+// review-009): every agent receives a memory identity, and a non-empty
+// legacy directory is moved wholesale (os.Rename, atomic on the same
+// filesystem — no data loss). Idempotent; called at daemon startup.
+func (s *Service) EnsureMemoryIdentities(ctx context.Context) error {
+	if s.Memory == nil {
+		return ErrMemoryUnavailable
+	}
+	agents, err := s.Store.ListAgents(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, a := range agents {
+		if _, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+			continue // already has an identity
+		}
+		now := time.Now()
+		mem := &model.Memory{
+			ID: model.NewID("mem"), OwnerAgentID: a.ID,
+			CreatedAt: now, AttachedAt: &now,
+		}
+		if err := s.Store.CreateMemory(ctx, mem); err != nil {
+			errs = append(errs, fmt.Errorf("agent %s: %w", a.Name, err))
+			continue
+		}
+		dst := s.Memory.Path(mem.ID)
+		legacy := s.Mounts.MemoryDir(a.ID)
+		moved := false
+		if fi, err := os.Stat(legacy); err == nil && fi.IsDir() {
+			if _, err := os.Stat(dst); os.IsNotExist(err) {
+				// os.Rename needs the target's parent to exist; the target
+				// itself must not (rename replaces the legacy dir wholesale).
+				if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+					errs = append(errs, fmt.Errorf("agent %s: %w", a.Name, err))
+				} else if err := os.Rename(legacy, dst); err != nil {
+					errs = append(errs, fmt.Errorf("agent %s: migrate memory dir: %w", a.Name, err))
+				} else {
+					moved = true
+				}
+			}
+		}
+		if !moved {
+			if err := s.Memory.EnsureDir(mem.ID); err != nil {
+				errs = append(errs, fmt.Errorf("agent %s: %w", a.Name, err))
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// SnapshotMemory creates a memory snapshot for the agent's bound memory
+// and applies the retention policy afterwards.
 func (s *Service) SnapshotMemory(ctx context.Context, idOrName, actor string) (*memory.Snapshot, error) {
 	if s.Memory == nil {
 		return nil, ErrMemoryUnavailable
@@ -74,12 +235,16 @@ func (s *Service) SnapshotMemory(ctx context.Context, idOrName, actor string) (*
 	if err != nil {
 		return nil, err
 	}
-	snap, err := s.Memory.Create(a.ID)
+	mem, err := s.boundMemory(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := s.Memory.Create(mem.ID)
 	if err != nil {
 		return nil, err
 	}
 	// Default retention: keep the 10 newest snapshots.
-	if _, err := s.Memory.ApplyRetention(a.ID, memory.RetentionPolicy{MaxCount: 10}); err != nil {
+	if _, err := s.Memory.ApplyRetention(mem.ID, memory.RetentionPolicy{MaxCount: 10}); err != nil {
 		// Retention failure does not fail the snapshot; report via event.
 		s.event(ctx, "memory.retention_failed", actor, a.ID, "retention after snapshot failed: "+err.Error())
 	}
@@ -87,7 +252,7 @@ func (s *Service) SnapshotMemory(ctx context.Context, idOrName, actor string) (*
 	return snap, nil
 }
 
-// ListMemorySnapshots lists snapshots of an agent.
+// ListMemorySnapshots lists snapshots of the agent's bound memory.
 func (s *Service) ListMemorySnapshots(ctx context.Context, idOrName string) ([]memory.Snapshot, error) {
 	if s.Memory == nil {
 		return nil, ErrMemoryUnavailable
@@ -96,7 +261,11 @@ func (s *Service) ListMemorySnapshots(ctx context.Context, idOrName string) ([]m
 	if err != nil {
 		return nil, err
 	}
-	return s.Memory.List(a.ID)
+	mem, err := s.boundMemory(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Memory.List(mem.ID)
 }
 
 // RestoreMemorySnapshot restores a snapshot. Refuses while the agent runs
@@ -109,28 +278,19 @@ func (s *Service) RestoreMemorySnapshot(ctx context.Context, idOrName, name, act
 	if err != nil {
 		return err
 	}
-	cid, err := s.Docker.FindByAgent(ctx, a.ID)
+	mem, err := s.boundMemory(ctx, a.ID)
 	if err != nil {
 		return err
 	}
-	if cid != "" {
-		if st, err := s.Docker.State(ctx, cid); err == nil && st == "running" {
-			return memory.ErrBusy
-		}
+	if err := s.ensureStopped(ctx, a); err != nil {
+		return err
 	}
-	if err := s.Memory.Restore(a.ID, name); err != nil {
+	if err := s.Memory.Restore(mem.ID, name); err != nil {
 		return err
 	}
 	// Restored files are written by the daemon (root); hand them back to the
 	// container identity so the non-root agent can use its memory.
-	if err := os.Chown(s.Mounts.MemoryDir(a.ID), a.UID, a.GID); err == nil {
-		_ = filepath.Walk(s.Mounts.MemoryDir(a.ID), func(p string, _ os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			return os.Chown(p, a.UID, a.GID)
-		})
-	}
+	_ = s.chownMemory(a, mem.ID)
 	s.event(ctx, "memory.restore", actor, a.ID, "restored "+name)
 	return nil
 }
@@ -144,7 +304,11 @@ func (s *Service) DeleteMemorySnapshot(ctx context.Context, idOrName, name, acto
 	if err != nil {
 		return err
 	}
-	if err := s.Memory.Delete(a.ID, name); err != nil {
+	mem, err := s.boundMemory(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	if err := s.Memory.Delete(mem.ID, name); err != nil {
 		return err
 	}
 	s.event(ctx, "memory.snapshot_delete", actor, a.ID, "deleted "+name)
@@ -219,7 +383,27 @@ func (s *Service) Create(ctx context.Context, a *model.Agent, actor string) (*mo
 		_ = s.Store.DeleteAgent(ctx, a.ID)
 		return nil, err
 	}
-	s.event(ctx, model.EventAgentCreated, actor, a.ID, fmt.Sprintf("agent %q created (image %s)", a.Name, a.Image))
+	// Long-term memory gets its own identity with this agent as the single
+	// write owner (review-009).
+	mem := &model.Memory{
+		ID: model.NewID("mem"), OwnerAgentID: a.ID,
+		CreatedAt: now, AttachedAt: &now,
+	}
+	if err := s.Store.CreateMemory(ctx, mem); err != nil {
+		_ = s.Store.DeleteAgent(ctx, a.ID)
+		return nil, fmt.Errorf("create memory identity: %w", err)
+	}
+	if s.Memory != nil {
+		if err := s.Memory.EnsureDir(mem.ID); err != nil {
+			_ = s.Store.DeleteAgent(ctx, a.ID)
+			return nil, err
+		}
+		if err := s.chownMemory(a, mem.ID); err != nil {
+			_ = s.Store.DeleteAgent(ctx, a.ID)
+			return nil, err
+		}
+	}
+	s.event(ctx, model.EventAgentCreated, actor, a.ID, fmt.Sprintf("agent %q created (image %s, memory %s)", a.Name, a.Image, mem.ID))
 	return a, nil
 }
 
@@ -302,10 +486,18 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 		// recreate to guarantee the three-mount layout and hardening.
 		_ = s.Docker.Remove(ctx, cid, true)
 	}
+	// /memory comes from the bound memory store (review-009); legacy agents
+	// without an identity fall back to the per-agent tree directory.
+	memPath := s.Mounts.MemoryDir(a.ID)
+	if s.Memory != nil {
+		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+			memPath = s.Memory.Path(mem.ID)
+		}
+	}
 	ncid, err := s.Docker.Create(ctx, dockerclient.ContainerSpec{
 		Agent:        &runtimeAgent,
 		AgentDir:     s.Mounts.AgentDir(a.ID),
-		MemoryDir:    s.Mounts.MemoryDir(a.ID),
+		MemoryDir:    memPath,
 		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
 	})
 	if err != nil {

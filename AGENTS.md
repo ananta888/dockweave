@@ -12,7 +12,7 @@ Jeder Agent erhält drei getrennte Bereiche:
 | Container-Pfad | Zweck | Host-Pfad (Default) |
 |---|---|---|
 | `/agent` | Agenteninstallation (bevorzugt read-only) | `/var/lib/dockweave/agents/<id>/agent` |
-| `/memory` | Persistentes Langzeitgedächtnis (rw) | `/var/lib/dockweave/agents/<id>/memory` |
+| `/memory` | Persistentes Langzeitgedächtnis (rw) | `/var/lib/dockweave/memories/<mem-id>` |
 | `/workspace` | Dynamische Projektfreigaben (`rslave`) | `/var/lib/dockweave/agents/<id>/workspace` |
 
 Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
@@ -36,7 +36,8 @@ Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
 5. **Agenten erhalten niemals** `/var/run/docker.sock`, keine privilegierten
    Container, keine `CAP_SYS_ADMIN`.
 6. **Keine SQLite-Datei wird von mehreren Agenten gleichzeitig beschrieben.**
-   Memory-Verzeichnisse sind 1:1 an Agentenidentitäten gebunden.
+   Memory-Verzeichnisse haben eigene Identitäten und genau einen
+   Schreibinhaber; Attach/Detach an Ersatzagenten nur im gestoppten Zustand.
 7. Der Daemon entfernt bei Recovery niemals Mounts, die nicht eindeutig von
    DockWeave stammen (Label-/Registry-Prüfung).
 

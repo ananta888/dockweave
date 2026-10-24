@@ -109,6 +109,17 @@ func (w *Workspace) Validate() error {
 	return nil
 }
 
+// Memory is the identity of a long-term memory store, deliberately
+// decoupled from agent identities (review-009): it can be attached to a
+// replacement agent without losing data, and it has exactly one write
+// owner at a time — a second writer is rejected (AGENTS rule 6).
+type Memory struct {
+	ID           string     `json:"id"`
+	OwnerAgentID string     `json:"owner_agent_id,omitempty"` // exactly one writer; empty = unbound
+	CreatedAt    time.Time  `json:"created_at"`
+	AttachedAt   *time.Time `json:"attached_at,omitempty"`
+}
+
 // GrantStatus is the lifecycle state of a grant. A grant is only *active*
 // (permission in effect) after its kernel mount has been applied; every
 // intermediate state is visible and resolvable (see todo/review-2026-10.json
@@ -198,6 +209,8 @@ const (
 	EventAgentRemoved    EventType = "agent.removed"
 	EventWorkspaceAdded  EventType = "workspace.registered"
 	EventWorkspaceGone   EventType = "workspace.removed"
+	EventMemoryAttached  EventType = "memory.attached"
+	EventMemoryDetached  EventType = "memory.detached"
 	EventGrantCreated    EventType = "grant.created"
 	EventGrantRevoked    EventType = "grant.revoked"
 	EventGrantRevoking   EventType = "grant.revoking"

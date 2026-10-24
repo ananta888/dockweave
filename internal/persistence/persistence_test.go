@@ -184,3 +184,45 @@ func TestGrantExpiry(t *testing.T) {
 		t.Fatal("unmount_failed grant must be pending but not active")
 	}
 }
+
+func TestMemorySingleWriter(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	now := time.Now()
+	m1 := &model.Memory{ID: "mem1", CreatedAt: now}
+	m2 := &model.Memory{ID: "mem2", CreatedAt: now}
+	if err := s.CreateMemory(ctx, m1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateMemory(ctx, m2); err != nil {
+		t.Fatal(err)
+	}
+	// Bind mem1 to agent a1: ok.
+	if err := s.SetMemoryOwner(ctx, "mem1", "a1"); err != nil {
+		t.Fatal(err)
+	}
+	// A second memory for the same agent is rejected (agent -> one memory).
+	if err := s.SetMemoryOwner(ctx, "mem2", "a1"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second memory for same agent must conflict, got %v", err)
+	}
+	// Stealing ownership of a bound memory is rejected (memory -> one writer).
+	if err := s.SetMemoryOwner(ctx, "mem1", "a2"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("second writer must conflict, got %v", err)
+	}
+	// Detach frees the memory and the agent slot.
+	if err := s.SetMemoryOwner(ctx, "mem1", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetMemory(ctx, "mem1")
+	if err != nil || got.OwnerAgentID != "" {
+		t.Fatalf("detach: %+v %v", got, err)
+	}
+	if err := s.SetMemoryOwner(ctx, "mem1", "a2"); err != nil {
+		t.Fatalf("rebind after detach: %v", err)
+	}
+	// Lookup by owner.
+	byAgent, err := s.GetMemoryByAgent(ctx, "a2")
+	if err != nil || byAgent.ID != "mem1" {
+		t.Fatalf("GetMemoryByAgent: %+v %v", byAgent, err)
+	}
+}

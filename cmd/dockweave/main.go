@@ -508,7 +508,50 @@ func memoryCmd() *cobra.Command {
 			fmt.Println("deleted")
 		},
 	}
-	cmd.AddCommand(snapshot, list, restore, del)
+	attach := &cobra.Command{
+		Use:   "attach NAME|ID MEMORY_ID",
+		Short: "Attach a memory store to an agent as its single writer",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			mem, err := client().AttachMemory(ctx(), args[0], args[1])
+			if err != nil {
+				fail(err)
+			}
+			out(mem, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "MEMORY\t%s\nOWNER\t%s\n", mem.ID, mem.OwnerAgentID)
+			})
+		},
+	}
+	detach := &cobra.Command{
+		Use:   "detach NAME|ID",
+		Short: "Detach the agent's memory (data is kept)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			mem, err := client().DetachMemory(ctx(), args[0])
+			if err != nil {
+				fail(err)
+			}
+			fmt.Printf("detached %s\n", mem.ID)
+		},
+	}
+	memories := &cobra.Command{
+		Use:   "memories",
+		Short: "List memory identities and their write owners",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			list, err := client().ListMemories(ctx())
+			if err != nil {
+				fail(err)
+			}
+			out(list, func(w *tabwriter.Writer) {
+				fmt.Fprintln(w, "MEMORY\tOWNER\tATTACHED")
+				for _, m := range list {
+					fmt.Fprintf(w, "%s\t%s\t%s\n", m.ID, m.OwnerAgentID, m.AttachedAt)
+				}
+			})
+		},
+	}
+	cmd.AddCommand(snapshot, list, restore, del, attach, detach, memories)
 	return cmd
 }
 

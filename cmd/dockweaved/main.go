@@ -90,8 +90,9 @@ func run(cfgPath string) error {
 		}
 	}
 
-	memoryMgr, err := memory.New(cfg.Root, func(agentID string) string {
-		return mountMgr.MemoryDir(agentID)
+	memoryMgr, err := memory.New(cfg.Root, func(memoryID string) string {
+		// Decoupled memory stores live under <root>/memories/<id> (review-009).
+		return filepath.Join(cfg.Root, "memories", memoryID)
 	})
 	if err != nil {
 		return err
@@ -104,6 +105,11 @@ func run(cfgPath string) error {
 	}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
 	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs)
+
+	// Migrate legacy per-agent memory dirs to decoupled memory identities.
+	if err := agentSvc.EnsureMemoryIdentities(context.Background()); err != nil {
+		log.Printf("memory identity migration: %v", err)
+	}
 
 	lookup := &containerLookup{store: store, docker: docker}
 	dockerProv := monitor.NewDockerProvider(docker, lookup)

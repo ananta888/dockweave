@@ -277,10 +277,46 @@ func (c *Client) Providers(ctx context.Context) (map[string]string, error) {
 
 // SnapshotInfo describes a memory snapshot archive (API shape).
 type SnapshotInfo struct {
-	AgentID   string `json:"agent_id"`
+	MemoryID  string `json:"memory_id"`
 	Name      string `json:"name"`
 	SizeBytes int64  `json:"size_bytes"`
 	CreatedAt string `json:"created_at"`
+}
+
+// MemoryInfo describes a decoupled memory identity (review-009).
+type MemoryInfo struct {
+	ID           string `json:"id"`
+	OwnerAgentID string `json:"owner_agent_id,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	AttachedAt   string `json:"attached_at,omitempty"`
+}
+
+// ListMemories lists all memory identities and their write owners.
+func (c *Client) ListMemories(ctx context.Context) ([]MemoryInfo, error) {
+	var out []MemoryInfo
+	if err := c.do(ctx, "GET", "/api/v1/memories", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AttachMemory binds a memory to an agent as its single writer.
+func (c *Client) AttachMemory(ctx context.Context, agentID, memoryID string) (*MemoryInfo, error) {
+	var out MemoryInfo
+	if err := c.do(ctx, "POST", "/api/v1/agents/"+agentID+"/memory/attach",
+		map[string]string{"memory_id": memoryID}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// DetachMemory unbinds the agent's memory (data is kept).
+func (c *Client) DetachMemory(ctx context.Context, agentID string) (*MemoryInfo, error) {
+	var out MemoryInfo
+	if err := c.do(ctx, "POST", "/api/v1/agents/"+agentID+"/memory/detach", map[string]string{}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // SnapshotMemory triggers a memory snapshot for an agent.
