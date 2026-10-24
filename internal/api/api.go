@@ -229,7 +229,8 @@ func (s *Server) getAgent(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) removeAgent(w http.ResponseWriter, r *http.Request) {
 	prune := r.URL.Query().Get("prune") == "true"
-	if err := s.Agents.Remove(r.Context(), r.PathValue("id"), actor(r), prune); err != nil {
+	force := r.URL.Query().Get("force") == "true"
+	if err := s.Agents.Remove(r.Context(), r.PathValue("id"), actor(r), prune, force); err != nil {
 		s.fail(w, err)
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -15,15 +16,39 @@ import (
 	"github.com/ananta888/dockweave/internal/dockerclient"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
-	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
 )
+
+// MountOps abstracts the privileged mount manager (enables unit tests
+// without CAP_SYS_ADMIN). *mounts.Manager implements it.
+type MountOps interface {
+	PrepareAgentTree(agentID string) error
+	AgentDir(agentID string) string
+	MemoryDir(agentID string) string
+	WorkspaceTree(agentID string) string
+	List(agentID string) ([]model.MountState, error)
+	Remove(agentID, targetName string, force bool) error
+	TeardownAgentTree(agentID string, force bool) (detached []string, err error)
+}
+
+// DockerOps abstracts the Docker engine client (enables unit tests).
+// *dockerclient.Client implements it.
+type DockerOps interface {
+	EnsureImage(ctx context.Context, ref string, out io.Writer) error
+	Create(ctx context.Context, spec dockerclient.ContainerSpec) (string, error)
+	Start(ctx context.Context, containerID string) error
+	Stop(ctx context.Context, containerID string, timeoutSec int) error
+	Remove(ctx context.Context, containerID string, force bool) error
+	FindByAgent(ctx context.Context, agentID string) (string, error)
+	State(ctx context.Context, containerID string) (string, error)
+	ExecOutput(ctx context.Context, containerID string, cmd []string) (string, error)
+}
 
 // Service manages agent identities and their containers.
 type Service struct {
 	Store  *persistence.Store
-	Mounts *mounts.Manager
-	Docker *dockerclient.Client
+	Mounts MountOps
+	Docker DockerOps
 	// Memory performs snapshot/restore on agent memory directories.
 	// Optional: if nil, memory operations return an error.
 	Memory *memory.Manager
@@ -287,29 +312,76 @@ func (s *Service) Restart(ctx context.Context, idOrName, actor string) (*model.A
 
 // Remove deletes the agent identity and container. Host data (agent install,
 // memory) is preserved unless prune is true.
-func (s *Service) Remove(ctx context.Context, idOrName, actor string, prune bool) error {
+//
+// Prune safety (review-003): every cleanup error is collected and returned,
+// MNT_DETACH is only used when force is explicitly set (graceful umount is
+// tried first; every detached mount is audited), and the agent record is
+// deleted only after cleanup succeeded — a failed prune is retryable.
+func (s *Service) Remove(ctx context.Context, idOrName, actor string, prune, force bool) error {
 	a, err := s.Store.GetAgent(ctx, idOrName)
 	if err != nil {
 		return err
 	}
 	if cid, err := s.Docker.FindByAgent(ctx, a.ID); err == nil && cid != "" {
-		_ = s.Docker.Remove(ctx, cid, true)
+		if err := s.Docker.Remove(ctx, cid, true); err != nil {
+			return fmt.Errorf("remove container for agent %s: %w", a.ID, err)
+		}
+	}
+	if !prune {
+		if err := s.Store.DeleteAgent(ctx, a.ID); err != nil {
+			return err
+		}
+		s.event(ctx, model.EventAgentRemoved, actor, a.ID, fmt.Sprintf("agent %q removed (prune=false)", a.Name))
+		return nil
+	}
+
+	var errs []error
+	ms, err := s.Mounts.List(a.ID)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("list mounts: %w", err))
+	}
+	for i := len(ms) - 1; i >= 0; i-- {
+		name := baseName(ms[i].TargetPath)
+		if err := s.Mounts.Remove(a.ID, name, false); err != nil {
+			if force {
+				// Explicit force: audited MNT_DETACH after graceful failure.
+				s.event(ctx, model.EventUnmountForced, actor, a.ID,
+					fmt.Sprintf("forced detach of %q during prune: %v", name, err))
+				if err = s.Mounts.Remove(a.ID, name, true); err != nil {
+					errs = append(errs, fmt.Errorf("forced unmount %q: %w", name, err))
+					continue
+				}
+			} else {
+				errs = append(errs, fmt.Errorf("unmount %q: %w", name, err))
+				continue
+			}
+		}
+	}
+	// Tear down the workspace tree self-bind (and any stragglers) so the
+	// host data can actually be deleted. Forced detaches are audited.
+	detached, terr := s.Mounts.TeardownAgentTree(a.ID, force)
+	for _, mp := range detached {
+		s.event(ctx, model.EventUnmountForced, actor, a.ID,
+			fmt.Sprintf("forced detach of %q during prune teardown", mp))
+	}
+	if terr != nil {
+		errs = append(errs, fmt.Errorf("teardown workspace tree: %w", terr))
+	}
+	agentRoot := filepath.Dir(s.Mounts.WorkspaceTree(a.ID)) // <root>/agents/<id>
+	if filepath.Base(agentRoot) == a.ID {
+		if err := os.RemoveAll(agentRoot); err != nil {
+			errs = append(errs, fmt.Errorf("remove %q: %w", agentRoot, err))
+		}
+	}
+	if len(errs) > 0 {
+		// Keep the agent record: the prune stays retryable until clean.
+		return fmt.Errorf("prune incomplete (agent record kept, retry remove): %w", errors.Join(errs...))
 	}
 	if err := s.Store.DeleteAgent(ctx, a.ID); err != nil {
 		return err
 	}
-	if prune {
-		if mounts, err := s.Mounts.List(a.ID); err == nil {
-			for i := len(mounts) - 1; i >= 0; i-- {
-				_ = s.Mounts.Remove(a.ID, baseName(mounts[i].TargetPath), true)
-			}
-		}
-		agentRoot := filepath.Dir(s.Mounts.WorkspaceTree(a.ID)) // <root>/agents/<id>
-		if filepath.Base(agentRoot) == a.ID {
-			_ = os.RemoveAll(agentRoot)
-		}
-	}
-	s.event(ctx, model.EventAgentRemoved, actor, a.ID, fmt.Sprintf("agent %q removed (prune=%v)", a.Name, prune))
+	s.event(ctx, model.EventAgentRemoved, actor, a.ID,
+		fmt.Sprintf("agent %q removed (prune=true, force=%v)", a.Name, force))
 	return nil
 }
 

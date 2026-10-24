@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -158,13 +159,21 @@ func (c *Client) StopAgent(ctx context.Context, id string) error {
 	return c.do(ctx, "POST", "/api/v1/agents/"+id+"/stop", map[string]string{}, nil)
 }
 
-// RemoveAgent deletes an agent (prune removes host data).
-func (c *Client) RemoveAgent(ctx context.Context, id string, prune bool) error {
-	q := ""
+// RemoveAgent deletes an agent (prune removes host data; force allows a
+// lazily-detaching unmount of busy mounts during prune — audited).
+func (c *Client) RemoveAgent(ctx context.Context, id string, prune, force bool) error {
+	q := url.Values{}
 	if prune {
-		q = "?prune=true"
+		q.Set("prune", "true")
 	}
-	return c.do(ctx, "DELETE", "/api/v1/agents/"+id+q, nil, nil)
+	if force {
+		q.Set("force", "true")
+	}
+	suffix := ""
+	if enc := q.Encode(); enc != "" {
+		suffix = "?" + enc
+	}
+	return c.do(ctx, "DELETE", "/api/v1/agents/"+id+suffix, nil, nil)
 }
 
 // RegisterWorkspace registers a workspace.

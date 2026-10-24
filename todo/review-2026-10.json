@@ -75,7 +75,7 @@
         "Integration privilegiert: Busy-Mount + prune => Fehler gemeldet, kein MNT_DETACH ohne Force, Retry erfolgreich",
         "Unit: Audit-Event bei Force-Unmount vorhanden"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-004",

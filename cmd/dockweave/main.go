@@ -139,17 +139,18 @@ func agentCmd() *cobra.Command {
 		},
 	}
 
-	var prune bool
+	var prune, forceUnmount bool
 	remove := &cobra.Command{
 		Use: "remove NAME|ID", Short: "Remove an agent (host data kept unless --prune)", Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := client().RemoveAgent(ctx(), args[0], prune); err != nil {
+			if err := client().RemoveAgent(ctx(), args[0], prune, forceUnmount); err != nil {
 				fail(err)
 			}
 			fmt.Println("removed")
 		},
 	}
 	remove.Flags().BoolVar(&prune, "prune", false, "also delete agent/memory/workspace host data")
+	remove.Flags().BoolVar(&forceUnmount, "force-unmount", false, "allow lazy detach of busy mounts during --prune (audited)")
 
 	inspect := &cobra.Command{
 		Use: "inspect NAME|ID", Short: "Show agent details", Args: cobra.ExactArgs(1),

@@ -171,29 +171,46 @@ func (m *Manager) Check(agentID string) error {
 }
 
 // TeardownAgentTree unmounts everything beneath the agent workspace tree
-// and the tree's self-bind. Used by tests and agent pruning; never touches
-// mounts outside the tree.
-func (m *Manager) TeardownAgentTree(agentID string) error {
+// and the tree's self-bind (deepest first). Used by tests and agent pruning;
+// never touches mounts outside the tree. Busy mounts are only lazily
+// detached (MNT_DETACH) when force is set — every such detach is returned
+// in the second result so callers can audit it. With force, unmounting is
+// still tried gracefully first.
+func (m *Manager) TeardownAgentTree(agentID string, force bool) (detached []string, err error) {
 	tree := m.WorkspaceTree(agentID)
 	infos, err := ReadMountinfo(m.cfg.MountinfoPath)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	unmount := func(mp string) error {
+		err := unix.Unmount(mp, 0)
+		if err == nil || errors.Is(err, unix.EINVAL) {
+			return nil // EINVAL: not a mountpoint (already gone)
+		}
+		if !errors.Is(err, unix.EBUSY) || !force {
+			if errors.Is(err, unix.EBUSY) {
+				return ErrBusy
+			}
+			return err
+		}
+		detached = append(detached, mp)
+		return unix.Unmount(mp, unix.MNT_DETACH)
 	}
 	subs := MountsUnder(infos, tree)
 	// Deepest first (submounts before their parents).
 	for i := len(subs) - 1; i >= 0; i-- {
 		mi := subs[i]
 		if mi.MountPoint == tree {
-			continue
+			continue // handled below
 		}
-		if err := unix.Unmount(mi.MountPoint, unix.MNT_DETACH); err != nil {
-			return fmt.Errorf("teardown submount %q: %w", mi.MountPoint, err)
+		if err := unmount(mi.MountPoint); err != nil {
+			return detached, fmt.Errorf("teardown submount %q: %w", mi.MountPoint, err)
 		}
 	}
-	if err := unix.Unmount(tree, unix.MNT_DETACH); err != nil && !errors.Is(err, unix.EINVAL) {
-		return fmt.Errorf("teardown tree %q: %w", tree, err)
+	if err := unmount(tree); err != nil {
+		return detached, fmt.Errorf("teardown tree %q: %w", tree, err)
 	}
-	return nil
+	return detached, nil
 }
 
 // List returns the kernel-verified mounts beneath the agent workspace tree,

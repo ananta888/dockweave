@@ -53,7 +53,7 @@ func prepareTree(t *testing.T, m *mounts.Manager, agentID string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = m.TeardownAgentTree(agentID)
+		_, _ = m.TeardownAgentTree(agentID, true)
 	})
 }
 
@@ -71,7 +71,7 @@ func TestPrepareAgentTreeShared(t *testing.T) {
 	if err := m.PrepareAgentTree("ag_test"); err != nil {
 		t.Fatalf("prepare tree: %v", err)
 	}
-	t.Cleanup(func() { _ = m.TeardownAgentTree("ag_test") })
+	t.Cleanup(func() { _, _ = m.TeardownAgentTree("ag_test", true) })
 	if err := m.Check("ag_test"); err != nil {
 		t.Fatalf("check after prepare: %v", err)
 	}
