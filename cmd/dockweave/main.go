@@ -440,14 +440,30 @@ func statusCmd() *cobra.Command {
 }
 
 func tuiCmd() *cobra.Command {
-	return &cobra.Command{
-		Use: "tui", Short: "Interactive terminal UI",
+	var embedded, plain bool
+	c := &cobra.Command{
+		Use: "tui", Short: "Interactive terminal UI (tmux layout: menu bar + agent terminal)",
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := tui.Run(socketPath); err != nil {
+			if !embedded && !plain {
+				// Auto-launch the managed tmux layout (menu bar on top,
+				// agent terminal below). Falls back to the plain TUI
+				// when tmux is not installed.
+				used, err := tui.LaunchLayout(socketPath)
+				if err != nil {
+					fail(err)
+				}
+				if used {
+					return
+				}
+			}
+			if err := tui.Run(socketPath, embedded); err != nil {
 				fail(err)
 			}
 		},
 	}
+	c.Flags().BoolVar(&embedded, "embedded", false, "internal: run inside the managed tmux layout")
+	c.Flags().BoolVar(&plain, "plain", false, "run without the tmux layout")
+	return c
 }
 
 func out(v any, table func(w *tabwriter.Writer)) {

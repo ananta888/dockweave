@@ -60,7 +60,11 @@ class Screen:
                 if m:
                     i = m.end()
                     continue
-                i += 1  # skip other escapes
+                # ESC intermediates like (B, )0, =, >
+                if i + 1 < len(data) and data[i + 1 : i + 2] in (b"(", b")", b"#"):
+                    i += 3
+                    continue
+                i += 2  # skip other 2-byte escapes
                 continue
             if b == 0x0D:
                 self.cx = 0
@@ -86,10 +90,29 @@ class Screen:
             self.cy = max(0, min(self.rows - 1, self.cy))
             self.cx = max(0, min(self.cols - 1, self.cx))
         elif final == b"J":
-            self.clear() if not p or p[0] in (2, 3) else None
+            mode = p[0] if p else 0
+            if mode in (2, 3):
+                self.clear()
+            elif mode == 0:
+                for x in range(self.cx, self.cols):
+                    self.grid[self.cy][x] = " "
+                for y in range(self.cy + 1, self.rows):
+                    self.grid[y] = [" "] * self.cols
+            elif mode == 1:
+                for y in range(0, self.cy):
+                    self.grid[y] = [" "] * self.cols
+                for x in range(0, self.cx + 1):
+                    self.grid[self.cy][x] = " "
         elif final == b"K":
-            for x in range(self.cx, self.cols):
-                self.grid[self.cy][x] = " "
+            mode = p[0] if p else 0
+            if mode == 0:
+                for x in range(self.cx, self.cols):
+                    self.grid[self.cy][x] = " "
+            elif mode == 1:
+                for x in range(0, self.cx + 1):
+                    self.grid[self.cy][x] = " "
+            else:
+                self.grid[self.cy] = [" "] * self.cols
         elif final == b"A":
             self.cy = max(0, self.cy - (p[0] if p else 1))
         elif final == b"B":
@@ -113,6 +136,8 @@ def main():
                     help="key to send (repeatable): enter, esc, t, q, down, up, tab, or a literal char")
     ap.add_argument("--click", action="append", default=[],
                     help="left click as COL,ROW (repeatable)")
+    ap.add_argument("--tmux-session", default="",
+                    help="dump the real tmux panes of this session via capture-pane (authoritative)")
     ap.add_argument("cmd", nargs="*", default=["tui"])
     args = ap.parse_args()
 
@@ -147,9 +172,26 @@ def main():
         return True
 
     def dump(title):
-        print(f"\n===== {title} =====")
-        print(scr.render())
-        print("=====")
+        print(f"\n===== {title} =====", flush=True)
+        if args.tmux_session:
+            # Authoritative: what tmux really shows, per pane.
+            try:
+                rows = os.popen(
+                    "tmux list-panes -a -F '#{session_name} #{pane_id}'"
+                ).read().splitlines()
+                panes = [r.split()[1] for r in rows
+                         if r.split() and r.split()[0] == args.tmux_session]
+                for pane in panes:
+                    body = os.popen(
+                        "tmux capture-pane -p -t %s" % pane
+                    ).read().rstrip()
+                    print(f"--- pane {pane} ---", flush=True)
+                    print(body, flush=True)
+            except Exception as e:  # noqa: BLE001
+                print("tmux capture failed:", e, flush=True)
+        else:
+            print(scr.render(), flush=True)
+        print("=====", flush=True)
 
     pump(args.wait)
     dump("initial")
@@ -168,12 +210,21 @@ def main():
         dump(title)
 
     os.write(fd, b"q")
-    time.sleep(0.2)
+    deadline = time.time() + 2
+    status = None
+    while time.time() < deadline:
+        w, st = os.waitpid(pid, os.WNOHANG)
+        if w == pid:
+            status = st
+            break
+        time.sleep(0.1)
+    if status is None:
+        os.kill(pid, 9)
+        os.waitpid(pid, 0)
     try:
         os.close(fd)
     except OSError:
         pass
-    os.waitpid(pid, 0)
 
 
 if __name__ == "__main__":

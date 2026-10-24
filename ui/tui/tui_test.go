@@ -154,15 +154,37 @@ func TestUpdateDataAndTickDoNotPanic(t *testing.T) {
 // ---- mouse, compact details, menubar mode (tmux) ----
 
 type fakeTmux struct {
-	avail   bool
-	inTmux  bool
-	splits  []string
-	resized []int
+	avail    bool
+	inTmux   bool
+	splits   []string
+	resized  []int
+	switched []string
+	focused  bool
+	quit     bool
+	bottom   string
+	setupErr error
 }
 
 func (f *fakeTmux) available() bool { return f.avail }
 func (f *fakeTmux) inSession() bool { return f.inTmux }
-func (f *fakeTmux) active() bool    { return len(f.resized) > 0 && f.resized[len(f.resized)-1] <= 4 }
+func (f *fakeTmux) active() bool    { return len(f.resized) > 0 && f.resized[len(f.resized)-1] <= 5 }
+func (f *fakeTmux) setupEmbedded(placeholder string) (string, error) {
+	if f.setupErr != nil {
+		return "", f.setupErr
+	}
+	f.bottom = "pane1"
+	_ = f.resizeSelf(4)
+	return "pane1", nil
+}
+func (f *fakeTmux) switchTerminal(pane, agent, termSocket string) error {
+	f.switched = append(f.switched, agent)
+	return nil
+}
+func (f *fakeTmux) focusTerminal(pane string) error {
+	f.focused = true
+	return nil
+}
+func (f *fakeTmux) quitAll() { f.quit = true }
 func (f *fakeTmux) splitAgent(agent, termSocket string) error {
 	f.splits = append(f.splits, agent)
 	return f.resizeSelf(3)
@@ -325,5 +347,91 @@ func TestAgentTabClickSwitchesActiveAgent(t *testing.T) {
 	m.Update(leftClick(s.x0+1, 2))
 	if m.cursor != 0 {
 		t.Fatalf("switching back failed: cursor=%d", m.cursor)
+	}
+}
+
+// ---- embedded tmux layout (menu bar + agent terminal below) ----
+
+func TestEmbeddedSetupSwitchesToFirstRunningAgent(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tmux: ft, embedded: true}
+	m.data = sampleData()
+
+	_, cmd := m.Update(embeddedReadyMsg{pane: "pane1"})
+	if m.bottomPane != "pane1" {
+		t.Fatalf("bottom pane not recorded: %q", m.bottomPane)
+	}
+	if cmd == nil {
+		t.Fatal("first running agent must be shown immediately")
+	}
+	msg := cmd()
+	sd, ok := msg.(switchDoneMsg)
+	if !ok || sd.err != nil {
+		t.Fatalf("switch result: %#v", msg)
+	}
+	if len(ft.switched) != 1 || ft.switched[0] != "alpha" {
+		t.Fatalf("expected switch to first running agent, got %v", ft.switched)
+	}
+}
+
+func TestEmbeddedTabClickSwitchesTerminal(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tmux: ft, embedded: true}
+	m.data = sampleData()
+	_, cmd := m.Update(embeddedReadyMsg{pane: "pane1"})
+	if cmd != nil {
+		cmd()
+	}
+	_ = m.View() // compute tab spans
+
+	s := m.agentSpans[1] // beta tab
+	_, cmd = m.Update(leftClick(s.x0+1, 2))
+	if cmd != nil {
+		if sd, ok := cmd().(switchDoneMsg); !ok || sd.err != nil {
+			t.Fatalf("switch failed: %#v", sd)
+		}
+	}
+	if len(ft.switched) != 2 || ft.switched[1] != "beta" {
+		t.Fatalf("tab click must switch the terminal pane: %v", ft.switched)
+	}
+	if m.cursor != 1 {
+		t.Fatalf("cursor must follow: %d", m.cursor)
+	}
+	// 't' focuses the terminal.
+	_, tcmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	if tcmd != nil {
+		tcmd()
+	}
+	if !ft.focused {
+		t.Fatal("t must move focus into the terminal pane")
+	}
+}
+
+func TestEmbeddedQuitKillsSession(t *testing.T) {
+	ft := &fakeTmux{avail: true, inTmux: true}
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 30, tmux: ft, embedded: true}
+	m.data = sampleData()
+	_, cmd := m.Update(embeddedReadyMsg{pane: "pane1"})
+	if cmd != nil {
+		cmd()
+	}
+	_, quit := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if quit == nil {
+		t.Fatal("q must quit")
+	}
+	if !ft.quit {
+		t.Fatal("q must tear the tmux session down")
+	}
+}
+
+func TestBarModeShowsMenuAndAgentTabs(t *testing.T) {
+	m := &modelTUI{keys: defaultKeys(), width: 120, height: 4, tmux: &fakeTmux{}, embedded: true, menubar: true}
+	m.data = sampleData()
+	out := m.View()
+	if strings.Contains(out, "NAME") {
+		t.Fatalf("bar mode must not render content lists:\n%s", out)
+	}
+	if !strings.Contains(out, "alpha:proj") {
+		t.Fatalf("agent tabs must stay visible in bar mode:\n%s", out)
 	}
 }

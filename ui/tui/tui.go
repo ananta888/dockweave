@@ -78,9 +78,13 @@ type modelTUI struct {
 	expanded bool
 	// status is a transient message line (e.g. terminal attach errors).
 	status string
-	// menubar mode: only the menu bar is rendered (tmux split hosts the
+	// menubar mode: only the menu bar is rendered (tmux hosts the
 	// agent terminal below; see tmux.go).
 	menubar bool
+	// embedded: the TUI manages the tmux layout (menu bar + terminal pane).
+	embedded    bool
+	bottomPane  string
+	bottomAgent string // agent currently shown in the terminal pane
 	// click geometry, recomputed on every render.
 	tabSpans []span
 	// agent tabs (running agents only, label "agent:workspace").
@@ -107,17 +111,63 @@ func defaultKeys() keyMap {
 	}
 }
 
-// Run starts the TUI against the daemon at socketPath.
-func Run(socketPath string) error {
+// Run starts the TUI against the daemon at socketPath. With embedded=true
+// the TUI builds the tmux layout: menu bar on top, agent terminal below
+// (see tmux.go / launchLayout).
+func Run(socketPath string, embedded bool) error {
 	termSocket := filepath.Join(filepath.Dir(socketPath), "dockweaved.term.sock")
-	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket, tmux: &realTmux{}}
+	m := &modelTUI{client: sdk.New(socketPath), keys: defaultKeys(), socket: termSocket,
+		tmux: &realTmux{}, embedded: embedded}
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	return err
 }
 
+// embeddedReadyMsg reports the bottom pane created for the layout.
+type embeddedReadyMsg struct {
+	pane string
+	err  error
+}
+
+// switchDoneMsg reports the outcome of switching the terminal pane.
+type switchDoneMsg struct{ err error }
+
 func (m *modelTUI) Init() tea.Cmd {
+	if m.embedded {
+		return tea.Batch(m.refresh(), tick(), m.setupEmbedded())
+	}
 	return tea.Batch(m.refresh(), tick())
+}
+
+// setupEmbedded creates the terminal pane below the TUI.
+func (m *modelTUI) setupEmbedded() tea.Cmd {
+	return func() tea.Msg {
+		pane, err := m.tmux.setupEmbedded(
+			`sh -c 'echo " dockweave: no agent terminal yet"; sleep infinity'`)
+		return embeddedReadyMsg{pane: pane, err: err}
+	}
+}
+
+// switchBottom shows the selected agent's terminal in the bottom pane.
+// With focus it also moves keyboard focus into the terminal.
+func (m *modelTUI) switchBottom(focus bool) tea.Cmd {
+	if m.cursor >= len(m.data.agents) {
+		return nil
+	}
+	a := m.data.agents[m.cursor]
+	pane, agent, sock := m.bottomPane, a.Name, m.socket
+	m.bottomAgent = agent
+	return func() tea.Msg {
+		if err := m.tmux.switchTerminal(pane, agent, sock); err != nil {
+			return switchDoneMsg{err: err}
+		}
+		if focus {
+			if err := m.tmux.focusTerminal(pane); err != nil {
+				return switchDoneMsg{err: err}
+			}
+		}
+		return switchDoneMsg{}
+	}
 }
 
 func tick() tea.Cmd {
@@ -179,6 +229,9 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
+			if m.embedded {
+				m.tmux.quitAll()
+			}
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Next):
 			m.tab = (m.tab + 1) % tabCount
@@ -212,6 +265,25 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tick())
+	case embeddedReadyMsg:
+		if msg.err != nil {
+			m.status = "tmux layout: " + msg.err.Error()
+			break
+		}
+		m.bottomPane = msg.pane
+		// Show the first running agent immediately.
+		for i, a := range m.data.agents {
+			if a.State == model.AgentRunning {
+				m.cursor = i
+				return m, m.switchBottom(false)
+			}
+		}
+	case switchDoneMsg:
+		if msg.err != nil {
+			m.status = "terminal switch: " + msg.err.Error()
+		} else {
+			m.status = ""
+		}
 	case termDoneMsg:
 		if msg.err != nil {
 			m.status = "terminal: " + msg.err.Error()
@@ -220,6 +292,16 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case dataMsg:
 		m.data = msg
+		// Embedded layout: show the first running agent as soon as data
+		// arrives (the layout may be ready before the first refresh).
+		if m.embedded && m.bottomPane != "" && m.bottomAgent == "" {
+			for i, a := range m.data.agents {
+				if a.State == model.AgentRunning {
+					m.cursor = i
+					return m, m.switchBottom(false)
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -240,13 +322,17 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	// Agent tab row: switch the active agent (select + expand details).
+	// Agent tab row: switch the active agent (select + expand details);
+	// in embedded mode the terminal below follows immediately.
 	if msg.Y == 2 {
 		for i, s := range m.agentSpans {
 			if msg.X >= s.x0 && msg.X < s.x1 {
 				m.tab = tabAgents
 				m.cursor = m.agentRows[i]
-				m.expanded = true
+				m.expanded = !m.menubar
+				if m.embedded && m.bottomPane != "" {
+					return m, m.switchBottom(false)
+				}
 				return m, nil
 			}
 		}
@@ -282,6 +368,18 @@ func (m *modelTUI) openTerminal() tea.Cmd {
 	if a.State != model.AgentRunning {
 		m.status = fmt.Sprintf("agent %s is %s — start it first", a.Name, a.State)
 		return nil
+	}
+	// Embedded layout: the terminal pane below already hosts the agent —
+	// just make sure it shows *this* agent and move focus into it.
+	if m.embedded {
+		if m.bottomPane == "" {
+			m.status = "layout not ready yet"
+			return nil
+		}
+		m.status = ""
+		m.menubar = true
+		_ = m.tmux.resizeSelf(4) // bar mode above the terminal
+		return m.switchBottom(true)
 	}
 	if m.tmux.available() && m.tmux.inSession() {
 		if err := m.tmux.splitAgent(a.Name, m.socket); err == nil {
@@ -326,7 +424,10 @@ func (m *modelTUI) View() string {
 		}
 	}
 	if m.menubar {
-		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • esc: expand TUI • q: quit"))
+		// Bar mode: menu + agent tabs only (tmux hosts the terminal below).
+		b.WriteString("\n")
+		m.renderAgentTabs(&b)
+		b.WriteString("\n" + dimStyle.Render("tmux owns the terminal below • click tab: switch agent • t: focus terminal • esc: expand • q: quit"))
 		return b.String()
 	}
 	b.WriteString("\n")
