@@ -99,7 +99,7 @@
         "Integration: Race-Harness (Verzeichnis-Swap zwischen Prüfung und Mount) => Mount schlägt fehl oder trifft die geprüfte Quelle",
         "Unit: ENOSYS-Degradation bleibt dokumentiert"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-005",

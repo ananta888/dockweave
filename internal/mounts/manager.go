@@ -8,7 +8,9 @@
 //   - Unmount uses umount(2) without flags; EBUSY is returned as a typed
 //     error. MNT_DETACH (lazy) is only used when force is explicitly set.
 //   - Source paths are canonicalized, allowlisted and re-verified with
-//     openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS).
+//     openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS); the verified fd is
+//     kept open and the mount is performed via /proc/self/fd/<n>, so no
+//     path-swap (TOCTOU) can redirect the mount after verification.
 package mounts
 
 import (
@@ -257,10 +259,14 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	if err := SanitizeTargetName(targetName); err != nil {
 		return "", err
 	}
-	canon, err := ResolveSource(source, m.allowedRoots())
+	canon, srcFD, err := ResolveSource(source, m.allowedRoots())
 	if err != nil {
 		return "", err
 	}
+	defer unix.Close(srcFD)
+	// Mount via the verified fd: the kernel dereferences the fd to the exact
+	// object that was checked (no path-string TOCTOU window).
+	src := fmt.Sprintf("/proc/self/fd/%d", srcFD)
 	tree := m.WorkspaceTree(agentID)
 	if err := m.Check(agentID); err != nil {
 		return "", err
@@ -280,7 +286,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		// filesystem object as the requested source (Dev+Ino of the
 		// bind root), otherwise the old mount would silently shadow the
 		// new source (e.g. RW-project A instead of requested RO-project B).
-		same, err := sameBindSource(target, canon)
+		same, err := sameBindSource(target, srcFD)
 		if err != nil {
 			return "", fmt.Errorf("dedup source check on %q: %w", target, err)
 		}
@@ -298,7 +304,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	}
 
 	if mode == model.ModeRW {
-		if err := unix.Mount(canon, target, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+		if err := unix.Mount(src, target, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
 			os.Remove(target)
 			return "", fmt.Errorf("bind mount %q -> %q: %w", canon, target, err)
 		}
@@ -316,7 +322,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		_ = os.Remove(staging)
 		_ = os.Remove(target)
 	}
-	if err := unix.Mount(canon, staging, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+	if err := unix.Mount(src, staging, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
 		os.Remove(staging)
 		os.Remove(target)
 		return "", fmt.Errorf("stage bind %q: %w", canon, err)
@@ -339,16 +345,17 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 }
 
 // sameBindSource reports whether the directory visible at target is the same
-// filesystem object as canon, by comparing device and inode numbers. This is
-// the authoritative identity check for bind mounts: the mountinfo "root" field
-// is filesystem-relative and must not be compared to absolute paths directly.
-func sameBindSource(target, canon string) (bool, error) {
+// filesystem object as the open source fd, by comparing device and inode
+// numbers. This is the authoritative identity check for bind mounts: the
+// mountinfo "root" field is filesystem-relative and must not be compared to
+// absolute paths directly.
+func sameBindSource(target string, srcFD int) (bool, error) {
 	var st, sc unix.Stat_t
 	if err := unix.Stat(target, &st); err != nil {
 		return false, fmt.Errorf("stat target %q: %w", target, err)
 	}
-	if err := unix.Stat(canon, &sc); err != nil {
-		return false, fmt.Errorf("stat source %q: %w", canon, err)
+	if err := unix.Fstat(srcFD, &sc); err != nil {
+		return false, fmt.Errorf("fstat source: %w", err)
 	}
 	return st.Dev == sc.Dev && st.Ino == sc.Ino, nil
 }

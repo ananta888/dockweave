@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func writeSampleWithRoot(t *testing.T, root string) string {
@@ -73,18 +75,30 @@ func TestResolveSourceAllowlist(t *testing.T) {
 	os.MkdirAll(filepath.Join(allowed, "proj"), 0o755)
 	os.MkdirAll(forbidden, 0o755)
 
-	canon, err := ResolveSource(filepath.Join(allowed, "proj"), []string{allowed})
+	canon, fd, err := ResolveSource(filepath.Join(allowed, "proj"), []string{allowed})
 	if err != nil {
 		t.Fatalf("allowed path rejected: %v", err)
 	}
-	if canon == "" {
-		t.Fatal("empty canonical path")
+	defer unix.Close(fd)
+	if canon == "" || fd < 0 {
+		t.Fatal("empty canonical path or invalid fd")
 	}
-	if _, err := ResolveSource(forbidden, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
+	// The fd must refer to the verified directory (Dev+Ino match).
+	var stPath, stFD unix.Stat_t
+	if err := unix.Stat(canon, &stPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Fstat(fd, &stFD); err != nil {
+		t.Fatal(err)
+	}
+	if stPath.Dev != stFD.Dev || stPath.Ino != stFD.Ino {
+		t.Fatal("fd does not refer to the canonical directory")
+	}
+	if _, _, err := ResolveSource(forbidden, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("forbidden path accepted: %v", err)
 	}
 	// Traversal attempt: allowed/../forbidden resolves outside the allowlist.
-	if _, err := ResolveSource(filepath.Join(allowed, "..", "forbidden"), []string{allowed}); !errors.Is(err, ErrNotAllowed) {
+	if _, _, err := ResolveSource(filepath.Join(allowed, "..", "forbidden"), []string{allowed}); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("traversal accepted: %v", err)
 	}
 	// Symlink escape: symlink inside allowed pointing to forbidden.
@@ -92,13 +106,13 @@ func TestResolveSourceAllowlist(t *testing.T) {
 	if err := os.Symlink(forbidden, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResolveSource(link, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
+	if _, _, err := ResolveSource(link, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("symlink escape accepted: %v", err)
 	}
 	// Non-directory must fail.
 	f := filepath.Join(allowed, "file.txt")
 	os.WriteFile(f, []byte("x"), 0o644)
-	if _, err := ResolveSource(f, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
+	if _, _, err := ResolveSource(f, []string{allowed}); !errors.Is(err, ErrNotAllowed) {
 		t.Fatalf("file accepted as mount source: %v", err)
 	}
 }
@@ -147,21 +161,32 @@ func TestSameBindSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	same, err := sameBindSource(a, a)
+	open := func(p string) int {
+		fd, err := unix.Open(p, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fd
+	}
+	fdA, fdB := open(a), open(b)
+	defer unix.Close(fdA)
+	defer unix.Close(fdB)
+
+	same, err := sameBindSource(a, fdA)
 	if err != nil {
 		t.Fatalf("same: %v", err)
 	}
 	if !same {
-		t.Fatal("dir must be identical to itself")
+		t.Fatal("dir must be identical to its own fd")
 	}
-	same, err = sameBindSource(a, b)
+	same, err = sameBindSource(a, fdB)
 	if err != nil {
 		t.Fatalf("diff: %v", err)
 	}
 	if same {
 		t.Fatal("different dirs must not compare equal")
 	}
-	if _, err := sameBindSource(filepath.Join(dir, "missing"), a); err == nil {
+	if _, err := sameBindSource(filepath.Join(dir, "missing"), fdA); err == nil {
 		t.Fatal("expected error for missing target")
 	}
 }

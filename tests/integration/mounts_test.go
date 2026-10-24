@@ -15,10 +15,13 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/mounts"
@@ -313,5 +316,54 @@ func TestAddSourceIdentityCheck(t *testing.T) {
 	}
 	if len(list) != 2 {
 		t.Fatalf("expected 2 mounts, got %d", len(list))
+	}
+}
+
+// TestFDMountIgnoresPathSwap proves the TOCTOU fix (review-004): after
+// ResolveSource verifies a directory, the path is swapped with a different
+// directory before mounting. Mounting via /proc/self/fd/<fd> must still hit
+// the *verified* directory, not the replacement at the same path string.
+func TestFDMountIgnoresPathSwap(t *testing.T) {
+	requireRoot(t)
+	m, allowed := newManager(t)
+	prepareTree(t, m, "ag_fd")
+
+	orig := filepath.Join(allowed, "proj")
+	swap := filepath.Join(allowed, "swap")
+	os.MkdirAll(orig, 0o755)
+	os.MkdirAll(swap, 0o755)
+	os.WriteFile(filepath.Join(orig, "marker"), []byte("original"), 0o644)
+	os.WriteFile(filepath.Join(swap, "marker"), []byte("swapped"), 0o644)
+
+	canon, fd, err := mounts.ResolveSource(orig, []string{allowed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+
+	// Path swap between verification and mount: orig path now shows "swap".
+	if err := os.Rename(orig, orig+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(swap, orig); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(m.WorkspaceTree("ag_fd"), "proj")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := fmt.Sprintf("/proc/self/fd/%d", fd)
+	if err := unix.Mount(src, target, "none", unix.MS_BIND, ""); err != nil {
+		t.Fatalf("fd bind mount: %v", err)
+	}
+	t.Cleanup(func() { _ = unix.Unmount(target, unix.MNT_DETACH) })
+
+	got, err := os.ReadFile(filepath.Join(target, "marker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "original" {
+		t.Fatalf("mount followed the swapped path (%q) instead of the verified fd (canonical %q)", got, canon)
 	}
 }
