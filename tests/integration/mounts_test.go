@@ -264,3 +264,54 @@ func TestTargetNameValidation(t *testing.T) {
 }
 
 var _ = context.Background
+
+func TestAddSourceIdentityCheck(t *testing.T) {
+	requireRoot(t)
+	m, allowed := newManager(t)
+	prepareTree(t, m, "ag_id")
+	srcA := filepath.Join(allowed, "proj-a")
+	srcB := filepath.Join(allowed, "proj-b")
+	os.MkdirAll(srcA, 0o755)
+	os.MkdirAll(srcB, 0o755)
+
+	if _, err := m.Add("ag_id", srcA, "proj", model.ModeRW); err != nil {
+		t.Fatalf("add a: %v", err)
+	}
+	// Same source + same mode: idempotent.
+	if _, err := m.Add("ag_id", srcA, "proj", model.ModeRW); err != nil {
+		t.Fatalf("idempotent add must succeed: %v", err)
+	}
+	// Different source, same mode: conflict, must NOT be accepted.
+	if _, err := m.Add("ag_id", srcB, "proj", model.ModeRW); err == nil {
+		t.Fatal("add b over a must fail (source mismatch)")
+	} else if !errors.Is(err, mounts.ErrConflict) {
+		t.Fatalf("want ErrConflict, got: %v", err)
+	}
+	// Different source, different mode: still conflict (identity first).
+	if _, err := m.Add("ag_id", srcB, "proj", model.ModeRO); err == nil {
+		t.Fatal("add b(ro) over a(rw) must fail")
+	}
+	// Same source, different mode: mode error.
+	if _, err := m.Add("ag_id", srcA, "proj", model.ModeRO); err == nil {
+		t.Fatal("add a(ro) over a(rw) must fail (mode mismatch)")
+	}
+
+	// RO variant: staging must also refuse a source swap at the same target.
+	if _, err := m.Add("ag_id", srcA, "proj-ro", model.ModeRO); err != nil {
+		t.Fatalf("add ro a: %v", err)
+	}
+	if _, err := m.Add("ag_id", srcB, "proj-ro", model.ModeRO); err == nil {
+		t.Fatal("add ro b over ro a must fail (source mismatch)")
+	} else if !errors.Is(err, mounts.ErrConflict) {
+		t.Fatalf("want ErrConflict, got: %v", err)
+	}
+
+	// Nothing leaked: exactly the two intended mounts.
+	list, err := m.List("ag_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 mounts, got %d", len(list))
+	}
+}

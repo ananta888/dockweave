@@ -16,6 +16,10 @@ var ErrNotAllowed = errors.New("path not allowed")
 // ErrBusy reports an unmount rejected by the kernel because the mount is in use (EBUSY).
 var ErrBusy = errors.New("mount target is busy (open files or working directories)")
 
+// ErrConflict reports that a target is already mounted from a different
+// source (bind-source identity mismatch).
+var ErrConflict = errors.New("mount source conflict")
+
 // ResolveSource canonicalizes a user-supplied host path and enforces the
 // allowlist of permitted roots. Symlinks are resolved; the result must be a
 // directory beneath one of the allowed roots.

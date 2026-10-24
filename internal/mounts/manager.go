@@ -227,6 +227,8 @@ func (m *Manager) List(agentID string) ([]model.MountState, error) {
 // Add mounts source beneath the agent's workspace tree at targetName.
 // RO mounts are staged privately first (see package doc). Idempotent: if the
 // target is already a mountpoint for the same source and mode, Add returns nil.
+// A target mounted from a *different* source is a conflict (ErrConflict),
+// never silently accepted.
 func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode) (string, error) {
 	l := m.agentLock(agentID)
 	l.Lock()
@@ -254,13 +256,25 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		return "", err
 	}
 	for _, mi := range infos {
-		if mi.MountPoint == target {
-			ro := mi.Readonly()
-			if (mode == model.ModeRO) == ro {
-				return target, nil // idempotent
-			}
+		if mi.MountPoint != target {
+			continue
+		}
+		// Identity check first: the same target must show the *same*
+		// filesystem object as the requested source (Dev+Ino of the
+		// bind root), otherwise the old mount would silently shadow the
+		// new source (e.g. RW-project A instead of requested RO-project B).
+		same, err := sameBindSource(target, canon)
+		if err != nil {
+			return "", fmt.Errorf("dedup source check on %q: %w", target, err)
+		}
+		if !same {
+			return "", fmt.Errorf("%w: target %q is already mounted from a different source (requested %q)", ErrConflict, target, canon)
+		}
+		ro := mi.Readonly()
+		if (mode == model.ModeRO) != ro {
 			return "", fmt.Errorf("target %q already mounted with different mode (ro=%v)", target, ro)
 		}
+		return target, nil // idempotent: same source and mode
 	}
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return "", fmt.Errorf("create target %q: %w", target, err)
@@ -305,6 +319,21 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	}
 	_ = os.Remove(staging) // empty staging dir after move
 	return target, nil
+}
+
+// sameBindSource reports whether the directory visible at target is the same
+// filesystem object as canon, by comparing device and inode numbers. This is
+// the authoritative identity check for bind mounts: the mountinfo "root" field
+// is filesystem-relative and must not be compared to absolute paths directly.
+func sameBindSource(target, canon string) (bool, error) {
+	var st, sc unix.Stat_t
+	if err := unix.Stat(target, &st); err != nil {
+		return false, fmt.Errorf("stat target %q: %w", target, err)
+	}
+	if err := unix.Stat(canon, &sc); err != nil {
+		return false, fmt.Errorf("stat source %q: %w", canon, err)
+	}
+	return st.Dev == sc.Dev && st.Ino == sc.Ino, nil
 }
 
 // rwSubmounts lists rw mounts at or below path.

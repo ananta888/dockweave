@@ -137,3 +137,31 @@ func TestManagerListFromKernelState(t *testing.T) {
 		t.Fatalf("modes not detected: %v", modes)
 	}
 }
+
+func TestSameBindSource(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a")
+	b := filepath.Join(dir, "b")
+	for _, d := range []string{a, b} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	same, err := sameBindSource(a, a)
+	if err != nil {
+		t.Fatalf("same: %v", err)
+	}
+	if !same {
+		t.Fatal("dir must be identical to itself")
+	}
+	same, err = sameBindSource(a, b)
+	if err != nil {
+		t.Fatalf("diff: %v", err)
+	}
+	if same {
+		t.Fatal("different dirs must not compare equal")
+	}
+	if _, err := sameBindSource(filepath.Join(dir, "missing"), a); err == nil {
+		t.Fatal("expected error for missing target")
+	}
+}

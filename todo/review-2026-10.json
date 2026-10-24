@@ -23,7 +23,7 @@
         "Integration privilegiert: RW-A am Ziel, Add(B, ro) => Fehler (kein Erfolg)",
         "Unit: Dedup-Entscheidungstabelle (Quelle x Modus)"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "review-002",
