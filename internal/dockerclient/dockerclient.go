@@ -123,6 +123,11 @@ func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error)
 		Cmd:    cmd,
 		Env:    containerEnv(a.Env),
 		Labels: labels,
+		// Agents work in their assigned projects: /workspace holds the
+		// project mounts (/workspace/<name>). Without this the container
+		// starts in the image default (/) and the agent cannot see its
+		// projects without manual navigation.
+		WorkingDir: "/workspace",
 		User:   user,
 		// Keep stdin open + tty for attach/exec based interactive use.
 		OpenStdin: true,
