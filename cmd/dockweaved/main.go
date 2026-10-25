@@ -180,12 +180,12 @@ func run(cfgPath string) error {
 		Agents:     agentSvc,
 		Workspaces: wsSvc,
 		DaemonConfig: map[string]string{
-			"KNOWLEDGE_DIR":       cfg.KnowledgeDir,
-			"AGENT_UID":           fmt.Sprint(cfg.AgentUID),
-			"AGENT_GID":           fmt.Sprint(cfg.AgentGID),
+			"KNOWLEDGE_DIR":        cfg.KnowledgeDir,
+			"AGENT_UID":            fmt.Sprint(cfg.AgentUID),
+			"AGENT_GID":            fmt.Sprint(cfg.AgentGID),
 			"ALLOW_ROOT_CONTAINER": fmt.Sprint(cfg.AllowRootContainer),
-			"SOCKET_GROUP":        cfg.SocketGroup,
-			"ALLOWED_ROOTS":       strings.Join(cfg.AllowedRoots, ":"),
+			"SOCKET_GROUP":         cfg.SocketGroup,
+			"ALLOWED_ROOTS":        strings.Join(cfg.AllowedRoots, ":"),
 		},
 	}
 	handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
