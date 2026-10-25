@@ -72,6 +72,10 @@ func (f *fakeMounts) TeardownAgentTree(_ string, force bool) ([]string, error) {
 	return nil, nil
 }
 
+func (f *fakeMounts) NotesDir(id string) string {
+	return filepath.Join(f.root, "agents", id, "notes")
+}
+
 func (f *fakeMounts) ValidateSource(path string) (string, error) {
 	if strings.Contains(path, "forbidden") {
 		return "", errors.New("path not allowed")
@@ -592,11 +596,46 @@ func TestAgentPathsFolderAssignments(t *testing.T) {
 	if p.KnowledgeDir != "/var/lib/dockweave/knowledge" {
 		t.Fatalf("knowledge dir wrong: %+v", p)
 	}
+	if p.NotesDir != fm.NotesDir(a.ID) || p.NotesDirCustom {
+		t.Fatalf("notes dir wrong: %+v", p)
+	}
 	mem, err := st.GetMemoryByAgent(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p.MemoryID != mem.ID || p.MemoryDir != mm.Path(mem.ID) {
 		t.Fatalf("memory assignment wrong: %+v (want %s at %s)", p, mem.ID, mm.Path(mem.ID))
+	}
+}
+
+func TestSetNotesDir(t *testing.T) {
+	svc, fm, _, _, _ := setupWithMemory(t)
+	ctx := context.Background()
+	a := &model.Agent{Name: "notes1", Type: "custom", Image: "img"}
+	if _, err := svc.Create(ctx, a, "test"); err != nil {
+		t.Fatal(err)
+	}
+	// Custom folder wins over the default tree directory.
+	if _, err := svc.SetNotesDir(ctx, a.Name, "/home/krusty/meine-notizen", "test"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := svc.AgentPaths(ctx, a.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.NotesDir != "/home/krusty/meine-notizen" || !p.NotesDirCustom {
+		t.Fatalf("custom notes dir not applied: %+v", p)
+	}
+	// Empty path restores the default.
+	if _, err := svc.SetNotesDir(ctx, a.Name, "", "test"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = svc.AgentPaths(ctx, a.Name)
+	if p.NotesDir != fm.NotesDir(a.ID) || p.NotesDirCustom {
+		t.Fatalf("default notes dir not restored: %+v", p)
+	}
+	// The path is validated like every registered folder.
+	if _, err := svc.SetNotesDir(ctx, a.Name, "/home/krusty/forbidden", "test"); err == nil {
+		t.Fatal("invalid notes path must be rejected")
 	}
 }

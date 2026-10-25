@@ -297,6 +297,14 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 	hit(*row, 68, 82, "change", "")
 	hit(*row, 84, 100, "folder-memory", "")
 	*row++
+	notesNote := "(per-agent knowledge)"
+	if p.NotesDirCustom {
+		notesNote = "(per-agent knowledge · own folder)"
+	}
+	fmt.Fprintf(&b, "  %s%-8s /notes   ← %s %s  %s\n", okStyle.Render("● "), "wissen", p.NotesDir,
+		dimStyle.Render(notesNote), buttonView("set notes", focused("folder-notes")))
+	hit(*row, 2, 66, "folder-notes", "")
+	*row++
 	for _, w := range m.data.workspaces {
 		mark := "   "
 		label, action := "assign", "assign:"+w.ID
@@ -320,7 +328,7 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 		*row++
 		b.WriteString("  " + tabActive.Render(" set folder ") + "\n")
 		*row++
-		targets := []string{"agent", "memory"}
+		targets := []string{"agent", "memory", "notes"}
 		b.WriteString("  folder for " + cyclerView(targets[f.folderTarget], focused("target")) + "  " + fieldView(&f.folder, focused("f-folder")) + "\n")
 		hit(*row, 2, 24, "target", "")
 		hit(*row, 26, 110, "f-folder", "")
@@ -818,6 +826,14 @@ func (m *modelTUI) activate(h setupHit) tea.Cmd {
 		m.focusAction("f-folder")
 		m.startEdit()
 		return nil
+	case h.action == "folder-notes":
+		// Open the shared folder input for the /notes source.
+		f.folderTarget = 2
+		f.folderOpen = true
+		_ = m.viewSetup() // rebuild hits so the input is focusable now
+		m.focusAction("f-folder")
+		m.startEdit()
+		return nil
 	case h.action == "folder-memory":
 		// Open the shared folder input for registering an own memory folder.
 		f.folderTarget = 1
@@ -990,6 +1006,19 @@ func (m *modelTUI) submitFolder(path string) tea.Cmd {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			_, err := client.SetAgentDir(ctx, id, path)
+			return setupDoneMsg{err: err}
+		}
+	}
+	if m.form.folderTarget == 2 {
+		if a == nil {
+			m.status = "no agent selected"
+			return nil
+		}
+		id := a.ID
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, err := client.SetNotesDir(ctx, id, path)
 			return setupDoneMsg{err: err}
 		}
 	}

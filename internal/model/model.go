@@ -55,6 +55,7 @@ type Agent struct {
 	UID         int        `json:"uid"`
 	GID         int        `json:"gid"`
 	AgentDir    string     `json:"agent_dir,omitempty"` // custom /agent source; empty = default tree
+	NotesDir    string     `json:"notes_dir,omitempty"` // custom /notes source; empty = default tree
 	CPULimit    float64    `json:"cpu_limit,omitempty"` // cores, 0 = unlimited
 	MemoryMB    int64      `json:"memory_mb,omitempty"` // 0 = unlimited
 	NetworkMode string     `json:"network_mode"`        // bridge|none|host(never default)

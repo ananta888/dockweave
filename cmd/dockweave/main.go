@@ -217,6 +217,11 @@ func agentCmd() *cobra.Command {
 				if p.KnowledgeDir != "" {
 					fmt.Fprintf(w, "/knowledge\t%s\tshared knowledge store\n", p.KnowledgeDir)
 				}
+				notesNote := "per-agent knowledge"
+				if p.NotesDirCustom {
+					notesNote = "per-agent knowledge · own folder"
+				}
+				fmt.Fprintf(w, "/notes\t%s\t%s\n", p.NotesDir, notesNote)
 			})
 		},
 	}
@@ -236,6 +241,25 @@ func agentCmd() *cobra.Command {
 			}
 			out(a, func(w *tabwriter.Writer) {
 				fmt.Fprintf(w, "AGENT\t%s\nAGENT FOLDER\t%s\n", a.Name, a.AgentDir)
+			})
+		},
+	}
+
+	setnotes := &cobra.Command{
+		Use:   "setnotes NAME|ID [PATH]",
+		Short: "Set the /notes folder (per-agent knowledge); empty resets to default",
+		Args:  cobra.RangeArgs(1, 2),
+		Run: func(cmd *cobra.Command, args []string) {
+			path := ""
+			if len(args) == 2 {
+				path = args[1]
+			}
+			a, err := client().SetNotesDir(ctx(), args[0], path)
+			if err != nil {
+				fail(err)
+			}
+			out(a, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "AGENT\t%s\nNOTES FOLDER\t%s\n", a.Name, a.NotesDir)
 			})
 		},
 	}
@@ -260,7 +284,7 @@ func agentCmd() *cobra.Command {
 		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
 	attach.Flags().SetInterspersed(false)
 
-	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, attach)
+	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, setnotes, attach)
 	return cmd
 }
 

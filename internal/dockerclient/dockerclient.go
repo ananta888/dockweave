@@ -67,6 +67,7 @@ type ContainerSpec struct {
 	MemoryDir    string // host path -> /memory
 	WorkspaceDir string // host path -> /workspace (bind-propagation rslave)
 	KnowledgeDir string // host path -> /knowledge (shared knowledge store)
+	NotesDir     string // host path -> /notes (per-agent knowledge folder)
 	WorkingDir   string // container working dir (defaults to /workspace)
 }
 

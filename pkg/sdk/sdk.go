@@ -302,6 +302,8 @@ type AgentPathsInfo struct {
 	MemoryCustom   bool   `json:"memory_custom"`
 	WorkspaceDir   string `json:"workspace_dir"`
 	KnowledgeDir   string `json:"knowledge_dir"`
+	NotesDir       string `json:"notes_dir"`
+	NotesDirCustom bool   `json:"notes_dir_custom"`
 }
 
 // AgentPaths resolves which host directories back /agent, /memory and
@@ -336,6 +338,17 @@ func (c *Client) UpdateAgent(ctx context.Context, idOrName, type_, image string,
 func (c *Client) SetAgentDir(ctx context.Context, idOrName, path string) (*model.Agent, error) {
 	var out model.Agent
 	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/agent-dir",
+		map[string]string{"path": path}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetNotesDir registers a custom host folder as the per-agent knowledge
+// folder (/notes); empty restores the default.
+func (c *Client) SetNotesDir(ctx context.Context, idOrName, path string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/notes-dir",
 		map[string]string{"path": path}, &out); err != nil {
 		return nil, err
 	}

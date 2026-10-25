@@ -26,6 +26,7 @@ type MountOps interface {
 	PrepareAgentTree(agentID string) error
 	AgentDir(agentID string) string
 	MemoryDir(agentID string) string
+	NotesDir(agentID string) string
 	WorkspaceTree(agentID string) string
 	List(agentID string) ([]model.MountState, error)
 	Remove(agentID, targetName string, force bool) error
@@ -458,6 +459,8 @@ type AgentPaths struct {
 	MemoryCustom   bool   `json:"memory_custom"`
 	WorkspaceDir   string `json:"workspace_dir"` // host tree mounted at /workspace
 	KnowledgeDir   string `json:"knowledge_dir"` // host dir mounted at /knowledge
+	NotesDir       string `json:"notes_dir"`     // host dir mounted at /notes
+	NotesDirCustom bool   `json:"notes_dir_custom"`
 }
 
 // agentDir resolves the /agent source: the registered custom folder or the
@@ -467,6 +470,15 @@ func (s *Service) agentDir(a *model.Agent) string {
 		return a.AgentDir
 	}
 	return s.Mounts.AgentDir(a.ID)
+}
+
+// notesDir resolves the /notes source: the registered custom folder or the
+// default per-agent notes directory.
+func (s *Service) notesDir(a *model.Agent) string {
+	if a.NotesDir != "" {
+		return a.NotesDir
+	}
+	return s.Mounts.NotesDir(a.ID)
 }
 
 // memDir resolves the /memory source of a memory identity and keeps the
@@ -494,6 +506,8 @@ func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths,
 		AgentDirCustom: a.AgentDir != "",
 		WorkspaceDir:   s.Mounts.WorkspaceTree(a.ID),
 		KnowledgeDir:   s.KnowledgeDir,
+		NotesDir:       s.notesDir(a),
+		NotesDirCustom: a.NotesDir != "",
 	}
 	if s.Memory != nil {
 		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
@@ -557,6 +571,32 @@ func (s *Service) SetAgentDir(ctx context.Context, idOrName, path, actor string)
 	msg := "agent folder reset to default"
 	if dir != "" {
 		msg = "agent folder set to " + dir
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, msg+" (restart to apply)")
+	return a, nil
+}
+
+// SetNotesDir registers a custom host directory as the per-agent
+// knowledge folder (/notes). An empty path restores the default. The
+// change takes effect at the next agent start.
+func (s *Service) SetNotesDir(ctx context.Context, idOrName, path, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	dir := ""
+	if strings.TrimSpace(path) != "" {
+		if dir, err = s.Mounts.ValidateSource(path); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.Store.UpdateNotesDir(ctx, a.ID, dir); err != nil {
+		return nil, err
+	}
+	a.NotesDir = dir
+	msg := "notes folder reset to default"
+	if dir != "" {
+		msg = "notes folder set to " + dir
 	}
 	s.event(ctx, model.EventAgentIdentity, actor, a.ID, msg+" (restart to apply)")
 	return a, nil
@@ -659,6 +699,7 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 		MemoryDir:    memPath,
 		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
 		KnowledgeDir: s.KnowledgeDir,
+		NotesDir:     s.notesDir(a),
 		WorkingDir:   workDir,
 	})
 	if err != nil {

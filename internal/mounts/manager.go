@@ -104,6 +104,12 @@ func (m *Manager) AgentDir(agentID string) string {
 	return filepath.Join(m.cfg.Root, "agents", agentID, "agent")
 }
 
+// NotesDir returns the host path of an agent's per-agent knowledge
+// folder (mounted at /notes; overridable via a registered custom path).
+func (m *Manager) NotesDir(agentID string) string {
+	return filepath.Join(m.cfg.Root, "agents", agentID, "notes")
+}
+
 // MemoryDir returns the host path of an agent's memory directory.
 func (m *Manager) MemoryDir(agentID string) string {
 	return filepath.Join(m.cfg.Root, "agents", agentID, "memory")
@@ -121,7 +127,7 @@ func (m *Manager) stagingDir() string {
 func (m *Manager) PrepareAgentTree(agentID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, d := range []string{m.AgentDir(agentID), m.MemoryDir(agentID), m.WorkspaceTree(agentID)} {
+	for _, d := range []string{m.AgentDir(agentID), m.MemoryDir(agentID), m.WorkspaceTree(agentID), m.NotesDir(agentID)} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return fmt.Errorf("create %q: %w", d, err)
 		}

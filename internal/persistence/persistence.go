@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -112,6 +112,8 @@ var migrations = []string{
 	// may point at user-registered host directories; empty = default layout.
 	`ALTER TABLE agents ADD COLUMN agent_dir TEXT NOT NULL DEFAULT '';
 	ALTER TABLE memories ADD COLUMN path TEXT NOT NULL DEFAULT '';`,
+	// 5: per-agent knowledge folder (/notes) with an optional custom path.
+	`ALTER TABLE agents ADD COLUMN notes_dir TEXT NOT NULL DEFAULT '';`,
 }
 
 // Store is the DockWeave registry.
@@ -194,11 +196,11 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 	cmd, _ := json.Marshal(a.Command)
 	env, _ := json.Marshal(a.Env)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO agents
-		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.Name, a.Type, a.Image, string(cmd), string(env), a.EnvFile, a.AgentRO,
 		a.UID, a.GID, a.CPULimit, a.MemoryMB, a.NetworkMode, string(a.State), a.ContainerID,
-		a.AgentDir, ts(a.CreatedAt), ts(a.UpdatedAt))
+		a.AgentDir, a.NotesDir, ts(a.CreatedAt), ts(a.UpdatedAt))
 	if isUniqueErr(err) {
 		return fmt.Errorf("%w: agent name %q", ErrConflict, a.Name)
 	}
@@ -211,7 +213,7 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 // GetAgent fetches an agent by ID or name (name lookup if no ID match).
 func (s *Store) GetAgent(ctx context.Context, idOrName string) (*model.Agent, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at
+		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at
 		FROM agents WHERE id=? OR name=?`, idOrName, idOrName)
 	return scanAgent(row)
 }
@@ -223,7 +225,7 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	var cmd, env, ca, ua, state string
 	var ro bool
 	if err := row.Scan(&a.ID, &a.Name, &a.Type, &a.Image, &cmd, &env, &a.EnvFile, &ro,
-		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &state, &a.ContainerID, &a.AgentDir, &ca, &ua); err != nil {
+		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &state, &a.ContainerID, &a.AgentDir, &a.NotesDir, &ca, &ua); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -269,10 +271,25 @@ func (s *Store) UpdateAgentDir(ctx context.Context, id, dir string) error {
 	return nil
 }
 
+// UpdateNotesDir sets (or with an empty dir clears) the custom /notes
+// source directory of an agent (per-agent knowledge folder).
+func (s *Store) UpdateNotesDir(ctx context.Context, id, dir string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET notes_dir=?, updated_at=? WHERE id=?`,
+		dir, ts(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("update notes dir: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListAgents returns all agents ordered by name.
 func (s *Store) ListAgents(ctx context.Context) ([]*model.Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,created_at,updated_at FROM agents ORDER BY name`)
+		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}

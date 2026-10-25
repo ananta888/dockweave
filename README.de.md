@@ -150,6 +150,11 @@ KNOWLEDGE_DIR=/home/krusty/mein-wissen     # Standard: /var/lib/dockweave/knowle
 Verdrahtung: `KNOWLEDGE_DIR` (Config) → Daemon → Read-Write-Bind-Mount
 nach `/knowledge` in jeden Agenten-Container.
 
+Pro-Agent-Wissen: jeder Agent hat zusätzlich `/notes` — seinen eigenen
+menschenlesbaren Ordner (Standard `<root>/agents/<id>/notes`, frei pro
+Agent konfigurierbar: `agent setnotes NAME PATH`), neben dem
+gemeinsamen `/knowledge`. Gleiche Konvention wie im gemeinsamen Store.
+
 **Ist ein Agent-Skill nötig?** Nicht zwingend — die `README.md` im
 Speicher ist die Konvention, lesbar für Menschen und Agenten. Für
 verlässliche *Nutzung* (Agenten schlagen von selbst nach) ergänze
@@ -185,11 +190,12 @@ welches Host-Verzeichnis hinter `/agent` (AGENTS.md, Skills), `/memory`
 (Langzeitgedächtnis) und `/workspace` (Projekt-Mounts) liegt — die
 TUI-Detailcard (Klick/`enter` auf einen Agenten) zeigt dasselbe.
 
-Alle drei Ordner sind im TUI-Tab **Setup** zuweis- und registrierbar
+Alle Ordner sind im TUI-Tab **Setup** zuweis- und registrierbar
 (oder per CLI): `dockweave agent setdir NAME PATH` legt einen eigenen
 Settings-Ordner als `/agent` fest (leerer Pfad setzt zurück),
-`dockweave memory register PATH` registriert einen eigenen
-Langzeitgedächtnis-Ordner (`memory attach` bindet ihn), Projekte
+`dockweave agent setnotes NAME PATH` setzt den pro-agent Wissensordner
+hinter `/notes`, `dockweave memory register PATH` registriert einen
+eigenen Langzeitgedächtnis-Ordner (`memory attach` bindet ihn), Projekte
 werden per Grant zugeordnet — in Setup ein Klick pro Zeile.
 
 ## Lizenz
