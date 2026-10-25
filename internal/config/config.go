@@ -54,6 +54,7 @@ func Default() Config {
 		AgentGID:           1000,
 		AllowRootContainer: false,
 		SocketGroup:        "dockweave",
+		KnowledgeDir:       "/var/lib/dockweave/knowledge",
 	}
 }
 
