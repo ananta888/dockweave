@@ -1014,3 +1014,30 @@ func TestAllPresetsStartInYoloMode(t *testing.T) {
 		}
 	}
 }
+
+func TestTypingResearcherIntoNameField(t *testing.T) {
+	// Regression: r/l/h are global bindings (refresh, menu next/prev) and
+	// must not swallow typing in form fields ("researcher").
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 45, tab: tabSetup,
+		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
+	m.data = setupTestData()
+	m.form.mode = 1
+	_ = m.View()
+	m.focusAction("f-name")
+	// Selecting the field is enough — typing starts editing implicitly.
+	for _, r := range "researcher" {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	if !strings.HasSuffix(m.form.name.Value(), "researcher") {
+		t.Fatalf("name field = %q, want suffix 'researcher'", m.form.name.Value())
+	}
+	if m.tab != tabSetup {
+		t.Fatalf("typing must not switch the menu (tab=%v)", m.tab)
+	}
+	// Outside a field, 'r' still refreshes (returns a command).
+	m.form.focusIdx = -1
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // leave edit mode if open
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}}); cmd == nil {
+		t.Fatal("r must still trigger refresh outside form fields")
+	}
+}

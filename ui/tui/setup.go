@@ -519,13 +519,15 @@ func (m *modelTUI) updateSetup(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if f.editing {
-			if ti := f.focusedInput(); ti != nil {
-				var cmd tea.Cmd
-				*ti, cmd = ti.Update(msg)
-				f.touched[strings.TrimPrefix(f.fieldOf(f.focusIdx), "f-")] = true
-				return m, cmd
+		if ti := f.focusedInput(); ti != nil {
+			if !f.editing {
+				// Typing into a focused field starts editing implicitly.
+				m.startEdit()
 			}
+			var cmd tea.Cmd
+			*ti, cmd = ti.Update(msg)
+			f.touched[strings.TrimPrefix(f.fieldOf(f.focusIdx), "f-")] = true
+			return m, cmd
 		}
 		return m, nil
 	case tea.MouseMsg:

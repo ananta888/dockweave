@@ -291,6 +291,18 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
+		// Typing context: while a Setup field is edited (or focused and a
+		// printable key arrives) every character belongs to the field —
+		// global single-letter bindings (r refresh, l/h menu) must not
+		// swallow typing (e.g. "researcher").
+		if m.tab == tabSetup && m.form.focusedInput() != nil &&
+			(m.form.editing || isPrintableKey(msg)) {
+			switch msg.String() {
+			case "tab", "shift+tab", "pgup", "pgdown":
+			default:
+				return m.updateSetup(msg)
+			}
+		}
 		switch {
 		case msg.String() == "pgup":
 			m.scrollY -= 10
@@ -656,6 +668,15 @@ func (m *modelTUI) ensureRowVisible(row int) {
 	} else if row >= m.scrollY+lines {
 		m.scrollY = row - lines + 1
 	}
+}
+
+// isPrintableKey reports whether a key press inserts a character.
+func isPrintableKey(msg tea.KeyMsg) bool {
+	switch msg.Type {
+	case tea.KeyRunes, tea.KeySpace:
+		return true
+	}
+	return len(msg.String()) == 1
 }
 
 // writeStatus renders the transient status line when set.
