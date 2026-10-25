@@ -134,13 +134,35 @@ Die Sockets sind `0660 root:SOCKET_GROUP` (Standard-Gruppe: `dockweave`).
 
 Ein menschenlesbarer Memory-Bereich für **alle** Agentensysteme (codex,
 opencode, …) und für dich: in jedem Agenten als `/knowledge` rw
-eingehängt, auf dem Host unter `/var/lib/dockweave/knowledge`
-(Konfiguration: `KNOWLEDGE_DIR=...`, z.B. `~/mein-wissen`). Klartext-
-Markdown mit dokumentierter Konvention (siehe `README.md` im Speicher):
-eine Datei pro Thema, anhängen statt überschreiben, Datum+Quelle pro
-Eintrag. Agenten legen dort Fakten ab und schlagen vor Annahmen nach;
-du verfolgst alles mit `ls`/`cat`/Editor. Der aktuelle Pfad steht in
+eingehängt. Klartext-Markdown mit dokumentierter Konvention (siehe
+`README.md` im Speicher): eine Datei pro Thema, anhängen statt
+überschreiben, Datum+Quelle pro Eintrag. Der aktuelle Pfad steht in
 `dockweave agent paths`.
+
+Konfiguration (wirkt beim nächsten Agenten-Start):
+
+```bash
+# /etc/dockweave/dockweaved.conf
+KNOWLEDGE_DIR=/home/krusty/mein-wissen     # Standard: /var/lib/dockweave/knowledge
+# oder per Umgebung: DOCKWEAVE_KNOWLEDGE_DIR=...
+```
+
+Verdrahtung: `KNOWLEDGE_DIR` (Config) → Daemon → Read-Write-Bind-Mount
+nach `/knowledge` in jeden Agenten-Container.
+
+**Ist ein Agent-Skill nötig?** Nicht zwingend — die `README.md` im
+Speicher ist die Konvention, lesbar für Menschen und Agenten. Für
+verlässliche *Nutzung* (Agenten schlagen von selbst nach) ergänze
+folgenden Abschnitt in die `AGENTS.md` deines Projekts (oder den
+gemeinsamen `/agent`-Ordner via `[set folder]`):
+
+```markdown
+## Wissen (/knowledge)
+Gemeinsamer Speicher aller Agenten. Vor Annahmen in `/knowledge`
+nachschlagen (Konvention: /knowledge/README.md). Dauerhafte Fakten,
+Entscheidungen und Glossareinträge dort ablegen — mit Datum + Quelle
+anhängen, fremde Einträge nie überschreiben.
+```
 ## Voraussetzungen
 
 - Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27

@@ -65,6 +65,18 @@ func TestSocketGroupOverride(t *testing.T) {
 	}
 }
 
+func TestEnvOverrideKnowledgeDir(t *testing.T) {
+	// DOCKWEAVE_KNOWLEDGE_DIR overrides the store location at runtime.
+	t.Setenv("DOCKWEAVE_KNOWLEDGE_DIR", "/home/krusty/mein-wissen")
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KnowledgeDir != "/home/krusty/mein-wissen" {
+		t.Fatalf("env override failed: %q", cfg.KnowledgeDir)
+	}
+}
+
 func TestDefaultsAreNonRootAndAdminOnlyRoot(t *testing.T) {
 	cfg := Default()
 	if cfg.AgentUID != 1000 || cfg.AgentGID != 1000 {
