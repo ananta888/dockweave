@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -247,13 +248,13 @@ func TestListClickSelectsAndTogglesDetails(t *testing.T) {
 	m.data = sampleData()
 	_ = m.View() // computes listTop
 
-	// Click the second row: select + expand.
-	m.Update(leftClick(5, m.listTop+1))
+	// Click the second row: select + expand (screen coords: +contentTop).
+	m.Update(leftClick(5, m.contentTop+m.listTop+1))
 	if m.cursor != 1 || !m.expanded {
 		t.Fatalf("row click: cursor=%d expanded=%v", m.cursor, m.expanded)
 	}
 	// Click the selected row again: collapse.
-	m.Update(leftClick(5, m.listTop+1))
+	m.Update(leftClick(5, m.contentTop+m.listTop+1))
 	if m.expanded {
 		t.Fatal("second click must collapse the detail card")
 	}
@@ -567,7 +568,7 @@ func clickHit(t *testing.T, m *modelTUI, action string) tea.Msg {
 	_ = m.View()
 	for _, h := range m.form.hits {
 		if h.action == action {
-			_, cmd := m.Update(leftClick(h.x0+1, h.y))
+			_, cmd := m.Update(leftClick(h.x0+1, h.y+m.contentTop))
 			if cmd != nil {
 				return cmd()
 			}
@@ -649,7 +650,7 @@ func TestSetupFormTypingAndFocus(t *testing.T) {
 	if nameHit == nil {
 		t.Fatal("name field hotspot missing")
 	}
-	m.Update(leftClick(nameHit.x0+1, nameHit.y))
+	m.Update(leftClick(nameHit.x0+1, nameHit.y+m.contentTop))
 	for _, r := range "x" {
 		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
@@ -745,22 +746,41 @@ func TestSetupAgentChipsSwitchSelection(t *testing.T) {
 	}
 }
 
-func TestChromeAutoHidesForTallContent(t *testing.T) {
-	m := &modelTUI{keys: defaultKeys(), width: 130, height: 12, tab: tabSetup,
+func TestTallContentScrollsWithoutCoveringMenu(t *testing.T) {
+	// The menu must stay visible when the content overflows: the content
+	// window scrolls instead of pushing the chrome out of the screen.
+	m := &modelTUI{keys: defaultKeys(), width: 130, height: 12, tab: tabEvents,
 		form: newSetupForm(), client: sdk.New("/tmp/nonexistent.sock")}
 	m.data = setupTestData()
+	now := time.Now()
+	for i := 0; i < 40; i++ {
+		m.data.events = append(m.data.events, &model.Event{
+			ID: fmt.Sprintf("ev%d", i), Type: model.EventGrantCreated,
+			Message: fmt.Sprintf("event number %d", i), Timestamp: now,
+		})
+	}
 	out := m.View()
-	if strings.Contains(out, "dynamic workspaces for isolated AI agents") {
-		t.Fatalf("title must hide when content is tall:\n%s", out)
+	if !strings.Contains(out, "Dashboard") || !strings.Contains(out, "dynamic workspaces") {
+		t.Fatalf("menu must remain visible:\n%s", out)
 	}
-	if !strings.Contains(out, "DockWeave") {
-		t.Fatalf("restore strip missing:\n%s", out)
+	if lines := strings.Split(out, "\n"); len(lines) > 14 {
+		t.Fatalf("view must fit the pane (%d lines):\n%s", len(lines), out)
 	}
-	// Click on the strip brings the chrome back (forced).
-	m.Update(leftClick(2, 0))
-	m.height = 45
-	if !strings.Contains(m.View(), "dynamic workspaces for isolated AI agents") {
-		t.Fatal("menu must return after clicking the strip")
+	// Scrolling reveals later events and keeps the menu.
+	m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	out2 := m.View()
+	if !strings.Contains(out2, "Dashboard") {
+		t.Fatal("menu must stay visible after scrolling")
+	}
+	if out2 == out {
+		t.Fatal("pgdn must scroll the content")
+	}
+	// Mouse wheel scrolls too.
+	before := m.scrollY
+	m.Update(leftClick(5, 5))
+	m.handleMouse(tea.MouseMsg(tea.MouseEvent{Y: 5, X: 5, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}))
+	if m.scrollY <= before {
+		t.Fatal("mouse wheel down must scroll")
 	}
 }
 

@@ -194,7 +194,7 @@ func (m *modelTUI) viewSetup() string {
 		m.applyTypeDefaults()
 	}
 	f.hits = f.hits[:0]
-	row := 3
+	row := 0
 	hit := func(y, x0, x1 int, action, arg string) {
 		f.hits = append(f.hits, setupHit{y: y, x0: x0, x1: x1, action: action, arg: arg})
 	}

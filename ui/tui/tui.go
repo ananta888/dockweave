@@ -92,9 +92,11 @@ type modelTUI struct {
 	embedded    bool
 	bottomPane  string
 	bottomAgent string // agent currently shown in the terminal pane
-	// chromeHidden: title+menu are suppressed to give content more room
-	// (automatic when the content does not fit; click/esc restores).
-	chromeHidden bool
+	// content windowing: content taller than the pane is scrolled, never
+	// allowed to cover the menu. contentTop is the screen row of the first
+	// content line; scrollY indexes the full content.
+	scrollY    int
+	contentTop int
 	// click geometry, recomputed on every render.
 	tabSpans []span
 	// agent tabs (running agents only, label "agent:workspace").
@@ -290,6 +292,12 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleMouse(msg)
 	case tea.KeyMsg:
 		switch {
+		case msg.String() == "pgup":
+			m.scrollY -= 10
+			return m, nil
+		case msg.String() == "pgdown":
+			m.scrollY += 10
+			return m, nil
 		case key.Matches(msg, m.keys.Quit):
 			if m.tab == tabSetup && m.form.editing {
 				// typing context: q is text, not quit
@@ -313,10 +321,12 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 			}
+			m.ensureRowVisible(m.listTop + m.cursor)
 		case key.Matches(msg, m.keys.CursorDown) && m.tab == tabAgents && !m.menubar:
 			if m.cursor < len(m.data.agents)-1 {
 				m.cursor++
 			}
+			m.ensureRowVisible(m.listTop + m.cursor)
 		case key.Matches(msg, m.keys.Term) && m.tab == tabAgents:
 			return m, m.openTerminal()
 		case msg.String() == "s" && m.tab == tabAgents && !m.menubar:
@@ -329,10 +339,6 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle the detail card (compact by default).
 			m.expanded = !m.expanded
 		case msg.String() == "esc":
-			if m.chromeHidden {
-				m.chromeHidden = false
-				return m, nil
-			}
 			if m.menubar {
 				m.expandTUI()
 				return m, nil
@@ -412,14 +418,21 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleMouse maps left-button clicks on the menu bar and the agent list.
 func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	// Mouse wheel scrolls the content window.
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonWheelUp {
+		m.scrollY -= 3
+		return m, nil
+	}
+	if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonWheelDown {
+		m.scrollY += 3
+		return m, nil
+	}
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
-	// Compact chrome: the strip brings the menu back.
-	if msg.Y == 0 && m.chromeHidden {
-		m.chromeHidden = false
-		return m, nil
-	}
+	// Content clicks are matched in content coordinates (the content may
+	// be scrolled; the chrome rows above use screen coordinates).
+	contentY := msg.Y - m.contentTop + m.scrollY
 	// Menu bar: a click reveals the view — in bar mode the TUI expands
 	// first so the content is actually visible.
 	if msg.Y == 1 {
@@ -460,7 +473,9 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.tab == tabSetup {
-		return m.updateSetup(msg)
+		mm := msg
+		mm.Y = contentY
+		return m.updateSetup(mm)
 	}
 	// Lifecycle buttons of the Agents view.
 	if m.tab == tabAgents {
@@ -480,8 +495,8 @@ func (m *modelTUI) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Agent list rows: select; clicking the selected row toggles details.
-	if m.tab == tabAgents && msg.Y >= m.listTop {
-		row := msg.Y - m.listTop
+	if m.tab == tabAgents && contentY >= m.listTop {
+		row := contentY - m.listTop
 		if row < len(m.data.agents) {
 			if m.embedded {
 				// Selecting an agent = agent mode: compact bar + its
@@ -550,25 +565,11 @@ func (m *modelTUI) openTerminal() tea.Cmd {
 }
 
 func (m *modelTUI) View() string {
-	// Content first: when it is too tall for the pane, the title and menu
-	// bar are hidden (compact chrome) so the view fits without clutter.
-	content := m.viewContent()
-	contentLines := strings.Count(content, "\n") + 1
-	compact := m.chromeHidden
-	if !compact && m.height > 8 && contentLines+5 > m.height {
-		compact = true
-	}
-	var b strings.Builder
-	if compact {
-		b.WriteString(tabActive.Render(" DockWeave ") + dimStyle.Render(" • click or esc for the menu • ") + "\n")
-		m.renderAgentTabs(&b)
-		b.WriteString("\n")
-		b.WriteString(content)
-		m.writeStatus(&b)
-		return b.String()
-	}
 	// Fixed geometry: line 0 = title, line 1 = menu bar (mouse targets),
-	// line 2+ = content. This keeps click hit-testing stable.
+	// line 2 = agent tabs, line 3+ = content. The content is windowed to
+	// the pane height and scrolled — it never covers the menu.
+	content := m.viewContent()
+	var b strings.Builder
 	b.WriteString(titleStyle.Render("DockWeave") + dimStyle.Render(" — dynamic workspaces for isolated AI agents") + "\n")
 
 	// Menu bar with clickable tab spans (plain width = label + padding).
@@ -600,10 +601,61 @@ func (m *modelTUI) View() string {
 	m.renderAgentTabs(&b)
 	b.WriteString("\n")
 
-	b.WriteString(content)
+	m.contentTop = 3
+	b.WriteString(m.windowContent(content))
 	m.writeStatus(&b)
-	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • r: refresh • q: quit"))
+	b.WriteString("\n" + dimStyle.Render("tab/click: switch • ↑/↓: select • enter/click: details • t: terminal • PgUp/PgDn: scroll • q: quit"))
 	return b.String()
+}
+
+// windowContent fits the content into the remaining pane height and
+// applies the scroll offset: the content must never cover the menu.
+func (m *modelTUI) windowContent(content string) string {
+	lines := strings.Split(content, "\n")
+	used := m.contentTop + 1 // footer
+	if m.status != "" {
+		used++
+	}
+	avail := m.height - used
+	if avail < 1 {
+		avail = 1
+	}
+	maxScroll := len(lines) - avail
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.scrollY > maxScroll {
+		m.scrollY = maxScroll
+	}
+	if m.scrollY < 0 {
+		m.scrollY = 0
+	}
+	end := m.scrollY + avail
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[m.scrollY:end], "\n")
+}
+
+// scrollHint describes the scroll state when the content overflows.
+func (m *modelTUI) scrollHint() string {
+	if m.scrollY == 0 {
+		return "PgUp/PgDn/scroll wheel: scroll"
+	}
+	return fmt.Sprintf("scroll %d+ • PgUp/PgDn/scroll wheel", m.scrollY)
+}
+
+// ensureRowVisible scrolls the content window so a row is visible.
+func (m *modelTUI) ensureRowVisible(row int) {
+	lines := m.height - m.contentTop - 2
+	if lines < 1 {
+		lines = 1
+	}
+	if row < m.scrollY {
+		m.scrollY = row
+	} else if row >= m.scrollY+lines {
+		m.scrollY = row - lines + 1
+	}
 }
 
 // writeStatus renders the transient status line when set.
@@ -696,7 +748,7 @@ func (m *modelTUI) viewDashboard() string {
 
 func (m *modelTUI) viewAgents() string {
 	var b strings.Builder
-	m.listTop = 5 // title(0) + tabs(1) + agent tabs(2) + header(3) + divider(4)
+	m.listTop = 2 // content rows: header(0) + divider(1) + rows from 2
 	fmt.Fprintf(&b, "%-16s %-10s %-30s %s\n", "NAME", "STATE", "IMAGE", "MEM")
 	fmt.Fprintf(&b, "%s\n", strings.Repeat("─", 78))
 	for i, a := range m.data.agents {
