@@ -19,12 +19,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
 	"github.com/ananta888/dockweave/internal/api"
 	"github.com/ananta888/dockweave/internal/config"
+	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/dockerclient"
 	"github.com/ananta888/dockweave/internal/knowledge"
 	"github.com/ananta888/dockweave/internal/memory"
@@ -172,7 +174,21 @@ func run(cfgPath string) error {
 		log.Printf("socket group: %v (socket stays root:root)", err)
 	}
 
-	handler := api.PeerAuthMiddleware(authPolicy, api.NewServer(agentSvc, wsSvc, mon, store))
+	apiSrv := api.NewServer(agentSvc, wsSvc, mon, store)
+	apiSrv.ConfigIO = &configio.Service{
+		Store:      store,
+		Agents:     agentSvc,
+		Workspaces: wsSvc,
+		DaemonConfig: map[string]string{
+			"KNOWLEDGE_DIR":       cfg.KnowledgeDir,
+			"AGENT_UID":           fmt.Sprint(cfg.AgentUID),
+			"AGENT_GID":           fmt.Sprint(cfg.AgentGID),
+			"ALLOW_ROOT_CONTAINER": fmt.Sprint(cfg.AllowRootContainer),
+			"SOCKET_GROUP":        cfg.SocketGroup,
+			"ALLOWED_ROOTS":       strings.Join(cfg.AllowedRoots, ":"),
+		},
+	}
+	handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
 	srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}
 
 	// Terminal stream server (interactive PTY sessions; separate raw socket).

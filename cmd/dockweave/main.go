@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/mcp"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/pkg/sdk"
@@ -36,7 +37,7 @@ func main() {
 	root.PersistentFlags().StringVar(&socketPath, "socket", envOr("DOCKWEAVE_SOCKET", "/run/dockweave/dockweaved.sock"), "daemon socket")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")
 
-	root.AddCommand(agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd())
+	root.AddCommand(agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -506,6 +507,71 @@ func statusCmd() *cobra.Command {
 			}
 		},
 	}
+}
+
+func configCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "config", Short: "Export/import the complete configuration as JSON"}
+	var outFile string
+	export := &cobra.Command{
+		Use:   "export",
+		Short: "Export agents, workspaces, grants and memory bindings as JSON",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			b, err := client().ExportConfig(ctx())
+			if err != nil {
+				fail(err)
+			}
+			data, err := json.MarshalIndent(b, "", "  ")
+			if err != nil {
+				fail(err)
+			}
+			data = append(data, '\n')
+			if outFile != "" {
+				if err := os.WriteFile(outFile, data, 0o644); err != nil {
+					fail(err)
+				}
+				fmt.Println("written:", outFile)
+				return
+			}
+			os.Stdout.Write(data)
+		},
+	}
+	export.Flags().StringVarP(&outFile, "output", "o", "", "write to file instead of stdout")
+	imp := &cobra.Command{
+		Use:   "import FILE",
+		Short: "Import a configuration bundle (idempotent: existing entities are skipped)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			data, err := os.ReadFile(args[0])
+			if err != nil {
+				fail(err)
+			}
+			var b configio.Bundle
+			if err := json.Unmarshal(data, &b); err != nil {
+				fail(fmt.Errorf("invalid bundle: %w", err))
+			}
+			res, err := client().ImportConfig(ctx(), &b)
+			if err != nil {
+				fail(err)
+			}
+			out(res, func(w *tabwriter.Writer) {
+				for _, line := range res.Created {
+					fmt.Fprintf(w, "CREATED\t%s\n", line)
+				}
+				for _, line := range res.Skipped {
+					fmt.Fprintf(w, "SKIPPED\t%s\n", line)
+				}
+				for _, line := range res.Errors {
+					fmt.Fprintf(w, "ERROR\t%s\n", line)
+				}
+				for k, v := range res.ConfigHint {
+					fmt.Fprintf(w, "CONFIG\t%s=%s\n", k, v)
+				}
+			})
+		},
+	}
+	cmd.AddCommand(export, imp)
+	return cmd
 }
 
 func tuiCmd() *cobra.Command {

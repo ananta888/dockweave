@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/model"
 )
 
@@ -359,6 +360,26 @@ func (c *Client) SetNotesDir(ctx context.Context, idOrName, path string) (*model
 func (c *Client) RegisterMemory(ctx context.Context, path string) (*MemoryInfo, error) {
 	var out MemoryInfo
 	if err := c.do(ctx, "POST", "/api/v1/memories", map[string]string{"path": path}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ExportConfig exports the complete operator configuration as a JSON
+// bundle (agents, workspaces, grants, memory bindings — no logs/runtime).
+func (c *Client) ExportConfig(ctx context.Context) (*configio.Bundle, error) {
+	var out configio.Bundle
+	if err := c.do(ctx, "GET", "/api/v1/config/export", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ImportConfig recreates a configuration on this deployment (missing
+// entities are created, existing ones skipped).
+func (c *Client) ImportConfig(ctx context.Context, b *configio.Bundle) (*configio.ImportResult, error) {
+	var out configio.ImportResult
+	if err := c.do(ctx, "POST", "/api/v1/config/import", b, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

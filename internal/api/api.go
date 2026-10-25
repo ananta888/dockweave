@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
+	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
@@ -71,6 +72,7 @@ type Server struct {
 	Workspaces *workspaces.Service
 	Monitor    *monitor.Monitor
 	Store      *persistence.Store
+	ConfigIO   *configio.Service
 
 	mux *http.ServeMux
 }
@@ -104,6 +106,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/notes-dir", s.setNotesDir)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
+	s.mux.HandleFunc("GET /api/v1/config/export", s.exportConfig)
+	s.mux.HandleFunc("POST /api/v1/config/import", s.importConfig)
 	s.mux.HandleFunc("GET /api/v1/workspaces", s.listWorkspaces)
 	s.mux.HandleFunc("POST /api/v1/workspaces", s.registerWorkspace)
 	s.mux.HandleFunc("DELETE /api/v1/workspaces/{id}", s.unregisterWorkspace)
@@ -511,6 +515,29 @@ func (s *Server) registerMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, mem)
+}
+
+func (s *Server) exportConfig(w http.ResponseWriter, r *http.Request) {
+	b, err := s.ConfigIO.Export(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
+}
+
+func (s *Server) importConfig(w http.ResponseWriter, r *http.Request) {
+	var b configio.Bundle
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	res, err := s.ConfigIO.Import(r.Context(), &b)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) listMemories(w http.ResponseWriter, r *http.Request) {

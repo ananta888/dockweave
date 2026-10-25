@@ -168,6 +168,25 @@ nachschlagen (Konvention: /knowledge/README.md). Dauerhafte Fakten,
 Entscheidungen und Glossareinträge dort ablegen — mit Datum + Quelle
 anhängen, fremde Einträge nie überschreiben.
 ```
+
+## Backup & Migration (`dockweave config`)
+
+Die gesamte Betreiber-Konfiguration — Agenten-Identitäten, Workspaces,
+Grants, Memory-Bindungen und Ordner-Zuordnungen — wird als ein
+JSON-Bundle exportiert und auf einem anderen Rechner importiert.
+Interne Logs, Laufzeit-Mount-Zustand, Container-Zustand und Snapshots
+sind **nicht** im Bundle (Memory-Daten reisen mit den Store-Pfaden oder
+per `memory snapshot`).
+
+```bash
+dockweave config export -o setup.json     # komplettes Setup als JSON
+dockweave config import setup.json        # nachstellen (idempotent)
+```
+
+Der Import ist idempotent: vorhandene Entitäten werden übersprungen,
+fehlende angelegt (Ergebnis je Entität). Das Bundle dokumentiert die
+Daemon-Einstellungen (KNOWLEDGE_DIR, …) als Hinweis für die
+`/etc/dockweave/dockweaved.conf` des Zielrechners.
 ## Voraussetzungen
 
 - Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27

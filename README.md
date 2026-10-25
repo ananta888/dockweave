@@ -158,6 +158,24 @@ documented convention (see `README.md` inside the store): one file per
 topic, append don't overwrite, date+source per entry. Agents deposit
 facts there and look them up before assuming; you follow everything with
 `ls`/`cat`/any editor. The live path shows in `dockweave agent paths`.
+
+## Backup & migration (`dockweave config`)
+
+The complete operator configuration — agent identities, workspaces,
+grants, memory bindings and folder assignments — exports to one JSON
+bundle and imports on another machine. Internal logs, runtime mount
+state, container state and snapshots are **not** part of the bundle
+(memory data travels with the store paths or via `memory snapshot`).
+
+```bash
+dockweave config export -o setup.json     # whole setup as JSON
+dockweave config import setup.json        # recreate (idempotent)
+```
+
+Import is idempotent: existing entities are skipped, missing ones are
+created (per-entity result). The bundle records the daemon settings
+(KNOWLEDGE_DIR, …) as a hint for the target host's
+`/etc/dockweave/dockweaved.conf`.
 ## Requirements
 
 - **Linux** (Kernel ≥ 5.12, native or WSL2 with systemd)
