@@ -26,6 +26,7 @@ import (
 	"github.com/ananta888/dockweave/internal/api"
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/knowledge"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
@@ -104,6 +105,13 @@ func run(cfgPath string) error {
 		Store: store, Mounts: mountMgr, Docker: docker, Memory: memoryMgr,
 		DefaultUID: cfg.AgentUID, DefaultGID: cfg.AgentGID,
 		AllowRootContainer: cfg.AllowRootContainer,
+		KnowledgeDir:       cfg.KnowledgeDir,
+	}
+	// Shared knowledge store: ensure it exists and carries its usage guide.
+	if cfg.KnowledgeDir != "" {
+		if err := knowledge.Ensure(cfg.KnowledgeDir); err != nil {
+			log.Printf("knowledge store: %v", err)
+		}
 	}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
 	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs)

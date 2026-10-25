@@ -61,6 +61,9 @@ type Service struct {
 	// AllowRootContainer permits UID 0 containers; every root container is
 	// audited. Root is refused otherwise and the default identity applied.
 	AllowRootContainer bool
+	// KnowledgeDir is the shared human-readable knowledge store mounted
+	// at /knowledge in every agent (empty: no knowledge mount).
+	KnowledgeDir string
 	// Grants revokes grants during agent removal (usually *workspaces.Service).
 	// Required before removing agents that hold grants.
 	Grants GrantRevoker
@@ -454,6 +457,7 @@ type AgentPaths struct {
 	MemoryDir      string `json:"memory_dir"` // host dir mounted at /memory
 	MemoryCustom   bool   `json:"memory_custom"`
 	WorkspaceDir   string `json:"workspace_dir"` // host tree mounted at /workspace
+	KnowledgeDir   string `json:"knowledge_dir"` // host dir mounted at /knowledge
 }
 
 // agentDir resolves the /agent source: the registered custom folder or the
@@ -489,6 +493,7 @@ func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths,
 		AgentDir:       s.agentDir(a),
 		AgentDirCustom: a.AgentDir != "",
 		WorkspaceDir:   s.Mounts.WorkspaceTree(a.ID),
+		KnowledgeDir:   s.KnowledgeDir,
 	}
 	if s.Memory != nil {
 		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
@@ -653,6 +658,7 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 		AgentDir:     s.agentDir(a),
 		MemoryDir:    memPath,
 		WorkspaceDir: s.Mounts.WorkspaceTree(a.ID),
+		KnowledgeDir: s.KnowledgeDir,
 		WorkingDir:   workDir,
 	})
 	if err != nil {

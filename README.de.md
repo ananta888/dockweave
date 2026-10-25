@@ -129,6 +129,18 @@ Die Sockets sind `0660 root:SOCKET_GROUP` (Standard-Gruppe: `dockweave`).
   Mit dem Install-Skript kann das nicht auftreten (Socket-Gruppe = deine
   primäre Gruppe).
 
+
+## Gemeinsamer Wissensspeicher (`/knowledge`)
+
+Ein menschenlesbarer Memory-Bereich für **alle** Agentensysteme (codex,
+opencode, …) und für dich: in jedem Agenten als `/knowledge` rw
+eingehängt, auf dem Host unter `/var/lib/dockweave/knowledge`
+(Konfiguration: `KNOWLEDGE_DIR=...`, z.B. `~/mein-wissen`). Klartext-
+Markdown mit dokumentierter Konvention (siehe `README.md` im Speicher):
+eine Datei pro Thema, anhängen statt überschreiben, Datum+Quelle pro
+Eintrag. Agenten legen dort Fakten ab und schlagen vor Annahmen nach;
+du verfolgst alles mit `ls`/`cat`/Editor. Der aktuelle Pfad steht in
+`dockweave agent paths`.
 ## Voraussetzungen
 
 - Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27

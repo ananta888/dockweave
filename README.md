@@ -147,6 +147,17 @@ The sockets are `0660 root:SOCKET_GROUP` (default group: `dockweave`).
   run `newgrp dockweave` in the current shell (or re-login). With the
   installer this cannot happen (socket group = your primary group).
 
+
+## Shared knowledge store (`/knowledge`)
+
+A human-readable memory area shared by **all** agent systems (codex,
+opencode, …) and by you: mounted read-write into every agent at
+`/knowledge`, hosted at `/var/lib/dockweave/knowledge` (config:
+`KNOWLEDGE_DIR=...`, e.g. `~/mein-wissen`). Plain markdown files with a
+documented convention (see `README.md` inside the store): one file per
+topic, append don't overwrite, date+source per entry. Agents deposit
+facts there and look them up before assuming; you follow everything with
+`ls`/`cat`/any editor. The live path shows in `dockweave agent paths`.
 ## Requirements
 
 - **Linux** (Kernel ≥ 5.12, native or WSL2 with systemd)

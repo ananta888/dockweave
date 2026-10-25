@@ -301,6 +301,7 @@ type AgentPathsInfo struct {
 	MemoryDir      string `json:"memory_dir"`
 	MemoryCustom   bool   `json:"memory_custom"`
 	WorkspaceDir   string `json:"workspace_dir"`
+	KnowledgeDir   string `json:"knowledge_dir"`
 }
 
 // AgentPaths resolves which host directories back /agent, /memory and

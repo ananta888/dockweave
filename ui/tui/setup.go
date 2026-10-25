@@ -309,6 +309,11 @@ func (m *modelTUI) viewSetupSettings(row *int, hit func(int, int, int, string, s
 		hit(*row, 55, 72, action, w.ID)
 		*row++
 	}
+	if p.KnowledgeDir != "" {
+		fmt.Fprintf(&b, "  %s%-8s /knowledge ← %s   %s\n", okStyle.Render("● "), "wissen", p.KnowledgeDir,
+			dimStyle.Render("(shared knowledge store)"))
+		*row++
+	}
 
 	// The set-folder input appears on demand ([set folder]/[use own]).
 	if f.folderOpen {

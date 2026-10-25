@@ -28,6 +28,10 @@ type Config struct {
 	// the daemon audits every root container).
 	AllowRootContainer bool
 
+	// KnowledgeDir is the shared, human-readable knowledge store mounted
+	// read-write into every agent at /knowledge (review follow-up).
+	KnowledgeDir string
+
 	// SocketGroup is the group that may connect to the unix sockets
 	// (mode 0660, owner root). Empty keeps root:root; "dockweave" is the
 	// default so an admin group can be created without config changes.
@@ -111,6 +115,8 @@ func applyPairs(cfg *Config, lines []string) {
 			fmt.Sscanf(v, "%d", &cfg.AgentGID)
 		case "ALLOW_ROOT_CONTAINER":
 			cfg.AllowRootContainer = v == "true" || v == "1"
+		case "KNOWLEDGE_DIR":
+			cfg.KnowledgeDir = v
 		}
 	}
 }

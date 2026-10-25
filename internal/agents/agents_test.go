@@ -581,12 +581,16 @@ func TestAgentPathsFolderAssignments(t *testing.T) {
 	if _, err := svc.Create(ctx, a, "test"); err != nil {
 		t.Fatal(err)
 	}
+	svc.KnowledgeDir = "/var/lib/dockweave/knowledge"
 	p, err := svc.AgentPaths(ctx, a.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if p.AgentDir != fm.AgentDir(a.ID) || p.WorkspaceDir != fm.WorkspaceTree(a.ID) {
 		t.Fatalf("agent/workspace dirs wrong: %+v", p)
+	}
+	if p.KnowledgeDir != "/var/lib/dockweave/knowledge" {
+		t.Fatalf("knowledge dir wrong: %+v", p)
 	}
 	mem, err := st.GetMemoryByAgent(ctx, a.ID)
 	if err != nil {

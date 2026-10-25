@@ -79,4 +79,7 @@ func TestDefaultsAreNonRootAndAdminOnlyRoot(t *testing.T) {
 	if len(cfg.MonitorUIDs) != 0 {
 		t.Fatalf("default monitor uids = %v, want none", cfg.MonitorUIDs)
 	}
+	if cfg.KnowledgeDir != "/var/lib/dockweave/knowledge" {
+		t.Fatalf("default knowledge dir = %q", cfg.KnowledgeDir)
+	}
 }

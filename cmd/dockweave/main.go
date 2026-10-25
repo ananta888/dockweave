@@ -214,6 +214,9 @@ func agentCmd() *cobra.Command {
 				}
 				fmt.Fprintf(w, "/memory\t%s\tlong-term memory %s\n", mem, p.MemoryID)
 				fmt.Fprintf(w, "/workspace\t%s\tproject mounts\n", p.WorkspaceDir)
+				if p.KnowledgeDir != "" {
+					fmt.Fprintf(w, "/knowledge\t%s\tshared knowledge store\n", p.KnowledgeDir)
+				}
 			})
 		},
 	}
