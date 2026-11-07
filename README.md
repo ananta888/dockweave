@@ -41,6 +41,18 @@ mounts never propagate back to the host.
 # Register a workspace
 dockweave workspace register myproject /srv/projects/myproject
 
+# One command instead of four: register the current directory as the
+# workspace, grant it to the agent, start the agent and open its terminal.
+# Without a name, the only existing agent is used.
+dockweave run codex-01
+
+# Prepare only (register, grant, start) without attaching:
+#   dockweave run codex-01 --no-attach
+# Different mode / workspace name:
+#   dockweave run codex-01 --mode ro --name myproject
+# Override the harness command inside the container (everything after --):
+#   dockweave run codex-01 -- opencode
+
 # Create agents — examples for all supported profiles. Agents run non-root
 # with HOME=/memory: npm tools install into "$HOME/.local" and therefore
 # persist across container recreation.

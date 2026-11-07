@@ -4,6 +4,16 @@ All notable changes to DockWeave are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `dockweave run [AGENT] [-- CMD...]`: uses the current directory as the
+  project workspace, registers and grants it, starts the selected agent and
+  attaches to its terminal in one step (`--no-attach`, `--mode`, `--name`).
+- `dockweave agent update NAME|ID`: change an agent's type, image, command or
+  uid/gid without recreating the identity (applied at the next start).
+
 ## [0.1.0] — 2026-10-23
 
 Initial release.

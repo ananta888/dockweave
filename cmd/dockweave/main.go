@@ -37,7 +37,7 @@ func main() {
 	root.PersistentFlags().StringVar(&socketPath, "socket", envOr("DOCKWEAVE_SOCKET", "/run/dockweave/dockweaved.sock"), "daemon socket")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")
 
-	root.AddCommand(agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd())
+	root.AddCommand(runCmd(), agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
@@ -149,6 +149,45 @@ func agentCmd() *cobra.Command {
 			fmt.Println("stopped")
 		},
 	}
+
+	var (
+		upType    string
+		upImage   string
+		upUID     int
+		upGID     int
+		upCmd     []string
+		upExecCmd string
+	)
+	update := &cobra.Command{
+		Use:   "update NAME|ID",
+		Short: "Update mutable agent configuration (type, image, command, uid/gid)",
+		Long: "Update the agent configuration that is applied at the next start.\n" +
+			"Unset flags keep their current value.",
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			if upExecCmd != "" {
+				if len(upCmd) > 0 {
+					fail(errors.New("use either --cmd or --exec, not both"))
+				}
+				upCmd = []string{"sh", "-c", upExecCmd}
+			}
+			a, err := client().UpdateAgent(ctx(), args[0], upType, upImage, upCmd, upUID, upGID)
+			if err != nil {
+				fail(err)
+			}
+			out(a, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "NAME\t%s\nTYPE\t%s\nIMAGE\t%s\nCOMMAND\t%s\n",
+					a.Name, a.Type, a.Image, strings.Join(a.Command, " "))
+			})
+		},
+	}
+	uf := update.Flags()
+	uf.StringVar(&upType, "type", "", "agent type (codex|opencode|claude|antigravity|gemini|custom)")
+	uf.StringVar(&upImage, "image", "", "container image")
+	uf.IntVar(&upUID, "uid", -1, "run as uid (-1 = keep)")
+	uf.IntVar(&upGID, "gid", -1, "run as gid (-1 = keep)")
+	uf.StringArrayVar(&upCmd, "cmd", nil, "override command (repeatable, verbatim argv elements)")
+	uf.StringVar(&upExecCmd, "exec", "", "shell command to run via sh -c (quote-safe alternative to --cmd)")
 
 	var prune, forceUnmount bool
 	remove := &cobra.Command{
@@ -285,7 +324,7 @@ func agentCmd() *cobra.Command {
 		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
 	attach.Flags().SetInterspersed(false)
 
-	cmd.AddCommand(create, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, setnotes, attach)
+	cmd.AddCommand(create, update, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, setnotes, attach)
 	return cmd
 }
 

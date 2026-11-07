@@ -27,6 +27,18 @@ Jeder Agent erhält drei Bereiche:
 
 dockweave workspace register meinprojekt /srv/projekte/meinprojekt
 
+# Ein Befehl statt vier: das aktuelle Verzeichnis wird als Workspace
+# registriert, dem Agenten freigegeben, der Agent gestartet und das
+# Terminal geöffnet. Ohne Namen wird der einzige vorhandene Agent genommen.
+dockweave run codex-01
+
+# Nur vorbereiten (registrieren, freigeben, starten), nicht anhängen:
+#   dockweave run codex-01 --no-attach
+# Anderer Modus / anderer Workspace-Name:
+#   dockweave run codex-01 --mode ro --name meinprojekt
+# Harness-Befehl im Container überschreiben (alles nach --):
+#   dockweave run codex-01 -- opencode
+
 # Agenten anlegen — Beispiele für alle unterstützten Profile. Agenten
 # laufen non-root mit HOME=/memory: npm-Tools installieren nach
 # "$HOME/.local" und überleben damit die Container-Neuanlage.
