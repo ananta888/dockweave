@@ -104,4 +104,6 @@ propagate to slave namespaces. See `docs/validation/phase1-mounts.de.md`.
 | `internal/credentialbroker` | Policy, sessions, budgets, fixed-destination HTTP gateway |
 | `internal/brokerclient` | CLI client for the broker admin socket |
 | `cmd/dockweave-broker` | Unprivileged credential broker process |
+| `internal/webui` | Angular SPA hosting + `/api`/`/ws/term` gateway |
+| `ui/web` | Angular frontend (agent list, terminal/chat, config, analysis) |
 | `ui/tui` | Bubble Tea terminal UI |

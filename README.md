@@ -89,7 +89,15 @@ dockweave monitor activity
 
 # Interactive TUI
 dockweave tui
+
+# Browser UI (every agent, chat/terminal, configuration, analysis)
+make web && dockweave web
 ```
+
+The web UI is an Angular app served by `dockweave web` on loopback with a
+random token; it shows the agent list on the left, a full terminal/chat, the
+per-agent configuration, project access, memory and an analysis dashboard.
+See [docs/web-ui.md](docs/web-ui.md).
 
 ## Credential vault & API broker (MVP)
 

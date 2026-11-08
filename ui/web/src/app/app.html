@@ -1,0 +1,188 @@
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <div class="name">DockWeave</div>
+        <div class="sub">agent control plane</div>
+      </div>
+    </div>
+
+    <div class="side-head">
+      <span>Agents</span>
+      <button class="icon" title="New agent" (click)="newOpen.set(true)">＋</button>
+    </div>
+
+    <div class="agent-list">
+      @for (a of store.agents(); track trackAgent($index, a)) {
+        <button type="button" class="agent-row" [class.active]="store.selectedId() === a.id" (click)="select(a)">
+          <span class="state" [class]="stateClass(a.state)"></span>
+          <span class="agent-meta">
+            <span class="agent-name">{{ a.name }}</span>
+            <span class="agent-sub">{{ a.type }} · {{ a.state }}</span>
+          </span>
+          @if (store.conflicts().length) {
+            <span class="conflict" title="file conflict">⚠</span>
+          }
+        </button>
+      }
+      @if (!store.agents().length) {
+        <div class="empty">No agents yet.<br /><button class="link" (click)="newOpen.set(true)">Create one</button></div>
+      }
+    </div>
+
+    <div class="side-foot">
+      <div class="broker-mini" [class.ok]="store.broker()">
+        <span>Broker</span>
+        <strong>{{ store.broker()?.status || 'unavailable' }}</strong>
+      </div>
+      <button class="ghost wide" (click)="store.refresh()">{{ store.loading() ? 'Refreshing…' : 'Refresh' }}</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <nav class="tabs">
+        <button [class.active]="view() === 'agent'" (click)="view.set('agent')">Agent</button>
+        <button [class.active]="view() === 'analysis'" (click)="view.set('analysis')">Analysis</button>
+        <button [class.active]="view() === 'workspaces'" (click)="view.set('workspaces')">Workspaces</button>
+      </nav>
+      <span class="spacer"></span>
+      @if (store.selected(); as a) {
+        <span class="top-agent">{{ a.name }} <span class="muted">{{ a.image }}</span></span>
+      }
+    </header>
+
+    @if (store.error()) { <div class="banner error">{{ store.error() }}</div> }
+
+    <div class="content">
+      @switch (view()) {
+        @case ('agent') {
+          @if (store.selected(); as agent) {
+            <div class="agent-head">
+              <div>
+                <h1>{{ agent.name }}</h1>
+                <div class="muted">{{ agent.type }} · {{ agent.image }} · UID {{ agent.uid }}:{{ agent.gid }}</div>
+              </div>
+              <span class="spacer"></span>
+              <span class="state-pill" [class]="stateClass(agent.state)">{{ agent.state }}</span>
+              <div class="agent-tabs">
+                <button [class.active]="agentTab() === 'chat'" (click)="agentTab.set('chat')">Chat / Terminal</button>
+                <button [class.active]="agentTab() === 'config'" (click)="agentTab.set('config')">Configuration</button>
+              </div>
+            </div>
+            <div class="agent-body">
+              @if (agentTab() === 'chat') {
+                <dw-terminal
+                  [agentId]="agent.id"
+                  [agentName]="agent.name"
+                  [running]="agent.state === 'running'"
+                  (start)="startSelected()" />
+              } @else {
+                <dw-config
+                  [agent]="agent"
+                  [paths]="store.pathsFor(agent.id)"
+                  [egress]="store.egressFor(agent.id)"
+                  [workspaces]="store.workspaces()"
+                  [grants]="store.grantsFor(agent.id)"
+                  [brokerGrants]="store.brokerGrantsFor(agent.name)" />
+              }
+            </div>
+          } @else {
+            <div class="empty big">Select an agent on the left, or create a new one.</div>
+          }
+        }
+        @case ('analysis') {
+          <dw-analysis
+            [agents]="store.agents()"
+            [activity]="store.activity()"
+            [conflicts]="store.conflicts()"
+            [events]="store.events()"
+            [mounts]="store.mounts()"
+            [broker]="store.broker()"
+            [brokerGrants]="store.brokerGrants()"
+            [brokerRequests]="store.brokerRequests()" />
+        }
+        @case ('workspaces') {
+          <div class="workspaces">
+            <section>
+              <h2>Workspaces</h2>
+              <p class="muted">Registered host directories are the only allowed mount sources. Assign them per agent in the Configuration tab.</p>
+              <div class="form-row">
+                <input [(ngModel)]="workspaceName" name="wname" placeholder="name" />
+                <input [(ngModel)]="workspacePath" name="wpath" placeholder="/absolute/host/path" />
+                <button class="primary" (click)="registerWorkspace()">Register</button>
+              </div>
+              @if (workspaceError()) { <div class="banner error">{{ workspaceError() }}</div> }
+              <table>
+                <thead><tr><th>Name</th><th>Host path</th><th>ID</th><th></th></tr></thead>
+                <tbody>
+                  @for (w of store.workspaces(); track w.id) {
+                    <tr>
+                      <td class="mono">{{ w.name }}</td>
+                      <td>{{ w.host_path }}</td>
+                      <td class="muted">{{ w.id }}</td>
+                      <td><button class="small danger" (click)="unregisterWorkspace(w.id, w.name)">unregister</button></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+
+            <section>
+              <h2>Provider status</h2>
+              @for (p of store.providers() | keyvalue; track p.key) {
+                <div class="row"><span class="mono">{{ p.key }}</span><span class="spacer"></span><span class="pill">{{ p.value }}</span></div>
+              }
+              @if (store.broker(); as b) {
+                <h3>Broker</h3>
+                <div class="row"><span>Providers</span><span class="spacer"></span><span class="mono">{{ b.providers.join(', ') }}</span></div>
+                <div class="row"><span>Egress</span><span class="spacer"></span><span class="muted">{{ b.egress }}</span></div>
+              }
+            </section>
+          </div>
+        }
+      }
+    </div>
+  </main>
+
+  @if (newOpen()) {
+    <div class="modal-backdrop" (click)="newOpen.set(false)">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h2>New agent</h2>
+        <label>Name <input [(ngModel)]="newAgent.name" name="nname" placeholder="opencode-01" /></label>
+        <div class="two">
+          <label>Type
+            <select [(ngModel)]="newAgent.type" name="ntype">
+              @for (t of ['codex','opencode','claude','antigravity','gemini','custom']; track t) { <option [value]="t">{{ t }}</option> }
+            </select>
+          </label>
+          <label>Image <input [(ngModel)]="newAgent.image" name="nimage" /></label>
+        </div>
+        <label>Harness command (sh -c)
+          <textarea rows="3" [(ngModel)]="newAgent.exec" name="nexec"></textarea>
+        </label>
+        <div class="two">
+          <label>UID <input type="number" [(ngModel)]="newAgent.uid" name="nuid" /></label>
+          <label>GID <input type="number" [(ngModel)]="newAgent.gid" name="ngid" /></label>
+        </div>
+        <div class="two">
+          <label>Env file (optional) <input [(ngModel)]="newAgent.env_file" name="nenv" placeholder="/path/agent.env" /></label>
+          <label>Egress profile
+            <select [(ngModel)]="newAgent.profile" name="nprofile">
+              <option value="">unrestricted-legacy</option>
+              <option value="offline">offline</option>
+              <option value="broker-only">broker-only</option>
+              <option value="restricted-development">restricted-development</option>
+            </select>
+          </label>
+        </div>
+        @if (createError()) { <div class="banner error">{{ createError() }}</div> }
+        <div class="modal-actions">
+          <button class="ghost" (click)="newOpen.set(false)">Cancel</button>
+          <button class="primary" (click)="create()" [disabled]="creating()">{{ creating() ? 'Creating…' : 'Create agent' }}</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

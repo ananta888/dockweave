@@ -68,7 +68,15 @@ dockweave agent create gemini-01 --type gemini --image node:22-bookworm \
 dockweave grant create meinprojekt codex-01 --mode rw
 dockweave agent start codex-01
 dockweave tui
+
+# Browser-UI (alle Agenten, Chat/Terminal, Konfiguration, Analyse)
+make web && dockweave web
 ```
+
+Die Web-UI ist eine Angular-App, die `dockweave web` auf Loopback mit einem
+Zufallstoken ausliefert: Agentenliste links, volles Terminal/Chat,
+Konfiguration pro Agent, Projektzugriff, Memory und Analyse-Dashboard. Siehe
+[docs/web-ui.de.md](docs/web-ui.de.md).
 
 ## Credential Vault & API-Broker (MVP)
 

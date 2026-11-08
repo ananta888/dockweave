@@ -29,6 +29,11 @@ All notable changes to DockWeave are documented here. The format follows
   status, env-file and network-profile endpoints; TUI dashboard/detail
   integration. Secrets are never exposed.
 - SSH broker design (documented only): `docs/ssh-broker-design.md`.
+- Angular web UI (`ui/web`) served by `dockweave web`: agent list, browser
+  PTY/chat (xterm.js), per-agent configuration, project access, memory,
+  broker grant metadata and an analysis dashboard. The gateway is
+  unprivileged, loopback-only and token-protected; assets are embedded via
+  `make web`. See `docs/web-ui.md`.
 
 ### Security
 
