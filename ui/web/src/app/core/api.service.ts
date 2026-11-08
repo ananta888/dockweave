@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
-  BrokerUsage, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
+  BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
   MountState, ProviderStatus, Workspace,
 } from './models';
 
@@ -98,6 +98,9 @@ export class ApiService {
   }
 
   memories(): Observable<MemoryInfo[]> { return this.req(this.http.get<MemoryInfo[]>(`${this.base}/memories`)); }
+  listDirs(path = ''): Observable<DirListing> {
+    return this.req(this.http.get<DirListing>(`${this.base}/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`));
+  }
   registerMemory(path: string): Observable<MemoryInfo> {
     return this.req(this.http.post<MemoryInfo>(`${this.base}/memories`, { path }));
   }

@@ -176,6 +176,9 @@ func run(cfgPath string) error {
 	}
 
 	apiSrv := api.NewServer(agentSvc, wsSvc, mon, store)
+	apiSrv.AllowedRoots = cfg.AllowedRoots
+	apiSrv.Root = cfg.Root
+	apiSrv.KnowledgeDir = cfg.KnowledgeDir
 	if cfg.BrokerAdminSocket != "" {
 		apiSrv.Broker = brokerclient.New(cfg.BrokerAdminSocket)
 	}

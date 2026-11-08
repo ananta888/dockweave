@@ -167,3 +167,15 @@ export interface MemoryInfo {
 export interface ProviderStatus {
   [name: string]: string;
 }
+
+export interface DirEntry {
+  name: string;
+  path: string;
+}
+
+export interface DirListing {
+  path: string;
+  parent?: string;
+  roots: DirEntry[];
+  entries: DirEntry[];
+}

@@ -105,6 +105,7 @@
               <div class="form-row">
                 <input [(ngModel)]="workspaceName" name="wname" placeholder="name" />
                 <input [(ngModel)]="workspacePath" name="wpath" placeholder="/absolute/host/path" />
+                <button class="ghost" (click)="openWorkspaceBrowser()">Browse…</button>
                 <button class="primary" (click)="registerWorkspace()">Register</button>
               </div>
               @if (workspaceError()) { <div class="banner error">{{ workspaceError() }}</div> }
@@ -139,6 +140,13 @@
       }
     </div>
   </main>
+
+  <dw-dir-picker
+    [open]="wsBrowserOpen()"
+    [startPath]="workspacePath"
+    title="Workspace source directory"
+    (picked)="onWorkspacePicked($event)"
+    (closed)="wsBrowserOpen.set(false)" />
 
   @if (newOpen()) {
     <div class="modal-backdrop" (click)="newOpen.set(false)">

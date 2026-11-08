@@ -1,5 +1,6 @@
 import { Component, Input, OnChanges, SimpleChanges, inject, signal } from '@angular/core';
 import { NgFor } from '@angular/common';
+import { DirPickerComponent } from './dir-picker.component';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
 import { Store } from '../core/store';
@@ -8,7 +9,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
 @Component({
   selector: 'dw-config',
   standalone: true,
-  imports: [NgFor, FormsModule],
+  imports: [NgFor, FormsModule, DirPickerComponent],
   template: `
     <div class="config">
 
@@ -23,6 +24,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           <div class="fullpath">{{ paths?.agent_dir || '—' }}</div>
           <div class="folder-edit">
             <input [(ngModel)]="agentDirInput" placeholder="custom host path (empty = default)" />
+            <button class="small" (click)="openBrowser('agent')">Browse…</button>
             <button class="small" (click)="applyAgentDir()" [disabled]="busy()">Apply</button>
             <button class="small" (click)="resetAgentDir()" [disabled]="busy() || !paths?.agent_dir_custom">Reset</button>
           </div>
@@ -47,6 +49,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           </div>
           <div class="folder-edit">
             <input [(ngModel)]="newMemoryPath" placeholder="new host folder → register and attach" />
+            <button class="small" (click)="openBrowser('memory')">Browse…</button>
             <button class="small" (click)="registerAndAttachMemory()" [disabled]="busy() || !newMemoryPath.trim()">Register &amp; attach</button>
           </div>
           <div class="muted hint">Memory must be attached/detached while the agent is stopped.</div>
@@ -69,6 +72,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           <div class="fullpath">{{ paths?.notes_dir || '—' }}</div>
           <div class="folder-edit">
             <input [(ngModel)]="notesDirInput" placeholder="custom host path (empty = default)" />
+            <button class="small" (click)="openBrowser('notes')">Browse…</button>
             <button class="small" (click)="applyNotesDir()" [disabled]="busy()">Apply</button>
             <button class="small" (click)="resetNotesDir()" [disabled]="busy() || !paths?.notes_dir_custom">Reset</button>
           </div>
@@ -179,6 +183,13 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
 
       @if (message()) { <div class="notice">{{ message() }}</div> }
       @if (error()) { <div class="notice error">{{ error() }}</div> }
+
+      <dw-dir-picker
+        [open]="browserOpen()"
+        [startPath]="browserStart"
+        [title]="browserTitle()"
+        (picked)="onPicked($event)"
+        (closed)="browserOpen.set(false)" />
     </div>
   `,
   styles: [`
@@ -340,6 +351,35 @@ export class ConfigComponent implements OnChanges {
 
   resetNotesDir(): void {
     void this.run(() => new Promise<void>((res, rej) => this.api.setNotesDir(this.agent.id, '').subscribe({ next: () => res(), error: rej })), 'Notes folder reset to default (restart to apply)');
+  }
+
+  browserOpen = signal(false);
+  browserTarget = signal<'agent' | 'notes' | 'memory'>('agent');
+  browserStart = '';
+
+  browserTitle(): string {
+    switch (this.browserTarget()) {
+      case 'agent': return '/agent folder';
+      case 'notes': return '/notes folder';
+      default: return '/memory folder';
+    }
+  }
+
+  openBrowser(target: 'agent' | 'notes' | 'memory'): void {
+    this.browserTarget.set(target);
+    this.browserStart = target === 'agent' ? (this.paths?.agent_dir || '')
+      : target === 'notes' ? (this.paths?.notes_dir || '')
+      : (this.newMemoryPath || this.paths?.memory_dir || '');
+    this.browserOpen.set(true);
+  }
+
+  onPicked(path: string): void {
+    switch (this.browserTarget()) {
+      case 'agent': this.agentDirInput = path; break;
+      case 'notes': this.notesDirInput = path; break;
+      case 'memory': this.newMemoryPath = path; break;
+    }
+    this.browserOpen.set(false);
   }
 
   registerAndAttachMemory(): void {

@@ -3,6 +3,7 @@ package webui
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -166,5 +167,43 @@ func TestTerminalWebSocketBridge(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("term server did not receive ATTACH")
+	}
+}
+
+func TestDirectoryBrowser(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "a", "b"), 0o755)
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("x"), 0o644)
+	srv, err := New(Config{DaemonSocket: "/nonexistent", TermSocket: "/nonexistent",
+		WebDir: webDir, Token: "t", BrowseRoots: []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/fs/dirs?path="+filepath.Join(root, "a"), nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: "t"})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Path    string                  `json:"path"`
+		Parent  string                  `json:"parent"`
+		Entries []struct{ Name string } `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Entries) != 1 || out.Entries[0].Name != "b" || out.Parent != root {
+		t.Fatalf("listing = %+v", out)
+	}
+	// Outside the root is rejected.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/fs/dirs?path=/etc", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: "t"})
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("outside status = %d", rec.Code)
 	}
 }

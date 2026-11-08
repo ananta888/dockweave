@@ -6,13 +6,14 @@ import { Store } from './core/store';
 import { TerminalComponent } from './components/terminal.component';
 import { ConfigComponent } from './components/config.component';
 import { AnalysisComponent } from './components/analysis.component';
+import { DirPickerComponent } from './components/dir-picker.component';
 import { Agent } from './core/models';
 
 type View = 'agent' | 'analysis' | 'workspaces';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -29,6 +30,7 @@ export class App implements OnInit, OnDestroy {
   workspaceName = '';
   workspacePath = '';
   workspaceError = signal('');
+  wsBrowserOpen = signal(false);
 
   newAgent = {
     name: '', type: 'opencode', image: 'node:22-bookworm',
@@ -81,6 +83,10 @@ export class App implements OnInit, OnDestroy {
       error: e => { this.creating.set(false); this.createError.set(e.message); },
     });
   }
+
+  openWorkspaceBrowser(): void { this.wsBrowserOpen.set(true); }
+
+  onWorkspacePicked(path: string): void { this.workspacePath = path; this.wsBrowserOpen.set(false); }
 
   registerWorkspace(): void {
     if (!this.workspaceName.trim() || !this.workspacePath.trim()) return;

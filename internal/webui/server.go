@@ -41,14 +41,17 @@ type Config struct {
 	// AllowedOrigins for WebSocket Origin checks. Empty disables the check
 	// (the listener is loopback and every request needs the token).
 	AllowedOrigins []string
+	// BrowseRoots limits the admin directory browser. Empty uses defaults.
+	BrowseRoots []string
 }
 
 // Server is the browser-facing HTTP handler.
 type Server struct {
-	cfg     Config
-	proxy   *httputil.ReverseProxy
-	assets  fs.FS
-	handler http.Handler
+	cfg         Config
+	proxy       *httputil.ReverseProxy
+	assets      fs.FS
+	handler     http.Handler
+	browseRoots []string
 }
 
 // New creates the web gateway.
@@ -72,7 +75,11 @@ func New(cfg Config) (*Server, error) {
 		}
 		assets = sub
 	}
-	s := &Server{cfg: cfg, assets: assets}
+	roots := cfg.BrowseRoots
+	if len(roots) == 0 {
+		roots = defaultBrowseRoots()
+	}
+	s := &Server{cfg: cfg, assets: assets, browseRoots: roots}
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
 	s.handler = s.auth(s.routes())
 	return s, nil
@@ -84,6 +91,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
 	mux.Handle("/api/", s.proxy)
 	mux.HandleFunc("/ws/term", s.term)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

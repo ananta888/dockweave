@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,6 +81,12 @@ type Server struct {
 	// through admin/monitor GET endpoints. No secret values cross this API.
 	Broker *brokerclient.Client
 
+	// AllowedRoots, Root and KnowledgeDir back the admin directory browser.
+	// Only directories below these roots are ever listed.
+	AllowedRoots []string
+	Root         string
+	KnowledgeDir string
+
 	mux *http.ServeMux
 }
 
@@ -133,6 +142,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/broker/sessions", s.brokerSessions)
 	s.mux.HandleFunc("GET /api/v1/broker/requests", s.brokerRequests)
 	s.mux.HandleFunc("GET /api/v1/broker/usage", s.brokerUsage)
+	s.mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
 }
 
 // ServeHTTP implements http.Handler.
@@ -776,4 +786,114 @@ func (s *Server) brokerUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, u)
+}
+
+// ---- directory browser (admin only) ----
+
+// DirEntry is one selectable directory.
+type DirEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// DirListing is the response of GET /api/v1/fs/dirs.
+type DirListing struct {
+	Path    string     `json:"path"`
+	Parent  string     `json:"parent,omitempty"`
+	Roots   []DirEntry `json:"roots"`
+	Entries []DirEntry `json:"entries"`
+}
+
+func (s *Server) listDirs(w http.ResponseWriter, r *http.Request) {
+	role, _ := r.Context().Value(peerRoleKey{}).(Role)
+	if role != RoleAdmin {
+		writeErr(w, http.StatusForbidden, "forbidden", errors.New("directory browser requires admin role"))
+		return
+	}
+	roots := s.browseRoots()
+	resp := DirListing{Roots: roots}
+	raw := strings.TrimSpace(r.URL.Query().Get("path"))
+	if raw == "" {
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+	canon, err := filepath.EvalSymlinks(raw)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("resolve path: %w", err))
+		return
+	}
+	if !s.underBrowsableRoot(canon) {
+		writeErr(w, http.StatusForbidden, "forbidden", errors.New("path is outside the browsable roots"))
+		return
+	}
+	entries, err := os.ReadDir(canon)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	resp.Path = canon
+	if parent := filepath.Dir(canon); parent != canon && s.underBrowsableRoot(parent) {
+		resp.Parent = parent
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		resp.Entries = append(resp.Entries, DirEntry{Name: e.Name(), Path: filepath.Join(canon, e.Name())})
+	}
+	sort.Slice(resp.Entries, func(i, j int) bool { return resp.Entries[i].Name < resp.Entries[j].Name })
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) browseRoots() []DirEntry {
+	seen := map[string]bool{}
+	var out []DirEntry
+	add := func(p string) {
+		if p == "" {
+			return
+		}
+		canon, err := filepath.EvalSymlinks(p)
+		if err != nil {
+			return
+		}
+		fi, err := os.Stat(canon)
+		if err != nil || !fi.IsDir() || seen[canon] {
+			return
+		}
+		seen[canon] = true
+		out = append(out, DirEntry{Name: canon, Path: canon})
+	}
+	add(s.Root)
+	for _, r := range s.AllowedRoots {
+		add(r)
+	}
+	add(s.KnowledgeDir)
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+func (s *Server) underBrowsableRoot(p string) bool {
+	check := func(root string) bool {
+		if root == "" {
+			return false
+		}
+		canon, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return false
+		}
+		rel, err := filepath.Rel(canon, p)
+		if err != nil {
+			return false
+		}
+		return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+	}
+	if check(s.Root) {
+		return true
+	}
+	for _, r := range s.AllowedRoots {
+		if check(r) {
+			return true
+		}
+	}
+	return false
 }

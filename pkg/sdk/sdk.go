@@ -646,3 +646,28 @@ func (c *Client) BrokerUsage(ctx context.Context, grantID string) (*BrokerUsage,
 	var out BrokerUsage
 	return &out, c.do(ctx, "GET", "/api/v1/broker/usage?grant="+url.QueryEscape(grantID), nil, &out)
 }
+
+// DirEntry is one selectable directory in the admin directory browser.
+type DirEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// DirListing is the admin directory browser response.
+type DirListing struct {
+	Path    string     `json:"path"`
+	Parent  string     `json:"parent,omitempty"`
+	Roots   []DirEntry `json:"roots"`
+	Entries []DirEntry `json:"entries"`
+}
+
+// ListDirs lists allowed roots (path empty) or direct subdirectories of a
+// path below those roots. Admin-only.
+func (c *Client) ListDirs(ctx context.Context, path string) (*DirListing, error) {
+	var out DirListing
+	p := "/api/v1/fs/dirs"
+	if path != "" {
+		p += "?path=" + url.QueryEscape(path)
+	}
+	return &out, c.do(ctx, "GET", p, nil, &out)
+}

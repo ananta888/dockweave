@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,10 +26,11 @@ import (
 
 func webCmd() *cobra.Command {
 	var (
-		listen     string
-		webDir     string
-		termSocket string
-		open       bool
+		listen      string
+		webDir      string
+		termSocket  string
+		open        bool
+		browseRoots string
 	)
 	c := &cobra.Command{
 		Use:   "web",
@@ -58,11 +60,18 @@ func webCmd() *cobra.Command {
 					"web",
 				)
 			}
+			var roots []string
+			for _, r := range strings.Split(browseRoots, ":") {
+				if r = strings.TrimSpace(r); r != "" {
+					roots = append(roots, r)
+				}
+			}
 			srv, err := webui.New(webui.Config{
 				DaemonSocket: socketPath,
 				TermSocket:   termSocket,
 				WebDir:       dir,
 				Token:        token,
+				BrowseRoots:  roots,
 			})
 			if err != nil {
 				fail(err)
@@ -103,6 +112,9 @@ func webCmd() *cobra.Command {
 	f.StringVar(&webDir, "web-dir", envOr("DOCKWEAVE_WEB_DIR", ""), "frontend directory (default: embedded assets)")
 	f.StringVar(&termSocket, "term-socket", envOr("DOCKWEAVE_TERM_SOCKET", ""), "daemon terminal socket")
 	f.BoolVar(&open, "open", false, "open the browser")
+	f.StringVar(&browseRoots, "browse-roots", envOr("DOCKWEAVE_WEB_BROWSE_ROOTS",
+		"/home:/srv:/opt/projects:/var/lib/dockweave"),
+		"colon-separated roots for the directory browser")
 	return c
 }
 
