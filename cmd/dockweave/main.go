@@ -38,7 +38,7 @@ func main() {
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")
 
 	root.AddCommand(runCmd(), agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd(),
-		secretCmd(), credentialCmd(), brokerCmd(), egressCmd())
+		secretCmd(), credentialCmd(), brokerCmd(), egressCmd(), webCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}

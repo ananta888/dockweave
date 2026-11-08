@@ -6,7 +6,7 @@ GOFLAGS   ?=
 BIN_DIR   := bin
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: all build install test test-race test-integration vet lint clean docker-image install-tools
+.PHONY: all build web install test test-race test-integration vet lint clean docker-image install-tools
 
 all: build
 
@@ -15,6 +15,13 @@ build:
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweave-tui ./cmd/dockweave-tui
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweaved ./cmd/dockweaved
 	$(GO) build $(GOFLAGS) -ldflags "-X main.version=$(VERSION)" -o $(BIN_DIR)/dockweave-broker ./cmd/dockweave-broker
+
+web:
+	cd ui/web && npm ci && npm run build
+	rm -rf internal/webui/dist
+	mkdir -p internal/webui/dist
+	cp -r ui/web/dist/dockweave-web/browser/. internal/webui/dist/
+	@echo "web assets copied to internal/webui/dist (rebuild dockweave to embed them)"
 
 install: build
 	install -Dm755 $(BIN_DIR)/dockweave $(HOME)/.local/bin/dockweave
