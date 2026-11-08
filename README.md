@@ -91,6 +91,27 @@ dockweave monitor activity
 dockweave tui
 ```
 
+## Credential vault & API broker (MVP)
+
+DockWeave can keep provider API keys out of agent containers entirely. The
+standalone, unprivileged `dockweave-broker` stores them encrypted and injects
+them only for policy-checked requests; the agent receives a short-lived
+session token instead.
+
+```bash
+export DOCKWEAVE_VAULT_PASSPHRASE='a long local passphrase'
+dockweave-broker --init
+printf '%s' "$OPENROUTER_API_KEY" | dockweave secret put openrouter-main --provider openrouter
+dockweave credential grant opencode-01 openrouter-main --models 'openrouter/auto'
+dockweave broker session create opencode-01 openrouter-main --ttl 2h   # dws_…
+```
+
+> **Important:** egress isolation is **not enforced** in this build. An agent
+> with bridge networking can bypass the broker. See
+> [docs/credential-broker.md](docs/credential-broker.md),
+> [docs/egress-security.md](docs/egress-security.md) and
+> `todo/credential-vault.json`.
+
 The TUI is mouse-enabled: the menu bar switches views on click, agents stay
 compact — click (or `enter`) a row to expand its details. Press `t` to open
 the agent terminal: inside tmux it splits the window (agent below, DockWeave

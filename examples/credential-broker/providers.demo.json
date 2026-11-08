@@ -1,0 +1,8 @@
+{
+  "openrouter": {
+    "name": "openrouter",
+    "base_url": "http://127.0.0.1:18080",
+    "auth_header": "Authorization",
+    "auth_prefix": "Bearer "
+  }
+}

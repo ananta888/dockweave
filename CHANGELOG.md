@@ -13,6 +13,21 @@ All notable changes to DockWeave are documented here. The format follows
   attaches to its terminal in one step (`--no-attach`, `--mode`, `--name`).
 - `dockweave agent update NAME|ID`: change an agent's type, image, command or
   uid/gid without recreating the identity (applied at the next start).
+- Credential vault and API broker (MVP): `dockweave-broker` process,
+  encrypted local vault (`internal/credentialvault`), DENY-by-default
+  per-agent grants, short-lived sessions, fixed-destination HTTP gateway with
+  credential injection, rate/budget limits, admin unix socket and
+  `secret`/`credential`/`broker`/`egress` CLI commands. See
+  `docs/credential-broker.md` and `docs/adr/0001-credential-broker.md`.
+- Local fake-provider demo: `examples/credential-broker/demo.sh`.
+
+### Security
+
+- Provider credentials can be kept out of agent env, Docker inspect, SQLite,
+  `/memory` and logs by using the broker. **Egress isolation is not enforced
+  in this build**; `dockweave egress status` reports this explicitly and
+  exits non-zero. See `docs/egress-security.md` and
+  `todo/credential-vault.json` for the remaining work.
 
 ## [0.1.0] — 2026-10-23
 

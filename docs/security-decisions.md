@@ -134,3 +134,49 @@ the "read-only" share. The staging sequence now additionally calls
 rw-submount check refuses the mount — failing closed, never leaking rw.
 Verified by `TestROPropagationIntoSlaveNamespace` (nested submount must be
 ro inside an rslave namespace; writes must fail).
+
+## SD-011 — Credential broker is a separate unprivileged process (2026-11-08)
+
+Provider credentials are moved out of agent containers into a dedicated
+`dockweave-broker` process. It runs as the operator (never root), performs no
+mount or Docker operations, and holds decrypted values only in process
+memory. The root daemon must not grow a credential store: that would widen
+`CAP_SYS_ADMIN` blast radius and put plaintext secrets next to Docker control.
+See `docs/adr/0001-credential-broker.md`.
+
+## SD-012 — Encrypted vault format and master passphrase handling
+
+`internal/credentialvault` uses Argon2id (64 MiB, t=3, p=4) and AES-256-GCM
+with a random nonce per write. Ciphertext is bound to the credential name via
+AEAD additional data, preventing entry swaps. The envelope is versioned and
+written atomically (`temp + fsync + rename`, `0600`, directory `0700`) under
+an exclusive `flock`. The passphrase is read only from
+`DOCKWEAVE_VAULT_PASSPHRASE`; it is never accepted as an argument, written to
+disk, logged, or embedded in a config file. Rotating the passphrase
+re-encrypts every entry under a fresh salt. This follows the MIT-licensed
+crypto approach of Infisical Agent Vault `internal/crypto` (upstream commit
+`16ec8d5a5db38be9d2c77fe9c19c7fd7125246ba`) with the AAD and atomic-write
+hardening added here.
+
+## SD-013 — HTTP gateway instead of MITM; fixed destinations, no redirects
+
+The broker is an explicit gateway (`/p/{provider}/...`) over a fixed provider
+base URL, not a TLS-intercepting forward proxy. This avoids installing a
+custom root CA in agents and avoids a TLS-verification bypass. Agent-supplied
+`Authorization`, `x-api-key`, `x-goog-api-key` and proxy auth headers are
+removed before the real credential is injected. Redirects are not followed
+(`CheckRedirect` returns `ErrUseLastResponse`), so a 3xx cannot carry the
+injected credential to a destination that policy did not check. Path
+traversal and unknown providers are rejected. Session tokens (`dws_…`, only
+SHA-256 persisted, max TTL 24h) are bearer capabilities: immediate revocation
+is enforced on every request, but a copied token is usable within its grant
+until expiry. This limitation is tracked in the threat model and TODO.
+
+## SD-014 — Egress enforcement is an explicit open blocker
+
+`dockweave run` and the broker do **not** isolate network egress. A
+compromised agent with bridge networking can bypass the gateway and call the
+provider directly. `dockweave egress status` reports this and exits non-zero.
+No network profile is presented as enforced until the `egress-*` tasks are
+implemented and verified in the privileged test environment. This follows the
+project rule not to pretend security exists.

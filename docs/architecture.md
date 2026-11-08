@@ -100,4 +100,8 @@ propagate to slave namespaces. See `docs/validation/phase1-mounts.de.md`.
 | `internal/api` | REST API v1 over Unix socket |
 | `internal/supervisor` | Startup recovery, desired-vs-actual reconciliation |
 | `pkg/sdk` | Go client for the API |
+| `internal/credentialvault` | Encrypted local credential vault (broker process only) |
+| `internal/credentialbroker` | Policy, sessions, budgets, fixed-destination HTTP gateway |
+| `internal/brokerclient` | CLI client for the broker admin socket |
+| `cmd/dockweave-broker` | Unprivileged credential broker process |
 | `ui/tui` | Bubble Tea terminal UI |
