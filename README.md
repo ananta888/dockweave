@@ -106,8 +106,9 @@ dockweave credential grant opencode-01 openrouter-main --models 'openrouter/auto
 dockweave broker session create opencode-01 openrouter-main --ttl 2h   # dws_…
 ```
 
-> **Important:** egress isolation is **not enforced** in this build. An agent
-> with bridge networking can bypass the broker. See
+> **Egress status:** `offline` and `broker-only` are enforced with Docker
+> networks (internal network, no external route). Host-gateway port
+> filtering with nftables and `restricted-development` are still open. See
 > [docs/credential-broker.md](docs/credential-broker.md),
 > [docs/egress-security.md](docs/egress-security.md) and
 > `todo/credential-vault.json`.

@@ -180,3 +180,17 @@ provider directly. `dockweave egress status` reports this and exits non-zero.
 No network profile is presented as enforced until the `egress-*` tasks are
 implemented and verified in the privileged test environment. This follows the
 project rule not to pretend security exists.
+
+## SD-015 — Egress profiles via Docker internal networks (2026-11-08)
+
+`offline` (`--network none`) and `broker-only` are enforced by the daemon.
+`broker-only` creates/uses the internal Docker network
+`dockweave-broker-only`; the container has no external route. The daemon sets
+`DOCKWEAVE_BROKER_BASE_URL=http://<gateway>:8787` and the operator binds the
+broker to that gateway. A privileged integration test proves external HTTPS
+fails with `ENETUNREACH` while the host gateway is reachable. Any failure to
+create or verify the network refuses the agent start (fail closed).
+`restricted-development` is intentionally not implemented and fails closed.
+Residual risk: the agent can reach host services bound to the gateway;
+nftables port filtering remains open (`egress-003`). This is stated in
+`docs/egress-security.md` and not claimed as complete isolation.

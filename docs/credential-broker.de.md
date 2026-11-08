@@ -6,9 +6,11 @@ einem verschlüsselten lokalen Vault; der Agent erhält ein kurzlebiges
 Session-Token, das nur für seinen expliziten Grant gilt.
 
 > **Stand dieses Inkrements (2026-11-08):** Vault, Policy, Sessions,
-> HTTP-Gateway, Budgets und CLI sind implementiert und getestet.
-> **Egress-Enforcement ist NICHT implementiert.** Solange das fehlt, kann ein
-> Agent mit Internetzugang den Broker umgehen. Siehe
+> HTTP-Gateway, Budgets, CLI, Daemon-/TUI-Metadaten sowie die Egress-Profile
+> `offline` und `broker-only` sind implementiert und getestet. `broker-only`
+> nutzt ein internes Docker-Netz ohne externe Route. Offen bleiben:
+> Host-Gateway-Portfilterung per nftables, `restricted-development`,
+> echter Provider-E2E-Test und der SSH-Broker. Siehe
 > [egress-security.de.md](egress-security.de.md) und die offenen Aufgaben in
 > `todo/credential-vault.json`.
 
@@ -155,6 +157,11 @@ dockweave secret list
 dockweave secret rotate NAME
 dockweave secret revoke NAME
 
+dockweave secret migrate --agent AGENT --env-file DATEI          # nur explizite Datei
+dockweave secret migrate --agent AGENT --env-file DATEI --dry-run
+dockweave secret migrate --agent AGENT --env-file DATEI --yes --grant --models '*'
+dockweave secret migrate --agent AGENT --env-file DATEI --yes --disable-env-file
+
 dockweave credential grant AGENT CREDENTIAL [flags]
 dockweave credential list --agent AGENT
 dockweave credential revoke AGENT CREDENTIAL
@@ -167,12 +174,55 @@ dockweave broker session list --agent AGENT
 dockweave broker session revoke ID
 dockweave broker requests
 
-dockweave egress status [AGENT]                  # schlägt fehl, wenn nicht erzwungen
+dockweave egress status AGENT
+dockweave egress profile AGENT broker-only
 ```
+
+`secret migrate` liest nur die explizit angegebene EnvFile, scannt keine
+Verzeichnisse, gibt keine Werte aus und leert die `env_file`-Referenz des
+Agenten sowie benennt die Datei erst um, nachdem alle Stores erfolgreich
+waren. Ohne `--yes` ist eine interaktive Bestätigung nötig.
 
 Admin-Socket: `$DOCKWEAVE_BROKER_ADMIN_SOCKET`, Standard
 `~/.local/share/dockweave/broker/admin.sock`, Modus `0600`, `SO_PEERCRED`
 gegen die Prozess-EUID (oder `--admin-uids`).
+
+## Egress-Profile
+
+| Profil | Durchsetzung |
+|---|---|
+| `offline` | Docker `none` (kein Netz) |
+| `broker-only` | Internes Docker-Netz, keine externe Route; Host-Gateway für den Broker erreichbar |
+| `restricted-development` | Nicht implementiert; Start wird verweigert |
+| `unrestricted-legacy` / leer | Legacy-Bridge; ausdrücklich unsicher |
+
+`dockweave egress status AGENT` zeigt Profil, Enforcement, Netz, Gateway und
+Broker-Base-URL. In broker-only-Agenten setzt der Daemon
+`DOCKWEAVE_BROKER_BASE_URL=http://<gateway>:8787`; den Broker dort binden.
+Siehe [egress-security.de.md](egress-security.de.md) für das Host-Gateway-
+Restrisiko.
+
+## REST-API und TUI
+
+Der Daemon stellt read-only Broker-Metadaten (keine Secrets, Admin/Monitor-
+GET) bereit, wenn `BROKER_ADMIN_SOCKET` konfiguriert ist:
+
+| Methode | Pfad |
+|---|---|
+| GET | `/api/v1/broker/status` |
+| GET | `/api/v1/broker/grants?agent=` |
+| GET | `/api/v1/broker/sessions?agent=` |
+| GET | `/api/v1/broker/requests` |
+| GET | `/api/v1/broker/usage?grant=` |
+| GET | `/api/v1/agents/{id}/egress` |
+| PUT | `/api/v1/agents/{id}/network-profile` |
+| PUT | `/api/v1/agents/{id}/env-file` |
+
+Die TUI zeigt den Broker-Status im Dashboard sowie Egress-Profil und
+Credential-Grants in den Agent-Details. Secrets werden nie angezeigt.
+
+Der Admin-Socket des Brokers bleibt der einzige Mutationspfad für Secrets und
+Grants.
 
 ## Admin-API
 
@@ -233,12 +283,15 @@ weltlesbare Unit-Dateien schreiben.
 
 ## Nicht garantiert (offene Blocker)
 
-1. **Kein Egress-Enforcement.** Ein Agent mit Bridge-Netzwerk kann den
-   Provider direkt erreichen und den Broker umgehen. DoD-Punkt 6 ist offen.
-2. **Keine Docker-/Daemon-Integration.** Der Broker-Socket wird noch nicht
-   automatisch in Agentencontainer gemountet; Erreichbarkeit ist
-   Operator-Aufgabe.
-3. **Keine TUI-Integration** und keine REST-API-v1-Endpunkte in `dockweaved`.
+1. **Host-Gateway-Filterung ist unvollständig.** `broker-only` blockt
+   externen Egress über ein internes Docker-Netz, aber der Agent erreicht
+   weiterhin Host-Dienste am Gateway. nftables-Regeln sind offen
+   (`egress-003`).
+2. **Kein automatisches Broker-Socket-Mounting.** Die Erreichbarkeit und die
+   Harness-Konfiguration sind Operator-Aufgabe (der Daemon setzt in
+   broker-only-Agenten `DOCKWEAVE_BROKER_BASE_URL`).
+3. **`restricted-development` ist nicht implementiert**; der Agentenstart
+   schlägt fail-closed fehl.
 4. **Session-Token ist ein Bearer-Capability.** Kopiert bleibt es bis
    Ablauf/Widerruf innerhalb seines Grants nutzbar; keine workload-gebundene
    Auth.
@@ -246,8 +299,9 @@ weltlesbare Unit-Dateien schreiben.
    Abrechnungsobergrenze.
 6. **Gleicher Host ist keine starke Grenze** gegen Host-Root. Root kann
    Prozessspeicher lesen.
-7. **SSH-Keys** sind nicht Teil dieses Inkrements (keine HTTP-Credentials).
-8. **Migration aus EnvFile** ist manuell, nicht automatisiert.
+7. **SSH-Keys** sind nicht Teil dieses Inkrements.
+8. **EnvFile-Migration** ist operatorgestützt (`secret migrate`), kein
+   Hintergrund-Scanner.
 
 Vollständiges Bedrohungsmodell:
 `docs/threat-model-credential-broker.de.md`.

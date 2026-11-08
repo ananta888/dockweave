@@ -20,14 +20,24 @@ All notable changes to DockWeave are documented here. The format follows
   `secret`/`credential`/`broker`/`egress` CLI commands. See
   `docs/credential-broker.md` and `docs/adr/0001-credential-broker.md`.
 - Local fake-provider demo: `examples/credential-broker/demo.sh`.
+- `dockweave secret migrate`: explicit-env-file migration into the vault,
+  optional grants, `--dry-run`, and `--disable-env-file` (clears the agent
+  reference and renames the file only after success).
+- Egress profiles `offline` and `broker-only` enforced via Docker networks;
+  `dockweave egress status AGENT` / `egress profile AGENT PROFILE`.
+- Read-only broker metadata via daemon API (`/api/v1/broker/*`), agent egress
+  status, env-file and network-profile endpoints; TUI dashboard/detail
+  integration. Secrets are never exposed.
+- SSH broker design (documented only): `docs/ssh-broker-design.md`.
 
 ### Security
 
 - Provider credentials can be kept out of agent env, Docker inspect, SQLite,
-  `/memory` and logs by using the broker. **Egress isolation is not enforced
-  in this build**; `dockweave egress status` reports this explicitly and
-  exits non-zero. See `docs/egress-security.md` and
-  `todo/credential-vault.json` for the remaining work.
+  `/memory` and logs by using the broker. `broker-only` blocks external
+  egress with an internal Docker network (verified by a privileged test).
+  Host-gateway port filtering with nftables and `restricted-development`
+  remain open. See `docs/egress-security.md` and
+  `todo/credential-vault.json`.
 
 ## [0.1.0] — 2026-10-23
 
