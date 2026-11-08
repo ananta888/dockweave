@@ -40,7 +40,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           <div class="folder-edit">
             <select [(ngModel)]="memoryId">
               <option value="">select existing memory…</option>
-              @for (m of memories(); track m.id) {
+              @for (m of memories() || []; track m.id) {
                 <option [value]="m.id">{{ m.id }} · {{ m.path || 'default path' }}{{ m.owner_agent_id ? ' · owned by ' + m.owner_agent_id : '' }}</option>
               }
             </select>
@@ -155,9 +155,9 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
         <h3>Memory snapshots</h3>
         <div class="row">
           <button class="small" (click)="snapshot()">create snapshot</button>
-          <span class="muted">{{ snapshots().length }} snapshot(s)</span>
+          <span class="muted">{{ (snapshots() || []).length }} snapshot(s)</span>
         </div>
-        @for (s of snapshots(); track s.name) {
+        @for (s of snapshots() || []; track s.name) {
           <div class="row">
             <span class="mono">{{ s.name }}</span>
             <span class="muted">{{ s.size_bytes }} bytes · {{ s.created_at }}</span>
@@ -275,14 +275,14 @@ export class ConfigComponent implements OnChanges {
 
   private loadMemories(): void {
     this.api.memories().subscribe({
-      next: m => this.memories.set(m),
+      next: m => this.memories.set(m ?? []),
       error: () => this.memories.set([]),
     });
   }
 
   private loadSnapshots(): void {
     this.api.snapshots(this.agent.id).subscribe({
-      next: s => this.snapshots.set(s),
+      next: s => this.snapshots.set(s ?? []),
       error: () => this.snapshots.set([]),
     });
   }

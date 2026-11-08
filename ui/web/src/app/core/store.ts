@@ -77,15 +77,15 @@ export class Store {
     } else {
       this.error.set('Daemon nicht erreichbar: ' + (agents.reason?.message ?? agents.reason));
     }
-    if (activity.status === 'fulfilled') this.activity.set(activity.value);
-    if (workspaces.status === 'fulfilled') this.workspaces.set(workspaces.value);
-    if (grants.status === 'fulfilled') this.grants.set(grants.value);
-    if (mounts.status === 'fulfilled') this.mounts.set(mounts.value);
-    if (events.status === 'fulfilled') this.events.set(events.value);
-    if (conflicts.status === 'fulfilled') this.conflicts.set(conflicts.value);
+    if (activity.status === 'fulfilled') this.activity.set(activity.value ?? []);
+    if (workspaces.status === 'fulfilled') this.workspaces.set(workspaces.value ?? []);
+    if (grants.status === 'fulfilled') this.grants.set(grants.value ?? []);
+    if (mounts.status === 'fulfilled') this.mounts.set(mounts.value ?? []);
+    if (events.status === 'fulfilled') this.events.set(events.value ?? []);
+    if (conflicts.status === 'fulfilled') this.conflicts.set(conflicts.value ?? []);
     this.broker.set(broker.status === 'fulfilled' ? broker.value : null);
-    this.brokerGrants.set(bgrants.status === 'fulfilled' ? bgrants.value : []);
-    this.brokerRequests.set(breqs.status === 'fulfilled' ? breqs.value : []);
+    this.brokerGrants.set(bgrants.status === 'fulfilled' ? (bgrants.value ?? []) : []);
+    this.brokerRequests.set(breqs.status === 'fulfilled' ? (breqs.value ?? []) : []);
     if (providers.status === 'fulfilled') this.providers.set(providers.value);
 
     const agentsNow = this.agents();
