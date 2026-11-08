@@ -11,6 +11,79 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
   imports: [NgFor, FormsModule],
   template: `
     <div class="config">
+
+      <section>
+        <h3>Folders · effective host paths</h3>
+
+        <div class="folder">
+          <div class="folder-head">
+            <span class="mono">/agent</span>
+            <span class="pill" [class.def]="!paths?.agent_dir_custom">{{ paths?.agent_dir_custom ? 'custom' : 'default' }}</span>
+          </div>
+          <div class="fullpath">{{ paths?.agent_dir || '—' }}</div>
+          <div class="folder-edit">
+            <input [(ngModel)]="agentDirInput" placeholder="custom host path (empty = default)" />
+            <button class="small" (click)="applyAgentDir()" [disabled]="busy()">Apply</button>
+            <button class="small" (click)="resetAgentDir()" [disabled]="busy() || !paths?.agent_dir_custom">Reset</button>
+          </div>
+        </div>
+
+        <div class="folder">
+          <div class="folder-head">
+            <span class="mono">/memory</span>
+            <span class="pill" [class.def]="!paths?.memory_custom">{{ paths?.memory_custom ? 'custom' : 'default' }}</span>
+            <span class="muted">{{ paths?.memory_id || 'not attached' }}</span>
+          </div>
+          <div class="fullpath">{{ paths?.memory_dir || '—' }}</div>
+          <div class="folder-edit">
+            <select [(ngModel)]="memoryId">
+              <option value="">select existing memory…</option>
+              @for (m of memories(); track m.id) {
+                <option [value]="m.id">{{ m.id }} · {{ m.path || 'default path' }}{{ m.owner_agent_id ? ' · owned by ' + m.owner_agent_id : '' }}</option>
+              }
+            </select>
+            <button class="small" (click)="attachMemory()" [disabled]="busy() || !memoryId.trim()">Attach</button>
+            <button class="small" (click)="detachMemory()" [disabled]="busy() || !paths?.memory_id">Detach</button>
+          </div>
+          <div class="folder-edit">
+            <input [(ngModel)]="newMemoryPath" placeholder="new host folder → register and attach" />
+            <button class="small" (click)="registerAndAttachMemory()" [disabled]="busy() || !newMemoryPath.trim()">Register &amp; attach</button>
+          </div>
+          <div class="muted hint">Memory must be attached/detached while the agent is stopped.</div>
+        </div>
+
+        <div class="folder">
+          <div class="folder-head">
+            <span class="mono">/workspace</span>
+            <span class="pill def">managed</span>
+          </div>
+          <div class="fullpath">{{ paths?.workspace_dir || '—' }}</div>
+          <div class="muted hint">Contains the project mounts. Configure it in “Project access” below (one workspace = one subdirectory).</div>
+        </div>
+
+        <div class="folder">
+          <div class="folder-head">
+            <span class="mono">/notes</span>
+            <span class="pill" [class.def]="!paths?.notes_dir_custom">{{ paths?.notes_dir_custom ? 'custom' : 'default' }}</span>
+          </div>
+          <div class="fullpath">{{ paths?.notes_dir || '—' }}</div>
+          <div class="folder-edit">
+            <input [(ngModel)]="notesDirInput" placeholder="custom host path (empty = default)" />
+            <button class="small" (click)="applyNotesDir()" [disabled]="busy()">Apply</button>
+            <button class="small" (click)="resetNotesDir()" [disabled]="busy() || !paths?.notes_dir_custom">Reset</button>
+          </div>
+        </div>
+
+        <div class="folder">
+          <div class="folder-head">
+            <span class="mono">/knowledge</span>
+            <span class="pill def">global</span>
+          </div>
+          <div class="fullpath">{{ paths?.knowledge_dir || '—' }}</div>
+          <div class="muted hint">Shared knowledge store; configured daemon-wide, not per agent.</div>
+        </div>
+      </section>
+
       <section>
         <h3>Runtime</h3>
         <div class="grid">
@@ -35,8 +108,6 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           <label class="wide">Command (one argv element per line; empty = image default)
             <textarea rows="4" [(ngModel)]="command"></textarea>
           </label>
-          <label class="wide">/agent folder <input [(ngModel)]="agentDir" placeholder="empty = default" /></label>
-          <label class="wide">/notes folder <input [(ngModel)]="notesDir" placeholder="empty = default" /></label>
         </div>
         <div class="actions">
           <button class="primary" (click)="save()" [disabled]="busy()">Save</button>
@@ -77,15 +148,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
       </section>
 
       <section>
-        <h3>Memory</h3>
-        <div class="row">
-          <span class="mono">{{ paths?.memory_id || 'not attached' }}</span>
-          <span class="muted">{{ paths?.memory_dir || '—' }}</span>
-          <span class="spacer"></span>
-          <input class="small-input" [(ngModel)]="memoryId" placeholder="memory id" />
-          <button class="small" (click)="attachMemory()">attach</button>
-          <button class="small" (click)="detachMemory()" [disabled]="!paths?.memory_id">detach</button>
-        </div>
+        <h3>Memory snapshots</h3>
         <div class="row">
           <button class="small" (click)="snapshot()">create snapshot</button>
           <span class="muted">{{ snapshots().length }} snapshot(s)</span>
@@ -139,6 +202,14 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
     .notice.error { background:#3d1114; border-color:#f85149; }
     .muted { color:#8b949e; }
     .mono { font-family:ui-monospace, monospace; }
+    .folder { border:1px solid #21262d; border-radius:6px; padding:.55rem .7rem; margin-bottom:.55rem; }
+    .folder-head { display:flex; align-items:center; gap:.6rem; }
+    .folder-head .mono { color:#c9d1d9; font-weight:600; }
+    .fullpath { font-family:ui-monospace, monospace; color:#79c0ff; background:#0d1117; border:1px solid #21262d; border-radius:4px; padding:.3rem .45rem; margin:.35rem 0; word-break:break-all; }
+    .folder-edit { display:flex; gap:.4rem; margin-top:.35rem; }
+    .folder-edit input { flex:1; }
+    .pill.def { background:#21262d; color:#8b949e; }
+    .hint { font-size:.75rem; margin-top:.3rem; }
   `],
 })
 export class ConfigComponent implements OnChanges {
@@ -148,13 +219,13 @@ export class ConfigComponent implements OnChanges {
   @Input() workspaces: Workspace[] = [];
   @Input() grants: Grant[] = [];
   @Input() brokerGrants: BrokerGrant[] = [];
-  @Input() memories: MemoryInfo[] = [];
 
   readonly types = ['codex', 'opencode', 'claude', 'antigravity', 'gemini', 'custom'];
   busy = signal(false);
   message = signal('');
   error = signal('');
   snapshots = signal<MemorySnapshot[]>([]);
+  memories = signal<MemoryInfo[]>([]);
 
   type = 'custom';
   image = '';
@@ -163,10 +234,11 @@ export class ConfigComponent implements OnChanges {
   command = '';
   profile = '';
   envFile = '';
-  agentDir = '';
-  notesDir = '';
+  agentDirInput = '';
+  notesDirInput = '';
   grantMode = 'rw';
   memoryId = '';
+  newMemoryPath = '';
 
   private readonly api = inject(ApiService);
   private readonly store = inject(Store);
@@ -180,13 +252,21 @@ export class ConfigComponent implements OnChanges {
       this.command = (this.agent.command ?? []).join('\n');
       this.profile = this.agent.network_profile ?? '';
       this.envFile = this.agent.env_file ?? '';
-      this.agentDir = this.agent.agent_dir ?? '';
-      this.notesDir = this.agent.notes_dir ?? '';
       this.loadSnapshots();
+      this.loadMemories();
     }
     if (changes['paths'] && this.paths) {
+      this.agentDirInput = this.paths.agent_dir_custom ? this.paths.agent_dir : '';
+      this.notesDirInput = this.paths.notes_dir_custom ? this.paths.notes_dir : '';
       this.memoryId = this.paths.memory_id ?? '';
     }
+  }
+
+  private loadMemories(): void {
+    this.api.memories().subscribe({
+      next: m => this.memories.set(m),
+      error: () => this.memories.set([]),
+    });
   }
 
   private loadSnapshots(): void {
@@ -215,15 +295,7 @@ export class ConfigComponent implements OnChanges {
           this.api.setNetworkProfile(this.agent.id, this.profile).subscribe({
             next: () => {
               this.api.setEnvFile(this.agent.id, this.envFile).subscribe({
-                next: () => {
-                  this.api.setAgentDir(this.agent.id, this.agentDir).subscribe({
-                    next: () => {
-                      this.api.setNotesDir(this.agent.id, this.notesDir).subscribe({
-                        next: () => resolve(), error: reject,
-                      });
-                    }, error: reject,
-                  });
-                }, error: reject,
+                next: () => resolve(), error: reject,
               });
             }, error: reject,
           });
@@ -250,6 +322,38 @@ export class ConfigComponent implements OnChanges {
 
   revoke(id: string): void {
     void this.run(() => new Promise<void>((res, rej) => this.api.revokeGrant(id).subscribe({ next: () => res(), error: rej })), 'Grant revoked');
+  }
+
+  applyAgentDir(): void {
+    const p = this.agentDirInput.trim();
+    void this.run(() => new Promise<void>((res, rej) => this.api.setAgentDir(this.agent.id, p).subscribe({ next: () => res(), error: rej })), 'Agent folder updated (restart to apply)');
+  }
+
+  resetAgentDir(): void {
+    void this.run(() => new Promise<void>((res, rej) => this.api.setAgentDir(this.agent.id, '').subscribe({ next: () => res(), error: rej })), 'Agent folder reset to default (restart to apply)');
+  }
+
+  applyNotesDir(): void {
+    const p = this.notesDirInput.trim();
+    void this.run(() => new Promise<void>((res, rej) => this.api.setNotesDir(this.agent.id, p).subscribe({ next: () => res(), error: rej })), 'Notes folder updated (restart to apply)');
+  }
+
+  resetNotesDir(): void {
+    void this.run(() => new Promise<void>((res, rej) => this.api.setNotesDir(this.agent.id, '').subscribe({ next: () => res(), error: rej })), 'Notes folder reset to default (restart to apply)');
+  }
+
+  registerAndAttachMemory(): void {
+    const path = this.newMemoryPath.trim();
+    if (!path) return;
+    void this.run(() => new Promise<void>((res, rej) => {
+      this.api.registerMemory(path).subscribe({
+        next: mem => {
+          this.api.attachMemory(this.agent.id, mem.id).subscribe({
+            next: () => { this.newMemoryPath = ''; this.loadMemories(); res(); }, error: rej,
+          });
+        }, error: rej,
+      });
+    }), 'Memory folder registered and attached');
   }
 
   attachMemory(): void {

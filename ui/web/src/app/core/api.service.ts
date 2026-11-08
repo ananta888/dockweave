@@ -98,6 +98,9 @@ export class ApiService {
   }
 
   memories(): Observable<MemoryInfo[]> { return this.req(this.http.get<MemoryInfo[]>(`${this.base}/memories`)); }
+  registerMemory(path: string): Observable<MemoryInfo> {
+    return this.req(this.http.post<MemoryInfo>(`${this.base}/memories`, { path }));
+  }
   snapshots(id: string): Observable<MemorySnapshot[]> {
     return this.req(this.http.get<MemorySnapshot[]>(`${this.base}/agents/${id}/memory/snapshots`));
   }
