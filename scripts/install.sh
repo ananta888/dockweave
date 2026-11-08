@@ -40,9 +40,10 @@ echo "==> Installing to /usr/local/bin"
 $SUDO install -Dm755 bin/dockweave  /usr/local/bin/dockweave
 $SUDO install -Dm755 bin/dockweave-tui /usr/local/bin/dockweave-tui
 $SUDO install -Dm755 bin/dockweaved /usr/local/bin/dockweaved
+$SUDO install -Dm755 bin/dockweave-broker /usr/local/bin/dockweave-broker
 # Remove stale user-local copies: they shadow /usr/local/bin when
 # ~/.local/bin comes first in PATH and would silently run old builds.
-for f in "$HOME/.local/bin/dockweave" "$HOME/.local/bin/dockweave-tui" "$HOME/.local/bin/dockweaved"; do
+for f in "$HOME/.local/bin/dockweave" "$HOME/.local/bin/dockweave-tui" "$HOME/.local/bin/dockweaved" "$HOME/.local/bin/dockweave-broker"; do
 	if [ -e "$f" ]; then
 		echo "==> Removing stale $f (shadows /usr/local/bin)"
 		rm -f "$f"
@@ -135,7 +136,7 @@ fi
 cat <<EOF
 
 == DockWeave installed ==
-  binaries : /usr/local/bin/dockweave{,d}
+  binaries : /usr/local/bin/dockweave{,d} and dockweave-broker
   config   : $CONF
   daemon   : running (socket $SOCK)
   logs     : /var/log/dockweaved.log or: journalctl -u dockweaved

@@ -37,7 +37,8 @@ func main() {
 	root.PersistentFlags().StringVar(&socketPath, "socket", envOr("DOCKWEAVE_SOCKET", "/run/dockweave/dockweaved.sock"), "daemon socket")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")
 
-	root.AddCommand(runCmd(), agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd())
+	root.AddCommand(runCmd(), agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd(),
+		secretCmd(), credentialCmd(), brokerCmd(), egressCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}
