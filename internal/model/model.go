@@ -41,28 +41,50 @@ const (
 	AgentError   AgentState = "error"
 )
 
+// NetworkProfile controls enforced egress behaviour for an agent.
+// Empty is legacy bridge behaviour for backwards compatibility.
+type NetworkProfile string
+
+const (
+	NetProfileOffline    NetworkProfile = "offline"
+	NetProfileBrokerOnly NetworkProfile = "broker-only"
+	NetProfileRestricted NetworkProfile = "restricted-development"
+	NetProfileLegacy     NetworkProfile = "unrestricted-legacy"
+)
+
+// ValidNetworkProfile reports whether p is a known profile (empty allowed).
+func ValidNetworkProfile(p NetworkProfile) bool {
+	switch p {
+	case "", NetProfileOffline, NetProfileBrokerOnly, NetProfileRestricted, NetProfileLegacy:
+		return true
+	}
+	return false
+}
+
 // Agent is the stable identity of an AI coding agent. It is independent of
 // container IDs, images, workspaces and memory assignments.
 type Agent struct {
-	ID          string     `json:"id"`
-	Name        string     `json:"name"`
-	Type        string     `json:"type"` // codex|opencode|claude|gemini|custom
-	Image       string     `json:"image"`
-	Command     []string   `json:"command,omitempty"`
-	Env         []string   `json:"env,omitempty"` // KEY=VALUE, secrets via EnvFile only
-	EnvFile     string     `json:"env_file,omitempty"`
-	AgentRO     bool       `json:"agent_ro"` // mount /agent read-only
-	UID         int        `json:"uid"`
-	GID         int        `json:"gid"`
-	AgentDir    string     `json:"agent_dir,omitempty"` // custom /agent source; empty = default tree
-	NotesDir    string     `json:"notes_dir,omitempty"` // custom /notes source; empty = default tree
-	CPULimit    float64    `json:"cpu_limit,omitempty"` // cores, 0 = unlimited
-	MemoryMB    int64      `json:"memory_mb,omitempty"` // 0 = unlimited
-	NetworkMode string     `json:"network_mode"`        // bridge|none|host(never default)
-	State       AgentState `json:"state"`
-	ContainerID string     `json:"container_id,omitempty"` // current container, may change
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"` // codex|opencode|claude|gemini|custom
+	Image       string   `json:"image"`
+	Command     []string `json:"command,omitempty"`
+	Env         []string `json:"env,omitempty"` // KEY=VALUE, secrets via EnvFile only
+	EnvFile     string   `json:"env_file,omitempty"`
+	AgentRO     bool     `json:"agent_ro"` // mount /agent read-only
+	UID         int      `json:"uid"`
+	GID         int      `json:"gid"`
+	AgentDir    string   `json:"agent_dir,omitempty"` // custom /agent source; empty = default tree
+	NotesDir    string   `json:"notes_dir,omitempty"` // custom /notes source; empty = default tree
+	CPULimit    float64  `json:"cpu_limit,omitempty"` // cores, 0 = unlimited
+	MemoryMB    int64    `json:"memory_mb,omitempty"` // 0 = unlimited
+	NetworkMode string   `json:"network_mode"`        // bridge|none|host(never default)
+	// NetworkProfile controls enforced egress (see docs/egress-security.md).
+	NetworkProfile NetworkProfile `json:"network_profile,omitempty"`
+	State          AgentState     `json:"state"`
+	ContainerID    string         `json:"container_id,omitempty"` // current container, may change
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
 // Validate performs structural validation of an Agent definition.
@@ -80,6 +102,9 @@ func (a *Agent) Validate() error {
 	}
 	if a.UID < 0 || a.GID < 0 {
 		return errors.New("uid/gid must not be negative")
+	}
+	if !ValidNetworkProfile(a.NetworkProfile) {
+		return fmt.Errorf("unsupported network profile %q", a.NetworkProfile)
 	}
 	return nil
 }

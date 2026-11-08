@@ -103,6 +103,7 @@ func agentCmd() *cobra.Command {
 	f.StringVar(&spec.Image, "image", "", "container image (required)")
 	f.StringVar(&spec.EnvFile, "env-file", "", "file with KEY=VALUE env (secrets)")
 	f.StringVar(&spec.NetworkMode, "network", "bridge", "network mode (bridge|none)")
+	f.StringVar(&spec.NetworkProfile, "profile", "", "egress profile (offline|broker-only|restricted-development|unrestricted-legacy)")
 	f.BoolVar(&ro, "agent-ro", true, "mount /agent read-only")
 	f.IntVar(&spec.UID, "uid", 0, "run as uid (0 = container default)")
 	f.IntVar(&spec.GID, "gid", 0, "run as gid")
@@ -305,6 +306,25 @@ func agentCmd() *cobra.Command {
 		},
 	}
 
+	setenvfile := &cobra.Command{
+		Use:   "setenvfile NAME|ID [PATH]",
+		Short: "Set the env file used at start; empty clears it",
+		Args:  cobra.RangeArgs(1, 2),
+		Run: func(cmd *cobra.Command, args []string) {
+			path := ""
+			if len(args) == 2 {
+				path = args[1]
+			}
+			a, err := client().SetEnvFile(ctx(), args[0], path)
+			if err != nil {
+				fail(err)
+			}
+			out(a, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "AGENT\t%s\nENV FILE\t%s\n", a.Name, a.EnvFile)
+			})
+		},
+	}
+
 	var attachTermSocket string
 	attach := &cobra.Command{
 		Use:   "attach NAME|ID [-- CMD...]",
@@ -325,7 +345,7 @@ func agentCmd() *cobra.Command {
 		envOr("DOCKWEAVE_TERM_SOCKET", "/run/dockweave/dockweaved.term.sock"), "terminal stream socket")
 	attach.Flags().SetInterspersed(false)
 
-	cmd.AddCommand(create, update, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, setnotes, attach)
+	cmd.AddCommand(create, update, list, action("start", "start"), stop, action("restart", "restart"), remove, inspect, session, paths, setdir, setnotes, setenvfile, attach)
 	return cmd
 }
 

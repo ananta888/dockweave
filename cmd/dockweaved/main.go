@@ -25,6 +25,7 @@ import (
 
 	"github.com/ananta888/dockweave/internal/agents"
 	"github.com/ananta888/dockweave/internal/api"
+	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/dockerclient"
@@ -175,6 +176,9 @@ func run(cfgPath string) error {
 	}
 
 	apiSrv := api.NewServer(agentSvc, wsSvc, mon, store)
+	if cfg.BrokerAdminSocket != "" {
+		apiSrv.Broker = brokerclient.New(cfg.BrokerAdminSocket)
+	}
 	apiSrv.ConfigIO = &configio.Service{
 		Store:      store,
 		Agents:     agentSvc,

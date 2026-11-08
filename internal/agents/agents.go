@@ -39,6 +39,8 @@ type MountOps interface {
 // *dockerclient.Client implements it.
 type DockerOps interface {
 	EnsureImage(ctx context.Context, ref string, out io.Writer) error
+	EnsureNetwork(ctx context.Context, name string, internal bool) (string, error)
+	NetworkGateway(ctx context.Context, name string) (string, error)
 	Create(ctx context.Context, spec dockerclient.ContainerSpec) (string, error)
 	Start(ctx context.Context, containerID string) error
 	Stop(ctx context.Context, containerID string, timeoutSec int) error
@@ -602,6 +604,46 @@ func (s *Service) SetNotesDir(ctx context.Context, idOrName, path, actor string)
 	return a, nil
 }
 
+// SetEnvFile sets (or with an empty path clears) the host env file read at
+// start. The credential migration flow clears it only after secrets have
+// been moved to the vault; the file itself is never deleted here.
+func (s *Service) SetEnvFile(ctx context.Context, idOrName, path, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	envFile := ""
+	if strings.TrimSpace(path) != "" {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return nil, fmt.Errorf("resolve env file: %w", err)
+		}
+		canon, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, fmt.Errorf("canonicalize env file: %w", err)
+		}
+		fi, err := os.Stat(canon)
+		if err != nil {
+			return nil, fmt.Errorf("stat env file: %w", err)
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("%q is not a regular file", canon)
+		}
+		envFile = canon
+	}
+	if err := s.Store.UpdateAgentEnvFile(ctx, a.ID, envFile); err != nil {
+		return nil, err
+	}
+	a.EnvFile = envFile
+	msg := "env file cleared (restart to apply)"
+	if envFile != "" {
+		msg = "env file set to " + envFile + " (restart to apply)"
+	}
+	// Never include file contents, only the path.
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, msg)
+	return a, nil
+}
+
 // RegisterMemory registers a host directory as a long-term memory store.
 // The memory is created unbound; attach it to an agent to make it the
 // single writer.
@@ -650,6 +692,9 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 	}
 	runtimeAgent := *a
 	runtimeAgent.Env = env
+	if err := s.applyNetworkProfile(ctx, &runtimeAgent); err != nil {
+		return nil, err
+	}
 
 	if err := s.Docker.EnsureImage(ctx, a.Image, nil); err != nil {
 		return nil, err
@@ -717,7 +762,94 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 	return a, nil
 }
 
-// Stop stops the agent's container. Idempotent.
+// EgressStatus is the operator-facing egress view of one agent.
+type EgressStatus struct {
+	Agent         string               `json:"agent"`
+	Profile       model.NetworkProfile `json:"profile"`
+	Enforced      bool                 `json:"enforced"`
+	Network       string               `json:"network,omitempty"`
+	Gateway       string               `json:"gateway,omitempty"`
+	BrokerBaseURL string               `json:"broker_base_url,omitempty"`
+	Warning       string               `json:"warning,omitempty"`
+}
+
+// BrokerProfilePort is the port an operator must bind the broker to on the
+// broker-only network gateway.
+const BrokerProfilePort = 8787
+
+func (s *Service) applyNetworkProfile(ctx context.Context, a *model.Agent) error {
+	switch a.NetworkProfile {
+	case "", model.NetProfileLegacy:
+		return nil // legacy bridge/none behaviour, explicitly not isolated
+	case model.NetProfileOffline:
+		a.NetworkMode = "none"
+		return nil
+	case model.NetProfileBrokerOnly:
+		gw, err := s.Docker.EnsureNetwork(ctx, dockerclient.NetworkBrokerOnly, true)
+		if err != nil {
+			return fmt.Errorf("egress broker-only: %w (refusing to start; fail closed)", err)
+		}
+		a.NetworkMode = dockerclient.NetworkBrokerOnly
+		a.Env = append(a.Env, fmt.Sprintf("DOCKWEAVE_BROKER_BASE_URL=http://%s:%d", gw, BrokerProfilePort))
+		return nil
+	case model.NetProfileRestricted:
+		return errors.New("network profile restricted-development is not implemented; refusing to start (fail closed)")
+	default:
+		return fmt.Errorf("unsupported network profile %q", a.NetworkProfile)
+	}
+}
+
+// SetNetworkProfile changes the enforced egress profile. It takes effect at
+// the next start/restart; this method never weakens an existing profile
+// silently.
+func (s *Service) SetNetworkProfile(ctx context.Context, idOrName, profile, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	p := model.NetworkProfile(profile)
+	if !model.ValidNetworkProfile(p) {
+		return nil, fmt.Errorf("unsupported network profile %q (offline|broker-only|restricted-development|unrestricted-legacy)", profile)
+	}
+	if err := s.Store.UpdateAgentNetworkProfile(ctx, a.ID, string(p)); err != nil {
+		return nil, err
+	}
+	a.NetworkProfile = p
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "network profile set to "+string(p)+" (restart to apply)")
+	return a, nil
+}
+
+// EgressStatus reports the configured profile and whether it is enforced.
+func (s *Service) EgressStatus(ctx context.Context, idOrName string) (*EgressStatus, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	st := &EgressStatus{Agent: a.Name, Profile: a.NetworkProfile}
+	switch a.NetworkProfile {
+	case model.NetProfileOffline:
+		st.Enforced, st.Network = true, "none"
+	case model.NetProfileBrokerOnly:
+		st.Enforced, st.Network = true, dockerclient.NetworkBrokerOnly
+		gw, err := s.Docker.NetworkGateway(ctx, dockerclient.NetworkBrokerOnly)
+		if err != nil {
+			st.Warning = "broker-only network not created yet; start the agent once"
+		} else {
+			st.Gateway = gw
+			st.BrokerBaseURL = fmt.Sprintf("http://%s:%d", gw, BrokerProfilePort)
+			st.Warning = "external egress is blocked; the broker must bind the gateway address. " +
+				"Host services reachable on that gateway are not filtered yet (nftables task open)."
+		}
+	case model.NetProfileRestricted:
+		st.Warning = "restricted-development is not implemented; start is refused (fail closed)"
+	default:
+		st.Enforced = false
+		st.Network = a.NetworkMode
+		st.Warning = "unrestricted legacy networking: agents can bypass the broker"
+	}
+	return st, nil
+}
+
 func (s *Service) Stop(ctx context.Context, idOrName, actor string) error {
 	a, err := s.Store.GetAgent(ctx, idOrName)
 	if err != nil {

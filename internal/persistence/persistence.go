@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -114,6 +114,8 @@ var migrations = []string{
 	ALTER TABLE memories ADD COLUMN path TEXT NOT NULL DEFAULT '';`,
 	// 5: per-agent knowledge folder (/notes) with an optional custom path.
 	`ALTER TABLE agents ADD COLUMN notes_dir TEXT NOT NULL DEFAULT '';`,
+	// 6: enforced egress profile (empty = legacy bridge behaviour).
+	`ALTER TABLE agents ADD COLUMN network_profile TEXT NOT NULL DEFAULT '';`,
 }
 
 // Store is the DockWeave registry.
@@ -196,10 +198,10 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 	cmd, _ := json.Marshal(a.Command)
 	env, _ := json.Marshal(a.Env)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO agents
-		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.Name, a.Type, a.Image, string(cmd), string(env), a.EnvFile, a.AgentRO,
-		a.UID, a.GID, a.CPULimit, a.MemoryMB, a.NetworkMode, string(a.State), a.ContainerID,
+		a.UID, a.GID, a.CPULimit, a.MemoryMB, a.NetworkMode, string(a.NetworkProfile), string(a.State), a.ContainerID,
 		a.AgentDir, a.NotesDir, ts(a.CreatedAt), ts(a.UpdatedAt))
 	if isUniqueErr(err) {
 		return fmt.Errorf("%w: agent name %q", ErrConflict, a.Name)
@@ -213,7 +215,7 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 // GetAgent fetches an agent by ID or name (name lookup if no ID match).
 func (s *Store) GetAgent(ctx context.Context, idOrName string) (*model.Agent, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at
+		cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at
 		FROM agents WHERE id=? OR name=?`, idOrName, idOrName)
 	return scanAgent(row)
 }
@@ -222,10 +224,10 @@ type scanner interface{ Scan(dest ...any) error }
 
 func scanAgent(row scanner) (*model.Agent, error) {
 	var a model.Agent
-	var cmd, env, ca, ua, state string
+	var cmd, env, ca, ua, state, profile string
 	var ro bool
 	if err := row.Scan(&a.ID, &a.Name, &a.Type, &a.Image, &cmd, &env, &a.EnvFile, &ro,
-		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &state, &a.ContainerID, &a.AgentDir, &a.NotesDir, &ca, &ua); err != nil {
+		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &profile, &state, &a.ContainerID, &a.AgentDir, &a.NotesDir, &ca, &ua); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -233,6 +235,7 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	}
 	a.AgentRO = ro
 	a.State = model.AgentState(state)
+	a.NetworkProfile = model.NetworkProfile(profile)
 	json.Unmarshal([]byte(cmd), &a.Command)
 	json.Unmarshal([]byte(env), &a.Env)
 	a.CreatedAt, _ = parseTS(ca)
@@ -286,10 +289,40 @@ func (s *Store) UpdateNotesDir(ctx context.Context, id, dir string) error {
 	return nil
 }
 
+// UpdateAgentEnvFile sets (or with an empty path clears) the env file used
+// for secret injection at start. Clearing is required by the credential
+// migration flow once secrets live in the vault.
+func (s *Store) UpdateAgentEnvFile(ctx context.Context, id, envFile string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET env_file=?, updated_at=? WHERE id=?`,
+		envFile, ts(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("update agent env file: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateAgentNetworkProfile sets the enforced egress profile.
+func (s *Store) UpdateAgentNetworkProfile(ctx context.Context, id, profile string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET network_profile=?, updated_at=? WHERE id=?`,
+		profile, ts(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("update agent network profile: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListAgents returns all agents ordered by name.
 func (s *Store) ListAgents(ctx context.Context) ([]*model.Agent, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
-		cpu_limit,memory_mb,network_mode,state,container_id,agent_dir,notes_dir,created_at,updated_at FROM agents ORDER BY name`)
+		cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)
 	}

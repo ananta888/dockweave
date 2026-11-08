@@ -106,17 +106,18 @@ func (c *Client) Health(ctx context.Context) error {
 
 // AgentSpec is the creation payload for an agent.
 type AgentSpec struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Image       string   `json:"image"`
-	Command     []string `json:"command,omitempty"`
-	EnvFile     string   `json:"env_file,omitempty"`
-	AgentRO     *bool    `json:"agent_ro,omitempty"`
-	UID         int      `json:"uid,omitempty"`
-	GID         int      `json:"gid,omitempty"`
-	CPULimit    float64  `json:"cpu_limit,omitempty"`
-	MemoryMB    int64    `json:"memory_mb,omitempty"`
-	NetworkMode string   `json:"network_mode,omitempty"`
+	Name           string   `json:"name"`
+	Type           string   `json:"type"`
+	Image          string   `json:"image"`
+	Command        []string `json:"command,omitempty"`
+	EnvFile        string   `json:"env_file,omitempty"`
+	AgentRO        *bool    `json:"agent_ro,omitempty"`
+	UID            int      `json:"uid,omitempty"`
+	GID            int      `json:"gid,omitempty"`
+	CPULimit       float64  `json:"cpu_limit,omitempty"`
+	MemoryMB       int64    `json:"memory_mb,omitempty"`
+	NetworkMode    string   `json:"network_mode,omitempty"`
+	NetworkProfile string   `json:"network_profile,omitempty"`
 }
 
 // CreateAgent creates an agent identity.
@@ -356,6 +357,47 @@ func (c *Client) SetNotesDir(ctx context.Context, idOrName, path string) (*model
 	return &out, nil
 }
 
+// SetEnvFile sets (or clears, with an empty path) the agent env file used at
+// start. It is used by the credential migration flow.
+func (c *Client) SetEnvFile(ctx context.Context, idOrName, path string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/env-file",
+		map[string]string{"path": path}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetNetworkProfile changes the enforced egress profile (applied at restart).
+func (c *Client) SetNetworkProfile(ctx context.Context, idOrName, profile string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/network-profile",
+		map[string]string{"profile": profile}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// EgressStatusInfo is the operator-facing egress view of an agent.
+type EgressStatusInfo struct {
+	Agent         string `json:"agent"`
+	Profile       string `json:"profile"`
+	Enforced      bool   `json:"enforced"`
+	Network       string `json:"network,omitempty"`
+	Gateway       string `json:"gateway,omitempty"`
+	BrokerBaseURL string `json:"broker_base_url,omitempty"`
+	Warning       string `json:"warning,omitempty"`
+}
+
+// EgressStatus reports the configured profile and enforcement state.
+func (c *Client) EgressStatus(ctx context.Context, idOrName string) (*EgressStatusInfo, error) {
+	var out EgressStatusInfo
+	if err := c.do(ctx, "GET", "/api/v1/agents/"+idOrName+"/egress", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // RegisterMemory registers a host folder as a long-term memory store.
 func (c *Client) RegisterMemory(ctx context.Context, path string) (*MemoryInfo, error) {
 	var out MemoryInfo
@@ -494,4 +536,113 @@ func (c *Client) StreamEvents(ctx context.Context, fn func(*model.Event)) error 
 		}
 	}
 	return sc.Err()
+}
+
+// ---- broker metadata (read-only, never secret values) ----
+
+// BrokerStatus is the broker health/status document.
+type BrokerStatus struct {
+	Status    string   `json:"status"`
+	Secrets   int      `json:"secrets"`
+	Grants    int      `json:"grants"`
+	Sessions  int      `json:"sessions"`
+	Providers []string `json:"providers"`
+	Egress    string   `json:"egress"`
+}
+
+// BrokerLimits mirrors the broker grant limits needed for display.
+type BrokerLimits struct {
+	MaxRequestsPerMinute int     `json:"max_requests_per_minute,omitempty"`
+	MaxConcurrent        int     `json:"max_concurrent,omitempty"`
+	MaxRequestsPerDay    int     `json:"max_requests_per_day,omitempty"`
+	MaxRequestsPerMonth  int     `json:"max_requests_per_month,omitempty"`
+	MaxTokensPerDay      int64   `json:"max_tokens_per_day,omitempty"`
+	MaxTokensPerMonth    int64   `json:"max_tokens_per_month,omitempty"`
+	MaxCostUSDPerDay     float64 `json:"max_cost_usd_per_day,omitempty"`
+	MaxCostUSDPerMonth   float64 `json:"max_cost_usd_per_month,omitempty"`
+}
+
+// BrokerGrant is a credential grant metadata record.
+type BrokerGrant struct {
+	ID         string       `json:"id"`
+	Agent      string       `json:"agent"`
+	Credential string       `json:"credential"`
+	Provider   string       `json:"provider"`
+	Models     []string     `json:"models,omitempty"`
+	Limits     BrokerLimits `json:"limits"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	ExpiresAt  *time.Time   `json:"expires_at,omitempty"`
+}
+
+// BrokerSessionInfo is a secret-free broker session record.
+type BrokerSessionInfo struct {
+	ID        string     `json:"id"`
+	Agent     string     `json:"agent"`
+	GrantID   string     `json:"grant_id"`
+	CreatedAt time.Time  `json:"created_at"`
+	ExpiresAt time.Time  `json:"expires_at"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+// BrokerRequestEntry is a secret-free broker request log record.
+type BrokerRequestEntry struct {
+	Time             time.Time `json:"time"`
+	Agent            string    `json:"agent"`
+	Provider         string    `json:"provider"`
+	Credential       string    `json:"credential,omitempty"`
+	Method           string    `json:"method"`
+	Path             string    `json:"path"`
+	Model            string    `json:"model,omitempty"`
+	Status           int       `json:"status"`
+	Denied           bool      `json:"denied,omitempty"`
+	PromptTokens     int64     `json:"prompt_tokens"`
+	CompletionTokens int64     `json:"completion_tokens"`
+	DurationMS       int64     `json:"duration_ms"`
+}
+
+// BrokerUsage is a budget snapshot.
+type BrokerUsage struct {
+	GrantID       string  `json:"grant_id"`
+	Day           string  `json:"day"`
+	Month         string  `json:"month"`
+	RequestsDay   int     `json:"requests_day"`
+	RequestsMonth int     `json:"requests_month"`
+	TokensDay     int64   `json:"tokens_day"`
+	TokensMonth   int64   `json:"tokens_month"`
+	CostDayUSD    float64 `json:"cost_day_usd"`
+	CostMonthUSD  float64 `json:"cost_month_usd"`
+}
+
+func (c *Client) BrokerStatus(ctx context.Context) (*BrokerStatus, error) {
+	var out BrokerStatus
+	return &out, c.do(ctx, "GET", "/api/v1/broker/status", nil, &out)
+}
+
+func (c *Client) BrokerGrants(ctx context.Context, agent string) ([]BrokerGrant, error) {
+	var out []BrokerGrant
+	p := "/api/v1/broker/grants"
+	if agent != "" {
+		p += "?agent=" + url.QueryEscape(agent)
+	}
+	return out, c.do(ctx, "GET", p, nil, &out)
+}
+
+func (c *Client) BrokerSessions(ctx context.Context, agent string) ([]BrokerSessionInfo, error) {
+	var out []BrokerSessionInfo
+	p := "/api/v1/broker/sessions"
+	if agent != "" {
+		p += "?agent=" + url.QueryEscape(agent)
+	}
+	return out, c.do(ctx, "GET", p, nil, &out)
+}
+
+func (c *Client) BrokerRequests(ctx context.Context) ([]BrokerRequestEntry, error) {
+	var out []BrokerRequestEntry
+	return out, c.do(ctx, "GET", "/api/v1/broker/requests", nil, &out)
+}
+
+func (c *Client) BrokerUsage(ctx context.Context, grantID string) (*BrokerUsage, error) {
+	var out BrokerUsage
+	return &out, c.do(ctx, "GET", "/api/v1/broker/usage?grant="+url.QueryEscape(grantID), nil, &out)
 }

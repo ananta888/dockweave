@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
+	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
@@ -73,6 +74,9 @@ type Server struct {
 	Monitor    *monitor.Monitor
 	Store      *persistence.Store
 	ConfigIO   *configio.Service
+	// Broker is optional. When set, read-only broker metadata is exposed
+	// through admin/monitor GET endpoints. No secret values cross this API.
+	Broker *brokerclient.Client
 
 	mux *http.ServeMux
 }
@@ -104,6 +108,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/paths", s.agentPaths)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/agent-dir", s.setAgentDir)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/notes-dir", s.setNotesDir)
+	s.mux.HandleFunc("PUT /api/v1/agents/{id}/env-file", s.setEnvFile)
+	s.mux.HandleFunc("PUT /api/v1/agents/{id}/network-profile", s.setNetworkProfile)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/egress", s.egressStatus)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
 	s.mux.HandleFunc("GET /api/v1/config/export", s.exportConfig)
@@ -121,6 +128,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)
 	s.mux.HandleFunc("POST /api/v1/monitor/reports", s.submitReport)
+	s.mux.HandleFunc("GET /api/v1/broker/status", s.brokerStatus)
+	s.mux.HandleFunc("GET /api/v1/broker/grants", s.brokerGrants)
+	s.mux.HandleFunc("GET /api/v1/broker/sessions", s.brokerSessions)
+	s.mux.HandleFunc("GET /api/v1/broker/requests", s.brokerRequests)
+	s.mux.HandleFunc("GET /api/v1/broker/usage", s.brokerUsage)
 }
 
 // ServeHTTP implements http.Handler.
@@ -150,17 +162,18 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 type createAgentReq struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Image       string   `json:"image"`
-	Command     []string `json:"command"`
-	EnvFile     string   `json:"env_file"`
-	AgentRO     *bool    `json:"agent_ro"`
-	UID         int      `json:"uid"`
-	GID         int      `json:"gid"`
-	CPULimit    float64  `json:"cpu_limit"`
-	MemoryMB    int64    `json:"memory_mb"`
-	NetworkMode string   `json:"network_mode"`
+	Name           string   `json:"name"`
+	Type           string   `json:"type"`
+	Image          string   `json:"image"`
+	Command        []string `json:"command"`
+	EnvFile        string   `json:"env_file"`
+	AgentRO        *bool    `json:"agent_ro"`
+	UID            int      `json:"uid"`
+	GID            int      `json:"gid"`
+	CPULimit       float64  `json:"cpu_limit"`
+	MemoryMB       int64    `json:"memory_mb"`
+	NetworkMode    string   `json:"network_mode"`
+	NetworkProfile string   `json:"network_profile"`
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
@@ -177,6 +190,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		Name: req.Name, Type: req.Type, Image: req.Image, Command: req.Command,
 		EnvFile: req.EnvFile, AgentRO: ro, UID: req.UID, GID: req.GID,
 		CPULimit: req.CPULimit, MemoryMB: req.MemoryMB, NetworkMode: req.NetworkMode,
+		NetworkProfile: model.NetworkProfile(req.NetworkProfile),
 	}
 	created, err := s.Agents.Create(r.Context(), a, actor(r))
 	if err != nil {
@@ -501,6 +515,47 @@ func (s *Server) setNotesDir(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a)
 }
 
+func (s *Server) setEnvFile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain path"))
+		return
+	}
+	a, err := s.Agents.SetEnvFile(r.Context(), r.PathValue("id"), req.Path, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) setNetworkProfile(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Profile string `json:"profile"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("body must contain profile"))
+		return
+	}
+	a, err := s.Agents.SetNetworkProfile(r.Context(), r.PathValue("id"), req.Profile, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) egressStatus(w http.ResponseWriter, r *http.Request) {
+	st, err := s.Agents.EgressStatus(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
 func (s *Server) registerMemory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
@@ -645,4 +700,80 @@ func (s *Server) submitReport(w http.ResponseWriter, r *http.Request) {
 func (s *Server) fail(w http.ResponseWriter, err error) {
 	st, code := classify(err)
 	writeErr(w, st, code, err)
+}
+
+// ---- broker metadata (read-only, no secrets) ----
+
+func (s *Server) brokerUnavailable(w http.ResponseWriter) bool {
+	if s.Broker == nil {
+		writeErr(w, http.StatusServiceUnavailable, "broker_unavailable",
+			errors.New("credential broker admin socket is not configured"))
+		return true
+	}
+	return false
+}
+
+func (s *Server) brokerStatus(w http.ResponseWriter, r *http.Request) {
+	if s.brokerUnavailable(w) {
+		return
+	}
+	st, err := s.Broker.Status(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "broker_unreachable", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) brokerGrants(w http.ResponseWriter, r *http.Request) {
+	if s.brokerUnavailable(w) {
+		return
+	}
+	list, err := s.Broker.ListGrants(r.Context(), r.URL.Query().Get("agent"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "broker_unreachable", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) brokerSessions(w http.ResponseWriter, r *http.Request) {
+	if s.brokerUnavailable(w) {
+		return
+	}
+	list, err := s.Broker.ListSessions(r.Context(), r.URL.Query().Get("agent"))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "broker_unreachable", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) brokerRequests(w http.ResponseWriter, r *http.Request) {
+	if s.brokerUnavailable(w) {
+		return
+	}
+	list, err := s.Broker.Requests(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "broker_unreachable", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) brokerUsage(w http.ResponseWriter, r *http.Request) {
+	if s.brokerUnavailable(w) {
+		return
+	}
+	id := r.URL.Query().Get("grant")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", errors.New("grant query parameter is required"))
+		return
+	}
+	u, err := s.Broker.Usage(r.Context(), id)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "broker_unreachable", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, u)
 }

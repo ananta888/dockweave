@@ -75,6 +75,11 @@ ADMIN_UIDS=0:$REAL_UID
 # immediately in this shell. After your next login you may switch this to
 # "dockweave" (all members of that group may connect).
 SOCKET_GROUP=$REAL_GROUP
+
+# Optional: expose read-only credential-broker metadata via the daemon API/TUI.
+# The broker must allow UID 0 (--admin-uids 0) and the socket must be readable
+# by root. Leave unset to disable the broker metadata endpoints.
+# BROKER_ADMIN_SOCKET=/run/dockweave/broker-admin.sock
 EOF
 fi
 

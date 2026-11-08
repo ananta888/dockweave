@@ -148,7 +148,7 @@ func secretCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(put, list, rotate, revoke)
+	cmd.AddCommand(put, list, rotate, revoke, secretMigrateCmd(&adminSocket))
 	addAdminSocketFlag(cmd, &adminSocket)
 	return cmd
 }
@@ -416,24 +416,41 @@ func brokerCmd() *cobra.Command {
 }
 
 func egressCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "egress", Short: "Inspect agent egress isolation"}
-	var adminSocket string
+	cmd := &cobra.Command{Use: "egress", Short: "Inspect and set enforced agent egress profiles"}
 	status := &cobra.Command{
-		Use:   "status [AGENT]",
-		Short: "Report whether egress enforcement is active (fails closed if not)",
+		Use:   "status AGENT",
+		Short: "Show the agent's network profile and whether it is enforced",
+		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			s, err := brokerAdminClient(adminSocket).Status(ctx())
+			st, err := client().EgressStatus(ctx(), args[0])
 			if err != nil {
 				fail(err)
 			}
-			fmt.Printf("egress: %s\n", s.Egress)
-			if strings.Contains(strings.ToLower(s.Egress), "not enforced") {
-				fail(errors.New("egress isolation is NOT enforced by this build; agents with network access can bypass the broker"))
+			out(st, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "AGENT\t%s\nPROFILE\t%s\nENFORCED\t%t\nNETWORK\t%s\nGATEWAY\t%s\nBROKER BASE URL\t%s\nWARNING\t%s\n",
+					st.Agent, st.Profile, st.Enforced, st.Network, st.Gateway, st.BrokerBaseURL, st.Warning)
+			})
+			if !st.Enforced {
+				fmt.Fprintln(os.Stderr, "warning: egress is NOT enforced for this agent; it can bypass the credential broker")
 			}
 		},
 	}
-	cmd.AddCommand(status)
-	addAdminSocketFlag(cmd, &adminSocket)
+	profile := &cobra.Command{
+		Use:   "profile AGENT PROFILE",
+		Short: "Set an agent's egress profile (offline|broker-only|restricted-development|unrestricted-legacy)",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			a, err := client().SetNetworkProfile(ctx(), args[0], args[1])
+			if err != nil {
+				fail(err)
+			}
+			out(a, func(w *tabwriter.Writer) {
+				fmt.Fprintf(w, "AGENT\t%s\nPROFILE\t%s\n", a.Name, a.NetworkProfile)
+			})
+			fmt.Fprintln(os.Stderr, "profile applied at the next start/restart")
+		},
+	}
+	cmd.AddCommand(status, profile)
 	return cmd
 }
 

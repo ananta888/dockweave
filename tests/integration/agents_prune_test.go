@@ -24,6 +24,12 @@ import (
 type pruneDockerStub struct{}
 
 func (pruneDockerStub) EnsureImage(context.Context, string, io.Writer) error { return nil }
+func (pruneDockerStub) EnsureNetwork(context.Context, string, bool) (string, error) {
+	return "172.31.250.1", nil
+}
+func (pruneDockerStub) NetworkGateway(context.Context, string) (string, error) {
+	return "172.31.250.1", nil
+}
 func (pruneDockerStub) Create(context.Context, dockerclient.ContainerSpec) (string, error) {
 	return "", nil
 }

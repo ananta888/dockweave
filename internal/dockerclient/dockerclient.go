@@ -93,7 +93,82 @@ func (c *Client) EnsureImage(ctx context.Context, ref string, out io.Writer) err
 	return nil
 }
 
-// Create creates (but does not start) the hardened agent container.
+// NetworkBrokerOnly is the dedicated internal network used by agents with
+// the broker-only profile. It has no external route; the host gateway is the
+// only reachable host address. Operators bind the broker to that gateway.
+const NetworkBrokerOnly = "dockweave-broker-only"
+
+// NetworkLabel marks Docker networks created by DockWeave.
+const NetworkLabel = "dockweave.network"
+
+// EnsureNetwork creates an internal Docker network if it does not exist and
+// returns its gateway address. Existing networks with a different Internal
+// flag are rejected (fail closed). No external route is created.
+func (c *Client) EnsureNetwork(ctx context.Context, name string, internal bool) (string, error) {
+	insp, err := c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		_, cerr := c.cli.NetworkCreate(ctx, name, network.CreateOptions{
+			Internal: internal,
+			Labels:   map[string]string{LabelManaged: "true", NetworkLabel: "true"},
+		})
+		if cerr != nil {
+			// A concurrent create may have won; re-inspect once.
+			insp, err = c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+			if err != nil {
+				return "", fmt.Errorf("create network %q: %w", name, cerr)
+			}
+		} else {
+			insp, err = c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+			if err != nil {
+				return "", fmt.Errorf("inspect new network %q: %w", name, err)
+			}
+		}
+	}
+	if insp.Internal != internal {
+		return "", fmt.Errorf("network %q exists with internal=%v, want %v", name, insp.Internal, internal)
+	}
+	gw := networkGateway(insp)
+	if gw == "" {
+		return "", fmt.Errorf("network %q has no IPv4 gateway", name)
+	}
+	return gw, nil
+}
+
+// NetworkGateway returns the IPv4 gateway of an existing Docker network.
+func (c *Client) NetworkGateway(ctx context.Context, name string) (string, error) {
+	insp, err := c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		return "", fmt.Errorf("inspect network %q: %w", name, err)
+	}
+	gw := networkGateway(insp)
+	if gw == "" {
+		return "", fmt.Errorf("network %q has no IPv4 gateway", name)
+	}
+	return gw, nil
+}
+
+func networkGateway(n network.Inspect) string {
+	for _, cfg := range n.IPAM.Config {
+		if cfg.Gateway != "" {
+			return cfg.Gateway
+		}
+	}
+	return ""
+}
+
+// RemoveNetwork removes a DockWeave-created network (used by tests and
+// uninstall cleanup). It refuses to remove networks without the label.
+func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
+	insp, err := c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		return err
+	}
+	if insp.Labels[NetworkLabel] != "true" {
+		return fmt.Errorf("network %q is not managed by DockWeave", name)
+	}
+	return c.cli.NetworkRemove(ctx, name)
+}
+
 // containerEnv assembles the container environment. Long-term memory is
 // the agent's home: tool state (~/.claude, ~/.codex, …) must land under
 // /memory where it persists and where the adapter markers live. An
@@ -107,6 +182,7 @@ func containerEnv(agentEnv []string) []string {
 	return append([]string{"HOME=/memory"}, agentEnv...)
 }
 
+// Create creates (but does not start) the hardened agent container.
 func (c *Client) Create(ctx context.Context, spec ContainerSpec) (string, error) {
 	a := spec.Agent
 	labels := map[string]string{

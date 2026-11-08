@@ -44,16 +44,18 @@ const (
 var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events", "Setup"}
 
 type dataMsg struct {
-	agents     []*model.Agent
-	activity   []*model.AgentActivity
-	workspaces []*model.Workspace
-	mounts     []*model.MountState
-	events     []*model.Event
-	conflicts  []model.FileConflict
-	grants     []*model.Grant
-	memories   []sdk.MemoryInfo
-	paths      map[string]sdk.AgentPathsInfo // agent id -> folder assignments
-	err        error
+	agents       []*model.Agent
+	activity     []*model.AgentActivity
+	workspaces   []*model.Workspace
+	mounts       []*model.MountState
+	events       []*model.Event
+	conflicts    []model.FileConflict
+	grants       []*model.Grant
+	memories     []sdk.MemoryInfo
+	paths        map[string]sdk.AgentPathsInfo // agent id -> folder assignments
+	broker       *sdk.BrokerStatus
+	brokerGrants []sdk.BrokerGrant
+	err          error
 }
 
 type tickMsg time.Time
@@ -265,6 +267,12 @@ func (m *modelTUI) refresh() tea.Cmd {
 		}
 		if gs, err := m.client.ListGrants(ctx); err == nil {
 			d.grants = gs
+		}
+		if bs, err := m.client.BrokerStatus(ctx); err == nil {
+			d.broker = bs
+		}
+		if bg, err := m.client.BrokerGrants(ctx, ""); err == nil {
+			d.brokerGrants = bg
 		}
 		d.paths = map[string]sdk.AgentPathsInfo{}
 		for _, a := range d.agents {
@@ -758,6 +766,13 @@ func (m *modelTUI) viewDashboard() string {
 	}
 	fmt.Fprintf(&b, "\n%d Agents | %d Workspaces | %d Active\n",
 		len(m.data.agents), len(m.data.workspaces), active)
+	if m.data.broker != nil {
+		fmt.Fprintf(&b, "broker: %s · %d secrets · %d grants · %d sessions · egress: %s\n",
+			m.data.broker.Status, m.data.broker.Secrets, m.data.broker.Grants,
+			m.data.broker.Sessions, m.data.broker.Egress)
+	} else {
+		b.WriteString(dimStyle.Render("broker: unavailable (no admin socket configured)") + "\n")
+	}
 	if len(m.data.conflicts) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", errStyle.Render(fmt.Sprintf("⚠ %d file conflict(s):", len(m.data.conflicts))))
 		for _, c := range m.data.conflicts {
@@ -909,6 +924,17 @@ func (m *modelTUI) viewAgentDetail(a *model.Agent) string {
 	if a.UID != 0 || a.GID != 0 {
 		fmt.Fprintf(&b, "  identity  %d:%d\n", a.UID, a.GID)
 	}
+	profile := string(a.NetworkProfile)
+	if profile == "" {
+		profile = "unrestricted-legacy"
+	}
+	enforced := a.NetworkProfile == model.NetProfileOffline || a.NetworkProfile == model.NetProfileBrokerOnly
+	fmt.Fprintf(&b, "  egress    %s  (enforced=%t)\n", profile, enforced)
+	if bg := m.brokerGrantsFor(a.Name); len(bg) > 0 {
+		fmt.Fprintf(&b, "  broker    %s\n", strings.Join(bg, ", "))
+	} else {
+		b.WriteString("  broker    (no credential grant)\n")
+	}
 	b.WriteString(m.viewAgentFolders(a))
 	for _, act := range m.data.activity {
 		if act.AgentID != a.ID {
@@ -924,6 +950,21 @@ func (m *modelTUI) viewAgentDetail(a *model.Agent) string {
 		}
 	}
 	return b.String()
+}
+
+func (m *modelTUI) brokerGrantsFor(agent string) []string {
+	var out []string
+	for _, g := range m.data.brokerGrants {
+		if g.Agent != agent {
+			continue
+		}
+		s := g.Credential + " → " + g.Provider
+		if len(g.Models) > 0 {
+			s += " [" + strings.Join(g.Models, ",") + "]"
+		}
+		out = append(out, s)
+	}
+	return out
 }
 
 // viewAgentFolders lists the folder assignments of an agent container:

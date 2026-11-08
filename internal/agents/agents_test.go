@@ -107,6 +107,12 @@ type fakeDocker struct {
 }
 
 func (f *fakeDocker) EnsureImage(context.Context, string, io.Writer) error { return nil }
+func (f *fakeDocker) EnsureNetwork(context.Context, string, bool) (string, error) {
+	return "172.31.250.1", nil
+}
+func (f *fakeDocker) NetworkGateway(context.Context, string) (string, error) {
+	return "172.31.250.1", nil
+}
 func (f *fakeDocker) Create(context.Context, dockerclient.ContainerSpec) (string, error) {
 	return "cid", nil
 }
@@ -637,5 +643,70 @@ func TestSetNotesDir(t *testing.T) {
 	// The path is validated like every registered folder.
 	if _, err := svc.SetNotesDir(ctx, a.Name, "/home/krusty/forbidden", "test"); err == nil {
 		t.Fatal("invalid notes path must be rejected")
+	}
+}
+
+func TestApplyNetworkProfile(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		profile  model.NetworkProfile
+		wantMode string
+		wantEnv  bool
+		wantErr  bool
+	}{
+		{model.NetProfileOffline, "none", false, false},
+		{model.NetProfileBrokerOnly, dockerclient.NetworkBrokerOnly, true, false},
+		{model.NetProfileRestricted, "", false, true},
+		{"", "bridge", false, false},
+		{model.NetProfileLegacy, "bridge", false, false},
+	}
+	for _, tc := range cases {
+		svc, _, _, _ := setup(t)
+		a := &model.Agent{NetworkMode: "bridge", NetworkProfile: tc.profile}
+		err := svc.applyNetworkProfile(ctx, a)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("profile %q: expected error", tc.profile)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("profile %q: %v", tc.profile, err)
+			continue
+		}
+		if a.NetworkMode != tc.wantMode {
+			t.Errorf("profile %q: mode = %q, want %q", tc.profile, a.NetworkMode, tc.wantMode)
+		}
+		found := false
+		for _, e := range a.Env {
+			if strings.HasPrefix(e, "DOCKWEAVE_BROKER_BASE_URL=") {
+				found = true
+			}
+		}
+		if found != tc.wantEnv {
+			t.Errorf("profile %q: broker env = %v, want %v", tc.profile, found, tc.wantEnv)
+		}
+	}
+}
+
+func TestSetNetworkProfileRejectsUnknown(t *testing.T) {
+	svc, _, _, _ := setup(t)
+	a := mkAgent(t, svc, "netprofile")
+	if _, err := svc.SetNetworkProfile(context.Background(), a.ID, "internet-everywhere", "test"); err == nil {
+		t.Fatal("unknown profile accepted")
+	}
+	got, err := svc.SetNetworkProfile(context.Background(), a.ID, "offline", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.NetworkProfile != model.NetProfileOffline {
+		t.Fatalf("profile = %q", got.NetworkProfile)
+	}
+	st, err := svc.EgressStatus(context.Background(), a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Enforced || st.Network != "none" {
+		t.Fatalf("egress status = %+v", st)
 	}
 }
