@@ -75,7 +75,7 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     if (!this.initialized) return;
     if (changes['agentId']) {
-      this.term?.clear();
+      this.resetTerminal();
       this.connect();
     } else if (changes['running']) {
       if (this.running) this.connect();
@@ -92,7 +92,17 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private onWindowResize = () => this.resize();
 
+  private resetTerminal(): void {
+    this.disconnect();
+    this.ro?.disconnect();
+    this.ro = undefined;
+    this.term?.dispose();
+    this.term = undefined;
+    this.initTerm();
+  }
+
   private initTerm(): void {
+    if (this.term) return;
     this.term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
@@ -135,8 +145,16 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.ws = ws;
     ws.onopen = () => {
       this.status.set('');
+      this.term?.reset();
       this.term?.writeln(`\x1b[38;5;244mconnected to ${this.agentName}\x1b[0m`);
-      setTimeout(() => this.resize(), 80);
+      // TUIs only repaint on SIGWINCH. Send a *different* size first, then
+      // the real size, exactly like the native attach client. Otherwise an
+      // agent already at this size stays blank after switching agents.
+      setTimeout(() => {
+        this.fit?.fit();
+        this.send({ type: 'resize', rows: (this.term?.rows ?? 24) + 21, cols: (this.term?.cols ?? 80) + 7 });
+      }, 100);
+      setTimeout(() => this.resize(), 300);
     };
     ws.onmessage = ev => {
       if (typeof ev.data === 'string') {
@@ -154,6 +172,9 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   disconnect(): void {
     if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
       this.ws.onclose = null;
       this.ws.close();
       this.ws = undefined;
