@@ -32,7 +32,7 @@ export class App implements OnInit, OnDestroy {
 
   newAgent = {
     name: '', type: 'opencode', image: 'node:22-bookworm',
-    exec: 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto',
+    exec: 'rm -f "$HOME/.local/bin/opencode" "$HOME/.local/bin/opencode2" && npm install -g --prefix "$HOME/.local" @opencode/cli@2.2.6 && exec "$HOME/.local/bin/opencode" --auto',
     env_file: '', profile: '', uid: 1000, gid: 1000,
   };
 

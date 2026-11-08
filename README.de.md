@@ -50,9 +50,9 @@ dockweave agent create codex-01 --type codex --image node:22-bookworm \
 dockweave agent create claude-01 --type claude --image node:22-bookworm \
   --exec 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude" --dangerously-skip-permissions'
 
-# opencode (npm-Paket opencode-ai)
+# opencode (gepinnt: @opencode/cli 2.2.6)
 dockweave agent create opencode-01 --type opencode --image node:22-bookworm \
-  --exec 'npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto'
+  --exec 'rm -f "$HOME/.local/bin/opencode" "$HOME/.local/bin/opencode2" && npm install -g --prefix "$HOME/.local" @opencode/cli@2.2.6 && exec "$HOME/.local/bin/opencode" --auto'
 
 # Google Antigravity (agy) — Googles aktueller Coding-Agent
 dockweave agent create gravity-01 --type antigravity --image node:22-bookworm \

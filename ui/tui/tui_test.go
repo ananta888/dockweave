@@ -687,7 +687,7 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 	if got := m.form.name.Value(); got != "opencode-01" {
 		t.Fatalf("name after switch = %q", got)
 	}
-	if !strings.Contains(m.form.cmd.Value(), "opencode-ai") {
+	if !strings.Contains(m.form.cmd.Value(), "@opencode/cli") {
 		t.Fatalf("cmd after switch = %q", m.form.cmd.Value())
 	}
 	m.focusAction("f-name")

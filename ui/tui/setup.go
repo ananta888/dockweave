@@ -39,7 +39,7 @@ var agentPresets = map[string]agentPreset{
 	},
 	"opencode": {
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" opencode-ai && exec "$HOME/.local/bin/opencode" --auto`,
+		command: `rm -f "$HOME/.local/bin/opencode" "$HOME/.local/bin/opencode2" && npm install -g --prefix "$HOME/.local" @opencode/cli@2.2.6 && exec "$HOME/.local/bin/opencode" --auto`,
 	},
 	"claude": {
 		image:   "node:22-bookworm",
