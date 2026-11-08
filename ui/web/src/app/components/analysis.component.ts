@@ -91,6 +91,7 @@ import { Agent, AgentActivity, BrokerGrant, BrokerRequestEntry, BrokerStatus, Ev
     </div>
   `,
   styles: [`
+    :host { display:block; height:100%; min-height:0; }
     .analysis { padding:1rem 1.2rem; overflow:auto; height:100%; box-sizing:border-box; }
     .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.7rem; margin-bottom:1rem; }
     .card { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:.8rem 1rem; }

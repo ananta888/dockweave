@@ -1,5 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { KeyValuePipe } from '@angular/common';
+import { KeyValuePipe, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from './core/api.service';
 import { Store } from './core/store';
@@ -12,7 +12,7 @@ type View = 'agent' | 'analysis' | 'workspaces';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, TerminalComponent, ConfigComponent, AnalysisComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -103,5 +103,4 @@ export class App implements OnInit, OnDestroy {
     return state === 'running' ? 'on' : state === 'error' ? 'err' : 'off';
   }
 
-  trackAgent = (_: number, a: Agent) => a.id;
 }

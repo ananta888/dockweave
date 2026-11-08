@@ -36,13 +36,14 @@ import { FormsModule } from '@angular/forms';
     </div>
   `,
   styles: [`
+    :host { display:block; height:100%; min-height:0; }
     .term-shell { display:flex; flex-direction:column; height:100%; min-height:0; background:#0b0e14; }
     .term-bar { display:flex; align-items:center; gap:.6rem; padding:.45rem .8rem; background:#161b22; border-bottom:1px solid #30363d; font-size:.82rem; }
     .term-bar .dot { width:.55rem; height:.55rem; border-radius:50%; background:#f85149; }
     .term-bar .dot.on { background:#3fb950; }
     .term-bar .muted { color:#8b949e; }
     .term-bar .spacer { flex:1; }
-    .term-host { flex:1; min-height:0; padding:.35rem .5rem; overflow:hidden; }
+    .term-host { flex:1; min-height:320px; padding:.35rem .5rem; overflow:hidden; }
     .term-overlay { position:absolute; inset:3rem 0 4rem 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem; background:rgba(11,14,20,.72); }
     .prompt { display:flex; gap:.5rem; padding:.5rem .8rem; border-top:1px solid #30363d; background:#0f141b; }
     .prompt input { flex:1; }
@@ -83,10 +84,13 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('resize', this.onWindowResize);
     this.disconnect();
     this.ro?.disconnect();
     this.term?.dispose();
   }
+
+  private onWindowResize = () => this.resize();
 
   private initTerm(): void {
     this.term = new Terminal({
@@ -108,6 +112,11 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.term.onData(data => this.send({ type: 'input', data }));
     this.ro = new ResizeObserver(() => this.resize());
     this.ro.observe(this.host.nativeElement);
+    window.addEventListener('resize', this.onWindowResize);
+    // The panel may get its final height after the first paint.
+    requestAnimationFrame(() => this.resize());
+    setTimeout(() => this.resize(), 120);
+    setTimeout(() => this.resize(), 500);
   }
 
   private resize(): void {

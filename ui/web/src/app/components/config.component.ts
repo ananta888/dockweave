@@ -119,6 +119,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
     </div>
   `,
   styles: [`
+    :host { display:block; height:100%; min-height:0; }
     .config { padding:1rem 1.2rem; overflow:auto; height:100%; box-sizing:border-box; }
     section { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:1rem; margin-bottom:1rem; }
     h3 { margin:0 0 .8rem; font-size:.95rem; color:#58a6ff; text-transform:uppercase; letter-spacing:.06em; }

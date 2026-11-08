@@ -67,7 +67,10 @@ export class Store {
     const [agents, activity, workspaces, grants, mounts, events, conflicts, broker, bgrants, breqs, providers] = results;
     if (agents.status === 'fulfilled') {
       this.agents.set(agents.value);
-      if (!this.selectedId() && agents.value.length) this.select(agents.value[0].id);
+      if (!this.selectedId() && agents.value.length) {
+        const running = agents.value.find(a => a.state === 'running');
+        this.select((running ?? agents.value[0]).id);
+      }
       if (this.selectedId() && !agents.value.some(a => a.id === this.selectedId())) {
         this.select(agents.value[0]?.id ?? null);
       }

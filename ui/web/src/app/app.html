@@ -14,18 +14,12 @@
     </div>
 
     <div class="agent-list">
-      @for (a of store.agents(); track trackAgent($index, a)) {
-        <button type="button" class="agent-row" [class.active]="store.selectedId() === a.id" (click)="select(a)">
+      <button *ngFor="let a of store.agents()" type="button" class="agent-row" [class.active]="store.selectedId() === a.id" (click)="select(a)">
           <span class="state" [class]="stateClass(a.state)"></span>
           <span class="agent-meta">
             <span class="agent-name">{{ a.name }}</span>
             <span class="agent-sub">{{ a.type }} · {{ a.state }}</span>
-          </span>
-          @if (store.conflicts().length) {
-            <span class="conflict" title="file conflict">⚠</span>
-          }
-        </button>
-      }
+          </span>        </button>
       @if (!store.agents().length) {
         <div class="empty">No agents yet.<br /><button class="link" (click)="newOpen.set(true)">Create one</button></div>
       }

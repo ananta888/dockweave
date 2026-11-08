@@ -79,7 +79,8 @@
 .state-pill { font-size: .72rem; padding: .2rem .55rem; border-radius: 999px; background: #21262d; color: #8b949e; text-transform: uppercase; letter-spacing: .05em; }
 .state-pill.on { background: #23863633; color: #3fb950; }
 .state-pill.err { background: #da363333; color: #f85149; }
-.agent-body { flex: 1; min-height: 0; position: relative; }
+.agent-body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+.agent-body > * { flex: 1; min-height: 0; }
 
 .banner { padding: .55rem .9rem; font-size: .82rem; }
 .banner.error { background: #3d1114; color: #ff7b72; border-bottom: 1px solid #f85149; }
