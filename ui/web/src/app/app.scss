@@ -72,6 +72,9 @@
 }
 .agent-head h1 { margin: 0; font-size: 1.15rem; }
 .agent-actions { display: flex; gap: .3rem; margin-right: .5rem; }
+.action-status { display:flex; align-items:center; gap:.4rem; color:#d29922; font-size:.78rem; margin-right:.5rem; }
+.spinner { width:.8rem; height:.8rem; border:2px solid #d2992255; border-top-color:#d29922; border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 .agent-actions button.small { padding: .2rem .5rem; font-size: .72rem; }
 .agent-tabs { display: flex; gap: .25rem; }
 .agent-tabs button {

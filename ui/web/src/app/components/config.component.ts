@@ -115,12 +115,12 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
         </div>
         <div class="actions">
           <button class="primary" (click)="save()" [disabled]="busy()">Save</button>
-          <button (click)="start()" [disabled]="busy()">Start</button>
-          <button (click)="stop()" [disabled]="busy()">Stop</button>
-          <button (click)="restart()" [disabled]="busy()">Restart</button>
+          <button (click)="start()" [disabled]="busy()">{{ pending() === 'start' ? 'Starting…' : 'Start' }}</button>
+          <button (click)="stop()" [disabled]="busy()">{{ pending() === 'stop' ? 'Stopping…' : 'Stop' }}</button>
+          <button (click)="restart()" [disabled]="busy()">{{ pending() === 'restart' ? 'Restarting…' : 'Restart' }}</button>
           <span class="spacer"></span>
           <label class="inline"><input type="checkbox" [(ngModel)]="prune" /> delete host data too</label>
-          <button class="danger" (click)="remove()" [disabled]="busy()">Delete agent</button>
+          <button class="danger" (click)="remove()" [disabled]="busy()">{{ pending() === 'remove' ? 'Deleting…' : 'Delete agent' }}</button>
         </div>
         @if (egress) {
           <div class="notice" [class.warn]="!egress.enforced">
@@ -239,6 +239,7 @@ export class ConfigComponent implements OnChanges {
   error = signal('');
   snapshots = signal<MemorySnapshot[]>([]);
   memories = signal<MemoryInfo[]>([]);
+  pending = signal<'start' | 'stop' | 'restart' | 'remove' | ''>('');
 
   type = 'custom';
   image = '';
@@ -318,15 +319,23 @@ export class ConfigComponent implements OnChanges {
     }), 'Configuration saved (restart to apply)');
   }
 
-  start(): void { void this.run(() => new Promise<void>((res, rej) => this.api.startAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent started'); }
-  stop(): void { void this.run(() => new Promise<void>((res, rej) => this.api.stopAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent stopped'); }
-  restart(): void { void this.run(() => new Promise<void>((res, rej) => this.api.restartAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent restarted'); }
+  start(): void { this.lifecycle('start', () => this.api.startAgent(this.agent.id), 'Agent started'); }
+  stop(): void { this.lifecycle('stop', () => this.api.stopAgent(this.agent.id), 'Agent stopped'); }
+  restart(): void { this.lifecycle('restart', () => this.api.restartAgent(this.agent.id), 'Agent restarted'); }
+
+  private lifecycle(kind: 'start' | 'stop' | 'restart', fn: () => { subscribe: (o: { next: () => void; error: (e: unknown) => void }) => unknown }, ok: string): void {
+    this.pending.set(kind);
+    void this.run(() => new Promise<void>((res, rej) => fn().subscribe({ next: () => res(), error: rej })), ok)
+      .finally(() => this.pending.set(''));
+  }
   remove(): void {
     const msg = this.prune
       ? `Delete agent ${this.agent.name} AND all host data (/agent, /memory, workspace)?`
       : `Delete agent ${this.agent.name}? Host data is kept.`;
     if (!confirm(msg)) return;
-    void this.run(() => new Promise<void>((res, rej) => this.api.removeAgent(this.agent.id, this.prune).subscribe({ next: () => res(), error: rej })), 'Agent deleted');
+    this.pending.set('remove');
+    void this.run(() => new Promise<void>((res, rej) => this.api.removeAgent(this.agent.id, this.prune).subscribe({ next: () => res(), error: rej })), 'Agent deleted')
+      .finally(() => this.pending.set(''));
   }
 
   grantFor(workspaceId: string): Grant | undefined {

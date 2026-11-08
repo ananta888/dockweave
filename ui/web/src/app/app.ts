@@ -23,6 +23,8 @@ export class App implements OnInit, OnDestroy {
   private timer?: ReturnType<typeof setInterval>;
 
   view = signal<View>('agent');
+  actionBusy = signal(false);
+  action = signal<'start' | 'stop' | 'restart' | 'remove' | ''>('');
   agentTab = signal<'chat' | 'config'>('chat');
   newOpen = signal(false);
   creating = signal(false);
@@ -55,22 +57,32 @@ export class App implements OnInit, OnDestroy {
 
   private agentAction(action: 'start' | 'stop' | 'restart' | 'remove'): void {
     const a = this.store.selected();
-    if (!a) return;
+    if (!a || this.actionBusy()) return;
     if (action === 'remove') {
       if (!confirm(`Delete agent ${a.name}?\n\nThe identity and container are removed. Host data (/agent, /memory, workspace) is kept.`)) return;
-      this.api.removeAgent(a.id).subscribe({
-        next: () => void this.store.refresh(),
-        error: e => this.store.error.set(e.message),
-      });
+    }
+    this.action.set(action);
+    this.actionBusy.set(true);
+    const done = () => { this.actionBusy.set(false); this.action.set(''); };
+    const fail = (e: { message?: string }) => { done(); this.store.error.set(e.message ?? 'action failed'); };
+    if (action === 'remove') {
+      this.api.removeAgent(a.id).subscribe({ next: () => { void this.store.refresh(); done(); }, error: fail });
       return;
     }
     const req = action === 'start' ? this.api.startAgent(a.id)
       : action === 'stop' ? this.api.stopAgent(a.id)
       : this.api.restartAgent(a.id);
-    req.subscribe({
-      next: () => void this.store.refresh(),
-      error: e => this.store.error.set(e.message),
-    });
+    req.subscribe({ next: () => { void this.store.refresh(); done(); }, error: fail });
+  }
+
+  actionLabel(): string {
+    switch (this.action()) {
+      case 'start': return 'Starting agent…';
+      case 'stop': return 'Stopping agent…';
+      case 'restart': return 'Restarting agent…';
+      case 'remove': return 'Deleting agent…';
+      default: return '';
+    }
   }
 
   startSelected(): void { this.agentAction('start'); }

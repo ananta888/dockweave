@@ -61,11 +61,14 @@
               <span class="spacer"></span>
               <span class="state-pill" [class]="stateClass(agent.state)">{{ agent.state }}</span>
               <div class="agent-actions">
-                <button class="small" (click)="startSelected()" [disabled]="agent.state === 'running'">Start</button>
-                <button class="small" (click)="stopSelected()" [disabled]="agent.state !== 'running'">Stop</button>
-                <button class="small" (click)="restartSelected()">Restart</button>
-                <button class="small danger" (click)="removeSelected()">Delete</button>
+                <button class="small" (click)="startSelected()" [disabled]="agent.state === 'running' || actionBusy()">{{ action() === 'start' ? 'Starting…' : 'Start' }}</button>
+                <button class="small" (click)="stopSelected()" [disabled]="agent.state !== 'running' || actionBusy()">{{ action() === 'stop' ? 'Stopping…' : 'Stop' }}</button>
+                <button class="small" (click)="restartSelected()" [disabled]="actionBusy()">{{ action() === 'restart' ? 'Restarting…' : 'Restart' }}</button>
+                <button class="small danger" (click)="removeSelected()" [disabled]="actionBusy()">{{ action() === 'remove' ? 'Deleting…' : 'Delete' }}</button>
               </div>
+              @if (actionBusy()) {
+                <div class="action-status"><span class="spinner"></span>{{ actionLabel() }}</div>
+              }
               <div class="agent-tabs">
                 <button [class.active]="agentTab() === 'chat'" (click)="agentTab.set('chat')">Chat / Terminal</button>
                 <button [class.active]="agentTab() === 'config'" (click)="agentTab.set('config')">Configuration</button>
