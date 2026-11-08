@@ -71,6 +71,8 @@
   padding: .7rem 1.1rem; border-bottom: 1px solid #21262d; background: #0f141b;
 }
 .agent-head h1 { margin: 0; font-size: 1.15rem; }
+.agent-actions { display: flex; gap: .3rem; margin-right: .5rem; }
+.agent-actions button.small { padding: .2rem .5rem; font-size: .72rem; }
 .agent-tabs { display: flex; gap: .25rem; }
 .agent-tabs button {
   background: transparent; border: 1px solid #30363d; color: #8b949e; padding: .35rem .7rem; border-radius: 6px; cursor: pointer; font-size: .78rem;

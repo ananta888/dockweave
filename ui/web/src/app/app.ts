@@ -53,14 +53,30 @@ export class App implements OnInit, OnDestroy {
     this.agentTab.set('chat');
   }
 
-  startSelected(): void {
+  private agentAction(action: 'start' | 'stop' | 'restart' | 'remove'): void {
     const a = this.store.selected();
     if (!a) return;
-    this.api.startAgent(a.id).subscribe({
+    if (action === 'remove') {
+      if (!confirm(`Delete agent ${a.name}?\n\nThe identity and container are removed. Host data (/agent, /memory, workspace) is kept.`)) return;
+      this.api.removeAgent(a.id).subscribe({
+        next: () => void this.store.refresh(),
+        error: e => this.store.error.set(e.message),
+      });
+      return;
+    }
+    const req = action === 'start' ? this.api.startAgent(a.id)
+      : action === 'stop' ? this.api.stopAgent(a.id)
+      : this.api.restartAgent(a.id);
+    req.subscribe({
       next: () => void this.store.refresh(),
       error: e => this.store.error.set(e.message),
     });
   }
+
+  startSelected(): void { this.agentAction('start'); }
+  stopSelected(): void { this.agentAction('stop'); }
+  restartSelected(): void { this.agentAction('restart'); }
+  removeSelected(): void { this.agentAction('remove'); }
 
   create(): void {
     const f = this.newAgent;

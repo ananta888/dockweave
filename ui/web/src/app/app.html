@@ -60,6 +60,12 @@
               </div>
               <span class="spacer"></span>
               <span class="state-pill" [class]="stateClass(agent.state)">{{ agent.state }}</span>
+              <div class="agent-actions">
+                <button class="small" (click)="startSelected()" [disabled]="agent.state === 'running'">Start</button>
+                <button class="small" (click)="stopSelected()" [disabled]="agent.state !== 'running'">Stop</button>
+                <button class="small" (click)="restartSelected()">Restart</button>
+                <button class="small danger" (click)="removeSelected()">Delete</button>
+              </div>
               <div class="agent-tabs">
                 <button [class.active]="agentTab() === 'chat'" (click)="agentTab.set('chat')">Chat / Terminal</button>
                 <button [class.active]="agentTab() === 'config'" (click)="agentTab.set('config')">Configuration</button>

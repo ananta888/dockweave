@@ -119,7 +119,8 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
           <button (click)="stop()" [disabled]="busy()">Stop</button>
           <button (click)="restart()" [disabled]="busy()">Restart</button>
           <span class="spacer"></span>
-          <button class="danger" (click)="remove()" [disabled]="busy()">Remove</button>
+          <label class="inline"><input type="checkbox" [(ngModel)]="prune" /> delete host data too</label>
+          <button class="danger" (click)="remove()" [disabled]="busy()">Delete agent</button>
         </div>
         @if (egress) {
           <div class="notice" [class.warn]="!egress.enforced">
@@ -212,6 +213,7 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
     .notice.warn { background:#2d210b; border-color:#d29922; }
     .notice.error { background:#3d1114; border-color:#f85149; }
     .muted { color:#8b949e; }
+    label.inline { flex-direction:row; align-items:center; gap:.3rem; font-size:.78rem; }
     .mono { font-family:ui-monospace, monospace; }
     .folder { border:1px solid #21262d; border-radius:6px; padding:.55rem .7rem; margin-bottom:.55rem; }
     .folder-head { display:flex; align-items:center; gap:.6rem; }
@@ -250,6 +252,7 @@ export class ConfigComponent implements OnChanges {
   grantMode = 'rw';
   memoryId = '';
   newMemoryPath = '';
+  prune = false;
 
   private readonly api = inject(ApiService);
   private readonly store = inject(Store);
@@ -319,8 +322,11 @@ export class ConfigComponent implements OnChanges {
   stop(): void { void this.run(() => new Promise<void>((res, rej) => this.api.stopAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent stopped'); }
   restart(): void { void this.run(() => new Promise<void>((res, rej) => this.api.restartAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent restarted'); }
   remove(): void {
-    if (!confirm(`Remove agent ${this.agent.name}? Host data is kept.`)) return;
-    void this.run(() => new Promise<void>((res, rej) => this.api.removeAgent(this.agent.id).subscribe({ next: () => res(), error: rej })), 'Agent removed');
+    const msg = this.prune
+      ? `Delete agent ${this.agent.name} AND all host data (/agent, /memory, workspace)?`
+      : `Delete agent ${this.agent.name}? Host data is kept.`;
+    if (!confirm(msg)) return;
+    void this.run(() => new Promise<void>((res, rej) => this.api.removeAgent(this.agent.id, this.prune).subscribe({ next: () => res(), error: rej })), 'Agent deleted');
   }
 
   grantFor(workspaceId: string): Grant | undefined {
