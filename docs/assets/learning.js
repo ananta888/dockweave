@@ -1,29 +1,17 @@
 (() => {
   'use strict';
 
-  const STORAGE = 'dockweave-learning-v2';
   const GH_DW = 'https://github.com/ananta888/dockweave/blob/main/';
   const GH_HR = 'https://github.com/herdrdev/herdr/blob/master/';
-
-  const state = load();
-
-  function load() {
-    try {
-      const s = JSON.parse(localStorage.getItem(STORAGE) || '{}');
-      return { done: Array.isArray(s.done) ? s.done : [], checks: Array.isArray(s.checks) ? s.checks : [] };
-    } catch { return { done: [], checks: [] }; }
-  }
-  function save() { try { localStorage.setItem(STORAGE, JSON.stringify(state)); } catch {} }
-  const isDone = id => state.done.includes(id);
+  const POS_KEY = 'dockweave-deck-pos';
+  const CHK_KEY = 'dockweave-deck-checks';
 
   /* ================= helpers ================= */
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
+  function rv(i, extra) { return `class="rv ${extra || ''}" style="--i:${i}"`; }
 
-  // Compact markdown renderer for the original build-your-own.de.md sections.
-  // Supports ~~~/``` fences, headings, lists, checkbox lists, tables, quotes, hr,
-  // inline code, bold and links.
   function renderMd(src) {
     const lines = String(src).split('\n');
     const out = [];
@@ -32,113 +20,176 @@
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
     while (i < lines.length) {
       const line = lines[i];
       const fence = line.match(/^\s*(```|~~~)([A-Za-z0-9_-]*)\s*$/);
       if (fence) {
-        const buf = [];
-        i++;
+        const buf = []; i++;
         while (i < lines.length && !/^\s*(```|~~~)\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
-        i++; // closing fence
+        i++;
         out.push('<pre><code>' + escapeHtml(buf.join('\n')) + '</code></pre>');
         continue;
       }
       if (/^\s*$/.test(line)) { i++; continue; }
       if (/^\s*-{3,}\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
-
       const h = line.match(/^(#{1,6})\s+(.*)$/);
-      if (h) {
-        const lvl = Math.min(2 + h[1].length, 6);
-        out.push('<h' + lvl + '>' + inline(h[2]) + '</h' + lvl + '>');
-        i++; continue;
-      }
-
+      if (h) { const lvl = Math.min(2 + h[1].length, 6); out.push('<h' + lvl + '>' + inline(h[2]) + '</h' + lvl + '>'); i++; continue; }
       if (/^\s*[-*]\s+\[[ xX]\]\s+/.test(line)) {
         const items = [];
         while (i < lines.length && /^\s*[-*]\s+\[[ xX]\]\s+/.test(lines[i])) {
           const m = lines[i].match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/);
-          const checked = m[1].toLowerCase() === 'x';
-          items.push('<li><input type="checkbox" disabled ' + (checked ? 'checked' : '') + '> ' + inline(m[2]) + '</li>');
+          items.push('<li><input type="checkbox" disabled ' + (m[1].toLowerCase() === 'x' ? 'checked' : '') + '> ' + inline(m[2]) + '</li>');
           i++;
         }
-        out.push('<ul>' + items.join('') + '</ul>');
-        continue;
+        out.push('<ul>' + items.join('') + '</ul>'); continue;
       }
       if (/^\s*[-*+]\s+/.test(line)) {
         const items = [];
-        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
-          items.push('<li>' + inline(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>');
-          i++;
-        }
-        out.push('<ul>' + items.join('') + '</ul>');
-        continue;
+        while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { items.push('<li>' + inline(lines[i].replace(/^\s*[-*+]\s+/, '')) + '</li>'); i++; }
+        out.push('<ul>' + items.join('') + '</ul>'); continue;
       }
       if (/^\s*\d+[.)]\s+/.test(line)) {
         const items = [];
-        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
-          items.push('<li>' + inline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>');
-          i++;
-        }
-        out.push('<ol>' + items.join('') + '</ol>');
-        continue;
+        while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { items.push('<li>' + inline(lines[i].replace(/^\s*\d+[.)]\s+/, '')) + '</li>'); i++; }
+        out.push('<ol>' + items.join('') + '</ol>'); continue;
       }
       if (/^\s*>/.test(line)) {
         const buf = [];
-        while (i < lines.length && /^\s*>/.test(lines[i])) {
-          buf.push(lines[i].replace(/^\s*>\s?/, ''));
-          i++;
-        }
-        out.push('<blockquote>' + inline(buf.join(' ')) + '</blockquote>');
-        continue;
+        while (i < lines.length && /^\s*>/.test(lines[i])) { buf.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+        out.push('<blockquote>' + inline(buf.join(' ')) + '</blockquote>'); continue;
       }
       if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
-        const header = line.split('|').slice(1, -1).map(c => c.trim());
-        i += 2;
+        const header = line.split('|').slice(1, -1).map(c => c.trim()); i += 2;
         const rows = [];
-        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
-          rows.push(lines[i].split('|').slice(1, -1).map(c => c.trim()));
-          i++;
-        }
-        out.push('<table><thead><tr>' + header.map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>'
-          + rows.map(r => '<tr>' + r.map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>');
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(lines[i].split('|').slice(1, -1).map(c => c.trim())); i++; }
+        out.push('<table><thead><tr>' + header.map(c => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>' + rows.map(r => '<tr>' + r.map(c => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table>');
         continue;
       }
-
-      out.push('<p>' + inline(line) + '</p>');
-      i++;
+      out.push('<p>' + inline(line) + '</p>'); i++;
     }
     return out.join('\n');
   }
 
-  /* ================= phases (17 Abschnitte aus build-your-own.de.md) ================= */
-  const phases = [
+  /* ================= page renderers ================= */
+  function codeBlock(file, lang, code, url) {
+    return `<div class="codefile">
+      <div class="codefile-head"><span class="fname">${file}</span>${url ? `<a href="${url}" target="_blank" rel="noopener">↗</a>` : ''}<span class="lang">${lang}</span></div>
+      <pre><code>${escapeHtml(code)}</code></pre>
+    </div>`;
+  }
+
+  function renderPage(ch, p, pi, total) {
+    switch (p.t) {
+      case 'intro':
+        return `<div class="pg-intro">
+          <span class="kick" ${rv(0)}>${ch.kicker}</span>
+          <h1 ${rv(1)}>${ch.title}</h1>
+          <p class="sub" ${rv(2)}>${ch.sub || ''}</p>
+          <p class="hint" ${rv(3)}>Seite ${pi + 1} von ${total} · <span class="hint-keys">weiter mit <kbd>→</kbd> oder Klick</span></p>
+        </div>`;
+
+      case 'bullets':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2>${p.sub ? `<p class="sub" ${rv(1)}>${p.sub}</p>` : ''}</div>
+        <div class="bullets">${p.points.map((pt, i) => `<div class="bullet" ${rv(i + 1)}><span class="mark">▸</span><span class="t">${pt}</span></div>`).join('')}</div>`;
+
+      case 'numbered':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2>${p.sub ? `<p class="sub" ${rv(1)}>${p.sub}</p>` : ''}</div>
+        <div class="olist">${p.items.map((it, i) => `<div class="item" ${rv(i + 1)}><span class="n">${i + 1}</span><span class="t">${it}</span></div>`).join('')}</div>`;
+
+      case 'code':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+          <div ${rv(1)}>${codeBlock(p.file, p.lang, p.code, p.url)}</div>`;
+
+      case 'codePair':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="codepair">
+          <div ${rv(1)}>${codeBlock('DockWeave · ' + p.dw.file, p.dw.lang, p.dw.code, p.dw.url)}</div>
+          <div ${rv(2)}>${codeBlock('herdr · ' + p.hr.file, p.hr.lang, p.hr.code, p.hr.url)}</div>
+        </div>`;
+
+      case 'md':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+          <div class="mdview" ${rv(1)}>${renderMd(p.md)}</div>`;
+
+      case 'table':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="tbl-wrap" ${rv(1)}>
+          <table class="tbl"><thead><tr>${p.head.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+          <tbody>${p.rows.map((r, i) => `<tr ${rv(i + 1)}>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>
+        </div>`;
+
+      case 'quiz':
+        return `<div class="page-head"><h2 ${rv(0)}>Mini-Check</h2></div>
+        <div class="quiz" data-quiz data-answer="${p.answer}" data-ok="${escapeHtml(p.ok)}" data-bad="${escapeHtml(p.bad)}" ${rv(1)}>
+          <p class="q">${p.q}</p>
+          <div class="quiz-options">${p.options.map((o, i) => `<button type="button" data-opt="${i}">${o}</button>`).join('')}</div>
+          <div class="quiz-feedback"></div>
+        </div>`;
+
+      case 'layers':
+        return `<div class="page-head"><h2 ${rv(0)}>Die Schichten</h2><p class="sub" ${rv(1)}>Jede Schicht ist eine Vertrauensgrenze. Klicke für die Erklärung.</p></div>
+        <div class="layers" data-layers ${rv(1)}></div>
+        <div class="layer-explanation" data-layer-exp ${rv(2)}><h4>Los geht's</h4><p>Wähle eine Schicht.</p></div>`;
+
+      case 'checklist':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2><p class="sub" ${rv(1)}>Hake ab, was dein eigener Aufbau erfüllt. Der Stand bleibt lokal gespeichert.</p></div>
+        <div class="checklist" data-checklist ${rv(1)}>${p.items.map((c, i) => `<label ${rv(0)}><input type="checkbox" data-check="${i}"><span>${c}</span></label>`).join('')}</div>`;
+
+      case 'sim':
+        return `<div class="page-head"><h2 ${rv(0)}>Spielwiese: der Agent-Loop</h2><p class="sub" ${rv(1)}>planen → handeln → beobachten. Klicke dich durch einen simulierten Lauf.</p></div>
+        <div class="simulator" ${rv(1)}>
+          <div class="sim-log" data-sim-log><div class="sim-line plan">[bereit] Klicke „Nächster Schritt“.</div></div>
+          <div class="sim-actions"><button class="btn primary" data-sim-next>Nächster Schritt</button><button class="btn ghost" data-sim-reset>Zurücksetzen</button></div>
+        </div>`;
+
+      case 'cards':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2>${p.sub ? `<p class="sub" ${rv(1)}>${p.sub}</p>` : ''}</div>
+        <div class="cards">${p.cards.map((c, i) => `<div class="card" ${rv(i + 1)}>${c.icon ? `<div class="icon">${c.icon}</div>` : ''}<h3>${c.title}</h3><p>${c.text}</p></div>`).join('')}</div>`;
+
+      case 'vsCards':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="vs-cards">
+          <div class="vs-card dw" ${rv(1)}><h3>DockWeave <span class="tag">Go · Sandbox + Control Plane</span></h3><div class="role">Container-Sandbox, Workspace-Grants, Credential-Broker, Egress, Audit — die <strong>Sicherheits- und Grenzebene</strong>.</div><p><strong>Repo:</strong> <a href="https://github.com/ananta888/dockweave" target="_blank" rel="noopener">ananta888/dockweave</a></p><p>Führt KI-Agenten in <strong>isolierten Docker-Containern</strong> aus. Liefert Identität, Umgebung und Grenzen — bringt aber <strong>keinen eigenen Harness</strong> mit (nutzt OpenCode, Codex, Claude Code).</p></div>
+          <div class="vs-card hr" ${rv(2)}><h3>herdr <span class="tag">Rust · Terminal-Runtime</span></h3><div class="role">Terminal-Multiplexer &amp; Session-Manager — die <strong>Betriebs- und Bedienebene</strong>.</div><p><strong>Repo:</strong> <a href="https://github.com/herdrdev/herdr" target="_blank" rel="noopener">herdrdev/herdr</a> · <a href="https://herdr.dev" target="_blank" rel="noopener">herdr.dev</a></p><p>„the runtime your coding agents live on“ — hält Terminals in einem Hintergrund-Server am Leben (detach/reattach), bündelt lokale + SSH-Maschinen und lässt Agenten Panes steuern. <strong>Ownet die Terminals, nicht die Container.</strong></p></div>
+        </div>`;
+
+      case 'procontra':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="procontra">${p.cols.map((c, i) => `<div class="pc-col ${c.tone}" ${rv(i + 1)}><h4>${c.head}</h4><ul>${c.items.map(x => `<li>${x}</li>`).join('')}</ul></div>`).join('')}</div>`;
+
+      case 'note':
+        return `<div class="note ${p.tone === 'blue' ? 'blue' : ''}" ${rv(0)}>${p.text}</div>`;
+    }
+    return '';
+  }
+
+  /* ================= chapters ================= */
+  const chapters = [
     {
-      id: 'm0', code: 'M0', num: '§0', title: 'Denken: Agent ≠ Modell',
-      sub: 'Das mentale Modell, bevor du baust',
-      body: [
-        'Ein Modell erzeugt Text. Ein Harness macht daraus Aktionen.',
-        'Der Agent ist Identität + Konfiguration + Harness-Laufzeit.',
-        'Der Container ist die Sandbox — nicht die Identität.',
-        'Trenne Modell, Harness, Sandbox, Policy und Credentials.'
-      ],
-      codeFiles: [
-        { file: 'internal/model/model.go', lang: 'go', code:
-`type Agent struct {
-    ID   string ` + "`json:\"id\"`" + `   // ag_…, stabil über Container-Lebenszyklen
-    Name string ` + "`json:\"name\"`" + `
-    Type string ` + "`json:\"type\"`" + ` // codex | opencode | claude | gemini | custom
-    Image string ` + "`json:\"image\"`" + `
-    State AgentState ` + "`json:\"state\"`" + `
-    ContainerID string ` + "`json:\"container_id,omitempty\"`" + ` // wechselt — Identität nicht
-}` }
-      ],
-      md: `## 0. Das mentale Modell
-
-Ein Agent ist **kein** einzelnes Programm. Er besteht aus mehreren Schichten:
-
-~~~text
-Nutzer / Operator
+      id: 'intro', kicker: 'Intro', title: 'Baue dein eigenes Agenten-System',
+      sub: 'Kein fertiges Produkt, sondern ein Verstehensweg: vom Agent-Loop über die Sandbox bis zu secretless Credentials, Egress, Audit, UI und MCP — mit einem direkten Vergleich DockWeave vs. herdr.',
+      pages: [
+        { t: 'intro' },
+        { t: 'cards', title: 'Worum geht es?', sub: 'Ein Agent ist nicht ein Programm, sondern ein System aus Schichten.', cards: [
+          { icon: '🧠', title: 'Harness', text: 'Macht aus Modell-Text echte Aktionen: Tools, Shell, Dateien, Schleife.' },
+          { icon: '📦', title: 'Sandbox', text: 'Begrenzt, was der Agent erreichen kann — Dateien, Prozesse, Netzwerk.' },
+          { icon: '🔐', title: 'Policy & Secrets', text: 'Entscheidet, wer was darf — und hält echte Keys aus dem Agenten heraus.' }
+        ]},
+        { t: 'layers' },
+        { t: 'bullets', title: 'So liest du diese Präsentation', points: [
+          'Jedes <b>Modul</b> (M0–M16) ist ein Kapitel mit mehreren durchklickbaren Vollbild-Seiten.',
+          'Navigiere mit den <b>Pfeiltasten</b> <kbd>→</kbd> <kbd>←</kbd> oder den Buttons unten.',
+          'Die <b>Übersicht</b> (☰) springt direkt zu jedem Kapitel.',
+          'In Quiz-Seiten klickst du eine Antwort an; Checklisten speichern deinen Stand lokal.',
+          'Überall ist <b>echter Code</b> verlinkt — DockWeave (Go) und herdr (Rust).'
+        ]}
+      ]
+    },
+    {
+      id: 'm0', kicker: 'Modul 0', title: 'Denken: Agent ≠ Modell',
+      sub: 'Das mentale Modell, bevor du baust', pages: [
+        { t: 'code', title: 'Das mentale Modell', lang: 'text', file: 'Schichten eines Agenten-Systems', code:
+`Nutzer / Operator
       │
       ▼
 Steuerungsebene (CLI, API, UI)
@@ -150,43 +201,32 @@ Orchestrierung (Agenten, Ketten, Gates)
       ├── Harness      (Prompt, Tools, Loop)
       ├── Modell       (LLM-Provider)
       ├── Gedächtnis   (Memory, Knowledge, Skills)
-      └── Credentials  (Vault, Broker, Sessions)
-~~~
-
-Merksätze:
-
-- Das **Modell** erzeugt Text.
-- Der **Harness** macht daraus Aktionen (Tools, Shell, Dateien).
-- Die **Sandbox** begrenzt, was diese Aktionen erreichen können.
-- Die **Steuerungsebene** entscheidet, wer was darf.
-- **Credentials** gehören nicht in den Agenten.
-
-Wenn du diese fünf Dinge sauber trennst, hast du die wichtigste Architektur verstanden.`,
-      links: [['Konzeptleitfaden', 'https://github.com/ananta888/dockweave/blob/main/docs/learning/agent-harness.de.md']],
-      quiz: {
-        q: 'Was ist ein Harness?',
-        options: ['Das LLM selbst', 'Die Schleife und Werkzeuge um das Modell', 'Ein Docker-Container', 'Ein API-Key'],
-        answer: 1,
-        ok: 'Richtig. Der Harness steuert das Modell und führt Tools aus.',
-        bad: 'Nicht ganz: Das Modell erzeugt Text; der Harness macht daraus Aktionen.'
-      }
+      └── Credentials  (Vault, Broker, Sessions)` },
+        { t: 'bullets', title: 'Merksätze', points: [
+          'Das <b>Modell</b> erzeugt Text.',
+          'Der <b>Harness</b> macht daraus Aktionen (Tools, Shell, Dateien).',
+          'Die <b>Sandbox</b> begrenzt, was diese Aktionen erreichen können.',
+          'Die <b>Steuerungsebene</b> entscheidet, wer was darf.',
+          '<b>Credentials</b> gehören nicht in den Agenten.'
+        ]},
+        { t: 'code', title: 'Identität im echten Code', lang: 'go', file: 'internal/model/model.go', url: GH_DW + 'internal/model/model.go', code:
+`type Agent struct {
+    ID   string \`json:"id"\`   // ag_…, stabil über Container-Lebenszyklen
+    Name string \`json:"name"\`
+    Type string \`json:"type"\` // codex | opencode | claude | gemini | custom
+    Image string \`json:"image"\`
+    State AgentState \`json:"state"\`
+    ContainerID string \`json:"container_id,omitempty"\` // wechselt — Identität nicht
+}` },
+        { t: 'quiz', q: 'Was ist ein Harness?', options: ['Das LLM selbst', 'Die Schleife und Werkzeuge um das Modell', 'Ein Docker-Container', 'Ein API-Key'], answer: 1, ok: 'Richtig. Der Harness steuert das Modell und führt Tools aus.', bad: 'Nicht ganz: Das Modell erzeugt Text; der Harness macht daraus Aktionen.' }
+      ]
     },
     {
-      id: 'm1', code: 'M1', num: '§1', title: 'Der Agent-Loop',
-      sub: 'planen → handeln → beobachten → wiederholen',
-      body: [
-        'Eine Schleife ruft das Modell auf, führt Tool-Calls aus und gibt Ergebnisse zurück.',
-        'Setze maximale Schritte, Timeouts und Abbruchmöglichkeiten.',
-        'Validiere Tool-Aufrufe gegen ein JSON-Schema.',
-        'Begrenze Tool-Ausgaben, damit der Kontext nicht überläuft.'
-      ],
-      codeFiles: [],
-      md: `## 1. Der kleinste Harness: der Agent-Loop
-
-Ein Harness ist im Kern eine Schleife:
-
-~~~go
-for step := 0; step < maxSteps; step++ {
+      id: 'm1', kicker: 'Modul 1', title: 'Der Agent-Loop',
+      sub: 'planen → handeln → beobachten → wiederholen', pages: [
+        { t: 'sim' },
+        { t: 'code', title: 'Die Schleife', lang: 'go', file: 'Harness-Kern (Pseudocode)', code:
+`for step := 0; step < maxSteps; step++ {
     resp := model.Chat(ctx, tools, history)
     if len(resp.ToolCalls) == 0 {
         return resp.Text
@@ -196,21 +236,16 @@ for step := 0; step < maxSteps; step++ {
         history = append(history, toolResult(call, result))
     }
 }
-return errors.New("max steps exceeded")
-~~~
-
-Worauf achten:
-
-- **Maximale Schritte** und **Timeouts** setzen.
-- Tool-Aufrufe validieren, nicht blind ausführen.
-- Ergebnisse begrenzen (keine riesigen Ausgaben in den Kontext).
-- Abbruch durch den Nutzer ermöglichen.
-- Jede Tool-Ausführung ist eine potenzielle Sicherheitsgrenze.
-
-Ein Tool braucht einen klaren Contract:
-
-~~~json
-{
+return errors.New("max steps exceeded")` },
+        { t: 'bullets', title: 'Worauf achten', points: [
+          '<b>Maximale Schritte</b> und <b>Timeouts</b> setzen.',
+          'Tool-Aufrufe validieren, nicht blind ausführen.',
+          'Ergebnisse begrenzen (keine riesigen Ausgaben in den Kontext).',
+          'Abbruch durch den Nutzer ermöglichen.',
+          'Jede Tool-Ausführung ist eine potenzielle Sicherheitsgrenze.'
+        ]},
+        { t: 'code', title: 'Ein Tool braucht einen Contract', lang: 'json', file: 'read_file.json', code:
+`{
   "name": "read_file",
   "description": "Read a file",
   "inputSchema": {
@@ -218,52 +253,16 @@ Ein Tool braucht einen klaren Contract:
     "properties": { "path": { "type": "string" } },
     "required": ["path"]
   }
-}
-~~~
-
-DockWeave bringt keinen eigenen Harness mit: OpenCode, Codex, Claude Code usw. sind die Harnesses. DockWeave liefert die Umgebung, Identität und Grenzen.`,
-      links: [],
-      quiz: {
-        q: 'Warum braucht der Loop ein Max-Steps-Limit?',
-        options: ['Damit das Modell schneller antwortet', 'Damit ein Agent nicht endlos Tools aufruft', 'Damit Docker schneller startet', 'Damit der API-Key gültig bleibt'],
-        answer: 1,
-        ok: 'Genau. Ohne Limit kann eine Schleife dauerhaft weiterlaufen.',
-        bad: 'Es geht um Begrenzung: Endlosschleifen und unkontrollierte Tool-Aufrufe verhindern.'
-      }
+}` },
+        { t: 'note', tone: 'blue', text: '<strong>DockWeave bringt keinen eigenen Harness mit.</strong> OpenCode, Codex, Claude Code usw. sind die Harnesses. DockWeave liefert die Umgebung, Identität und Grenzen.' },
+        { t: 'quiz', q: 'Warum braucht der Loop ein Max-Steps-Limit?', options: ['Damit das Modell schneller antwortet', 'Damit ein Agent nicht endlos Tools aufruft', 'Damit Docker schneller startet', 'Damit der API-Key gültig bleibt'], answer: 1, ok: 'Genau. Ohne Limit kann eine Schleife dauerhaft weiterlaufen.', bad: 'Es geht um Begrenzung: Endlosschleifen und unkontrollierte Tool-Aufrufe verhindern.' }
+      ]
     },
     {
-      id: 'm2', code: 'M2', num: '§2', title: 'Sandbox',
-      sub: 'Container, Rechte, Dateien, Ressourcen',
-      body: [
-        'Agent non-root starten, alle Capabilities droppen.',
-        'Kein Docker-Socket und kein --privileged im Agenten.',
-        'Nur explizit erlaubte Host-Verzeichnisse mounten.',
-        'CPU-, Memory- und Netzwerklimits setzen.'
-      ],
-      codeFiles: [
-        { file: 'internal/dockerclient/dockerclient.go', lang: 'go', code:
-`host := &container.HostConfig{
-    Mounts: []mount.Mount{
-        {Type: mount.TypeBind, Source: spec.AgentDir, Target: "/agent", ReadOnly: a.AgentRO},
-        {Type: mount.TypeBind, Source: spec.MemoryDir, Target: "/memory"},
-        {Type: mount.TypeBind, Source: spec.WorkspaceDir, Target: "/workspace",
-         BindOptions: &mount.BindOptions{Propagation: mount.PropagationRSlave}},
-    },
-    // Hardening: drop all capabilities; agent work must not need any.
-    CapDrop:     []string{"ALL"},
-    // Explicitly never privileged; seccomp stays at engine default.
-    Privileged:  false,
-    SecurityOpt: []string{"no-new-privileges"},
-    NetworkMode: container.NetworkMode(a.NetworkMode),
-    User:        fmt.Sprintf("%d:%d", a.UID, a.GID),
-}` }
-      ],
-      md: `## 2. Sandbox: Warum ein Container allein nicht reicht
-
-Ein minimaler Sandbox-Start könnte so aussehen:
-
-~~~bash
-docker run --rm -it \
+      id: 'm2', kicker: 'Modul 2', title: 'Sandbox',
+      sub: 'Container, Rechte, Dateien, Ressourcen', pages: [
+        { t: 'code', title: 'Minimaler Sandbox-Start', lang: 'bash', file: 'docker run', code:
+`docker run --rm -it \
   --user 1000:1000 \
   --cap-drop ALL \
   --security-opt no-new-privileges \
@@ -271,122 +270,108 @@ docker run --rm -it \
   --memory 2g --cpus 1 \
   -v /srv/project:/workspace/project:ro \
   -v /var/lib/agents/<id>/memory:/memory \
-  codex-image
-~~~
-
-Wichtige Regeln:
-
-- **Kein \`--privileged\`**
-- **Kein \`/var/run/docker.sock\` im Agenten**
-- **Kein \`CAP_SYS_ADMIN\`**
-- **Non-root** als Default
-- Ressourcenlimits setzen
-- Netzwerk explizit wählen (\`none\`, internes Netz, bridge)
-
-Ein Container isoliert Prozesse und Dateien, aber nicht automatisch:
-
-- das Netzwerk (Bridge erlaubt oft Internet),
-- Secrets in Umgebungsvariablen,
-- andere Container,
-- den Host über offene Ports.
-
-Deshalb braucht es zusätzlich Policy und Egress-Kontrolle.
-
-Referenz: \`internal/dockerclient/dockerclient.go\`, \`internal/agents/agents.go\`.`,
-      links: [['dockerclient.go', GH_DW + 'internal/dockerclient/dockerclient.go']],
-      quiz: {
-        q: 'Was gehört nicht in einen Agentencontainer?',
-        options: ['Ein Projektverzeichnis', 'Der Docker-Socket', 'Ein Memory-Verzeichnis', 'Ein non-root User'],
-        answer: 1,
-        ok: 'Richtig. Der Docker-Socket würde die Sandbox aushebeln.',
-        bad: 'Der Docker-Socket ist tabu: Damit könnte der Agent den Host kontrollieren.'
-      }
+  codex-image` },
+        { t: 'bullets', title: 'Wichtige Regeln', points: [
+          'Kein <code>--privileged</code>',
+          'Kein <code>/var/run/docker.sock</code> im Agenten',
+          'Kein <code>CAP_SYS_ADMIN</code>',
+          'Non-root als Default',
+          'Ressourcenlimits setzen',
+          'Netzwerk explizit wählen (<code>none</code>, internes Netz, bridge)'
+        ]},
+        { t: 'bullets', title: 'Was ein Container NICHT automatisch isoliert', points: [
+          'das <b>Netzwerk</b> (Bridge erlaubt oft Internet),',
+          '<b>Secrets</b> in Umgebungsvariablen,',
+          'andere <b>Container</b>,',
+          'den <b>Host</b> über offene Ports.'
+        ]},
+        { t: 'note', text: 'Deshalb braucht es zusätzlich <strong>Policy und Egress-Kontrolle</strong> — ein Container allein ist keine vollständige Netzgrenze.' },
+        { t: 'code', title: 'DockWeave im echten Code', lang: 'go', file: 'internal/dockerclient/dockerclient.go', url: GH_DW + 'internal/dockerclient/dockerclient.go', code:
+`host := &container.HostConfig{
+    Mounts: []mount.Mount{
+        {Type: mount.TypeBind, Source: spec.AgentDir, Target: "/agent", ReadOnly: a.AgentRO},
+        {Type: mount.TypeBind, Source: spec.MemoryDir, Target: "/memory"},
+        {Type: mount.TypeBind, Source: spec.WorkspaceDir, Target: "/workspace",
+         BindOptions: &mount.BindOptions{Propagation: mount.PropagationRSlave}},
+    },
+    CapDrop:     []string{"ALL"},
+    Privileged:  false,
+    SecurityOpt: []string{"no-new-privileges"},
+    NetworkMode: container.NetworkMode(a.NetworkMode),
+    User:        fmt.Sprintf("%d:%d", a.UID, a.GID),
+}` },
+        { t: 'quiz', q: 'Was gehört nicht in einen Agentencontainer?', options: ['Ein Projektverzeichnis', 'Der Docker-Socket', 'Ein Memory-Verzeichnis', 'Ein non-root User'], answer: 1, ok: 'Richtig. Der Docker-Socket würde die Sandbox aushebeln.', bad: 'Der Docker-Socket ist tabu: Damit könnte der Agent den Host kontrollieren.' }
+      ]
     },
     {
-      id: 'm3', code: 'M3', num: '§3', title: 'Steuerungsebene',
-      sub: 'Daemon, CLI, Unix-Socket, SO_PEERCRED',
-      body: [
-        'Privilegierte Operationen laufen nur im Daemon.',
-        'CLI/TUI/Web sind dünne Clients über einen lokalen Socket.',
-        'SO_PEERCRED identifiziert den Peer; UID-Rollen autorisieren.',
-        'Unbekannte UIDs werden abgelehnt, Monitor ist read-only.'
-      ],
-      codeFiles: [
-        { file: 'internal/api/auth.go', lang: 'go', code:
-`// SO_PEERCRED identifiziert den Peer; die Rolle autorisiert dann.
-func PeerConnContext(ctx context.Context, c net.Conn) context.Context {
-    uc, ok := c.(*net.UnixConn)
-    if !ok { return ctx }
-    raw, _ := uc.SyscallConn()
-    var cred *unix.Ucred
-    _ = raw.Control(func(fd uintptr) {
-        cred, _ = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-    })
-    ctx = context.WithValue(ctx, peerUIDKey{}, cred.Uid)
-    return context.WithValue(ctx, peerKey{}, nameFromUID(cred.Uid))
-}` },
-        { file: 'cmd/dockweaved/main.go', lang: 'go', code:
-`// dockweaved ist der privilegierte Daemon. Er lehnt Start ohne root ab.
-if os.Geteuid() != 0 {
-    return errors.New("dockweaved must run as root (CAP_SYS_ADMIN); refusing")
-}
-ln, err := net.Listen("unix", cfg.SocketPath)
-handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
-srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}` }
-      ],
-      md: `## 3. Steuerungsebene: Daemon + CLI + Unix-Socket
-
-Ein naiver Ansatz wäre, die CLI direkt Docker-Operationen ausführen zu lassen. Sicherer ist eine kleine Steuerungsebene:
-
-~~~text
-CLI/TUI/Web ──(Unix-Socket, SO_PEERCRED)──> dockweaved (root)
+      id: 'm3', kicker: 'Modul 3', title: 'Steuerungsebene',
+      sub: 'Daemon, CLI, Unix-Socket, SO_PEERCRED', pages: [
+        { t: 'code', title: 'Architektur', lang: 'text', file: 'Steuerungsebene', code:
+`CLI/TUI/Web ──(Unix-Socket, SO_PEERCRED)──> dockweaved (root)
                                               │
                                               ├── Docker API
                                               ├── SQLite
-                                              └── Mount-Manager
-~~~
-
-Warum:
-
-- Privilegierte Operationen bleiben an einer Stelle.
-- Die CLI ist ein dünner Client.
-- Der Socket ist lokal und per Peer-Credentials geschützt.
-- Rollen (\`admin\`, \`monitor\`) lassen sich zentral prüfen.
-
-Minimaler API-Ausschnitt:
-
-~~~text
-GET    /api/v1/agents
+                                              └── Mount-Manager` },
+        { t: 'bullets', title: 'Warum', points: [
+          'Privilegierte Operationen bleiben an <b>einer</b> Stelle.',
+          'Die CLI ist ein <b>dünner Client</b>.',
+          'Der Socket ist lokal und per <b>Peer-Credentials</b> geschützt.',
+          'Rollen (<code>admin</code>, <code>monitor</code>) lassen sich zentral prüfen.'
+        ]},
+        { t: 'code', title: 'Minimaler API-Ausschnitt', lang: 'text', file: 'REST v1', code:
+`GET    /api/v1/agents
 POST   /api/v1/agents
 POST   /api/v1/agents/{id}/start
 POST   /api/v1/agents/{id}/stop
 GET    /api/v1/workspaces
-POST   /api/v1/grants
-~~~
-
-Referenz: \`internal/api\`, \`cmd/dockweaved\`, \`pkg/sdk\`.`,
-      links: [['auth.go', GH_DW + 'internal/api/auth.go'], ['main.go', GH_DW + 'cmd/dockweaved/main.go']],
-      quiz: {
-        q: 'Warum läuft Docker nicht direkt in der CLI?',
-        options: ['Weil die CLI sonst langsamer wäre', 'Weil Privilegien zentral und prüfbar bleiben müssen', 'Weil Docker nur root mag', 'Weil die CLI kein JSON kann'],
-        answer: 1,
-        ok: 'Genau. Eine zentrale Steuerungsebene macht Rechte und Audit prüfbar.',
-        bad: 'Es geht um Privilegientrennung: nur der Daemon darf privilegiert handeln.'
-      }
+POST   /api/v1/grants` },
+        { t: 'code', title: 'SO_PEERCRED im echten Code', lang: 'go', file: 'internal/api/auth.go', url: GH_DW + 'internal/api/auth.go', code:
+`cred, _ := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
+role := policy.RoleOf(cred.Uid)
+if role == "" {
+    http.Error(w, "forbidden: peer uid not authorized", 403)
+    return
+}
+if role == RoleMonitor && r.Method != "GET" && r.Method != "HEAD" {
+    http.Error(w, "forbidden: monitor role is read-only", 403)
+    return
+}` },
+        { t: 'code', title: 'Der Daemon lehnt Start ohne root ab', lang: 'go', file: 'cmd/dockweaved/main.go', url: GH_DW + 'cmd/dockweaved/main.go', code:
+`if os.Geteuid() != 0 {
+    return errors.New("dockweaved must run as root (CAP_SYS_ADMIN); refusing")
+}
+ln, err := net.Listen("unix", cfg.SocketPath)
+handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
+srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}` },
+        { t: 'quiz', q: 'Warum läuft Docker nicht direkt in der CLI?', options: ['Weil die CLI sonst langsamer wäre', 'Weil Privilegien zentral und prüfbar bleiben müssen', 'Weil Docker nur root mag', 'Weil die CLI kein JSON kann'], answer: 1, ok: 'Genau. Eine zentrale Steuerungsebene macht Rechte und Audit prüfbar.', bad: 'Es geht um Privilegientrennung: nur der Daemon darf privilegiert handeln.' }
+      ]
     },
     {
-      id: 'm4', code: 'M4', num: '§4', title: 'Identität & Persistenz',
-      sub: 'stabile Agenten, SQLite, Migrationen',
-      body: [
-        'Agenten-IDs bleiben stabil, auch wenn Container neu erstellt werden.',
-        'Persistiere Identität, Typ, Image, Command und State.',
-        'Workspaces, Grants, MCP/Skills und Events in eigenen Tabellen.',
-        'Migrationen versionieren; keine Secrets in Metadaten.'
-      ],
-      codeFiles: [
-        { file: 'internal/model/model.go', lang: 'go', code:
-`// Stabile ID mit Typ-Präfix, z. B. "ag_9f2c…".
-func NewID(prefix string) string {
+      id: 'm4', kicker: 'Modul 4', title: 'Identität & Persistenz',
+      sub: 'stabile Agenten, SQLite, Migrationen', pages: [
+        { t: 'code', title: 'Minimales Schema', lang: 'sql', file: 'agents', code:
+`CREATE TABLE agents (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  type TEXT NOT NULL,
+  image TEXT NOT NULL,
+  command TEXT,
+  state TEXT NOT NULL
+);` },
+        { t: 'bullets', title: 'Weitere Tabellen', points: [
+          '<code>workspaces</code> — erlaubte Host-Verzeichnisse',
+          '<code>grants</code> — Agent × Workspace × Modus',
+          '<code>events</code> — Audit',
+          '<code>agent_mcp</code> / <code>agent_skills</code> — Werkzeuge pro Agent',
+          '<code>agent_type_mcp</code> / <code>agent_type_skills</code> — Vorlagen pro Agententyp'
+        ]},
+        { t: 'bullets', title: 'Wichtig', points: [
+          'Stabile IDs (<code>ag_…</code>), keine Container-IDs als Identität.',
+          'Migrationen versionieren.',
+          'Keine Secrets in normalen Metadaten speichern.'
+        ]},
+        { t: 'code', title: 'Stabile IDs im echten Code', lang: 'go', file: 'internal/model/model.go', url: GH_DW + 'internal/model/model.go', code:
+`func NewID(prefix string) string {
     var b [12]byte
     rand.Read(b[:])
     return prefix + "_" + hex.EncodeToString(b[:])
@@ -396,120 +381,72 @@ const (
     AgentCreated AgentState = "created"
     AgentRunning AgentState = "running"
     AgentStopped AgentState = "stopped"
-)` }
-      ],
-      md: `## 4. Identität und Persistenz
-
-Die Agentenidentität muss **unabhängig vom Container** sein. Container werden gelöscht und neu erstellt; die Identität bleibt.
-
-Minimales Schema:
-
-~~~sql
-CREATE TABLE agents (
-  id TEXT PRIMARY KEY,
-  name TEXT UNIQUE NOT NULL,
-  type TEXT NOT NULL,
-  image TEXT NOT NULL,
-  command TEXT,
-  state TEXT NOT NULL
-);
-~~~
-
-Weitere Tabellen:
-
-- \`workspaces\` — erlaubte Host-Verzeichnisse
-- \`grants\` — Agent × Workspace × Modus
-- \`events\` — Audit
-- \`agent_mcp\` / \`agent_skills\` — Werkzeuge pro Agent
-- \`agent_type_mcp\` / \`agent_type_skills\` — Vorlagen pro Agententyp
-
-Wichtig:
-
-- Stabile IDs (\`ag_…\`), keine Container-IDs als Identität.
-- Migrationen versionieren.
-- Keine Secrets in normalen Metadaten speichern.
-
-Referenz: \`internal/model/model.go\`, \`internal/persistence/persistence.go\`.`,
-      links: [['model.go', GH_DW + 'internal/model/model.go']],
-      quiz: {
-        q: 'Was sollte die Agentenidentität überleben?',
-        options: ['Nur den Container-Namen', 'Container-Neuerstellung und Neustarts', 'Nur den aktuellen Prozess', 'Den API-Key'],
-        answer: 1,
-        ok: 'Richtig. Identität ist unabhängig von Container-IDs.',
-        bad: 'Die Identität muss eine Container-Neuerstellung überleben.'
-      }
+)` },
+        { t: 'quiz', q: 'Was sollte die Agentenidentität überleben?', options: ['Nur den Container-Namen', 'Container-Neuerstellung und Neustarts', 'Nur den aktuellen Prozess', 'Den API-Key'], answer: 1, ok: 'Richtig. Identität ist unabhängig von Container-IDs.', bad: 'Die Identität muss eine Container-Neuerstellung überleben.' }
+      ]
     },
     {
-      id: 'm5', code: 'M5', num: '§5', title: 'Workspaces & Mounts',
-      sub: 'Grants, Allowlist, TOCTOU, RO-Staging',
-      body: [
-        'Ein Grant ist eine Erlaubnis; der Mount macht sie wirksam.',
-        'Nur registrierte Host-Pfade sind mountbar (Allowlist).',
-        'Symlinks auflösen und die Quelle per openat2 erneut prüfen.',
-        'Read-only sauber stagen; kein umount -l als Default.'
-      ],
-      codeFiles: [
-        { file: 'internal/mounts/manager.go', lang: 'go', code:
+      id: 'm5', kicker: 'Modul 5', title: 'Workspaces & Mounts',
+      sub: 'Grants, Allowlist, TOCTOU, RO-Staging', pages: [
+        { t: 'code', title: 'Ablauf', lang: 'text', file: 'Grant → Mount', code:
+`Workspace registrieren
+  → Grant erstellen (Agent, Workspace, ro/rw)
+    → Mount anwenden
+      → Container sieht /workspace/<name>` },
+        { t: 'note', tone: 'blue', text: 'Ein <strong>Grant ist eine Erlaubnis, kein Mount</strong>. Erst der Mount macht sie wirksam.' },
+        { t: 'bullets', title: 'Worauf achten', points: [
+          '<b>Allowlist</b>: Nur registrierte Host-Pfade sind mountbar.',
+          '<b>Kanonisieren</b>: <code>filepath.EvalSymlinks</code>, danach erneut prüfen.',
+          '<b>TOCTOU</b>: Quelle mit <code>openat2(RESOLVE_BENEATH|NO_MAGICLINKS)</code> öffnen und per <code>/proc/self/fd/&lt;n&gt;</code> mounten.',
+          '<b>Read-only</b>: privat binden → <code>remount,ro</code> → in den Shared-Baum moven.',
+          'Kein <code>umount -l</code> als Default: Bei <code>EBUSY</code> strukturiert fehlschlagen.'
+        ]},
+        { t: 'code', title: 'RO-Staging im echten Code', lang: 'go', file: 'internal/mounts/manager.go', url: GH_DW + 'internal/mounts/manager.go', code:
 `// RO-Staging: privat binden → remount ro → in den Shared-Baum moven.
 // Ein direktes -o ro propagiert nicht zuverlässig in Slave-Namespaces.
 unix.Mount(src, staging, "none", unix.MS_BIND|unix.MS_REC, "")
 unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC, "")
 unix.Mount(staging, target, "", unix.MS_MOVE, "")` },
-        { file: 'internal/mounts/pathutil.go', lang: 'go', code:
-`// TOCTOU-Härtung: openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS).
-how := &unix.OpenHow{
+        { t: 'code', title: 'TOCTOU-Schutz im echten Code', lang: 'go', file: 'internal/mounts/pathutil.go', url: GH_DW + 'internal/mounts/pathutil.go', code:
+`how := &unix.OpenHow{
     Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
     Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_MAGICLINKS,
 }
-fd, err := unix.Openat2(pfd, base, how)` }
-      ],
-      md: `## 5. Workspace-Grants und Mounts
-
-Ein Grant ist eine **Erlaubnis**, kein Mount. Erst der Mount macht sie wirksam.
-
-Ablauf:
-
-~~~text
-Workspace registrieren
-  → Grant erstellen (Agent, Workspace, ro/rw)
-    → Mount anwenden
-      → Container sieht /workspace/<name>
-~~~
-
-Worauf achten:
-
-- **Allowlist**: Nur registrierte Host-Pfade sind mountbar.
-- **Kanonisieren**: \`filepath.EvalSymlinks\`, danach erneut prüfen.
-- **TOCTOU**: Quelle mit \`openat2(RESOLVE_BENEATH|NO_MAGICLINKS)\` öffnen und per \`/proc/self/fd/<n>\` mounten.
-- **Read-only**: privat binden → \`remount,ro\` → in den Shared-Baum moven. Ein direktes \`-o ro\` propagiert nicht zuverlässig in Slave-Namespaces.
-- **Kein \`umount -l\` als Default**: Bei \`EBUSY\` strukturiert fehlschlagen. Lazy-Unmount nur mit explizitem Force-Flag und Audit.
-
-Referenz: \`internal/mounts\`, \`internal/workspaces\`, \`docs/security-decisions.md\`.`,
-      links: [['manager.go', GH_DW + 'internal/mounts/manager.go'], ['pathutil.go', GH_DW + 'internal/mounts/pathutil.go']],
-      quiz: {
-        q: 'Warum reicht ein direktes `mount -o ro` nicht?',
-        options: ['Weil Docker das ignoriert', 'Weil Remount-Flags nicht zuverlässig in Slave-Namespaces propagieren', 'Weil es zu langsam ist', 'Weil es nur für Dateien geht'],
-        answer: 1,
-        ok: 'Genau. Deshalb wird privat gestaged und dann verschoben.',
-        bad: 'Die RO-Flags propagieren nicht zuverlässig — deshalb das Staging.'
-      }
+fd, err := unix.Openat2(pfd, base, how)` },
+        { t: 'quiz', q: 'Warum reicht ein direktes <code>mount -o ro</code> nicht?', options: ['Weil Docker das ignoriert', 'Weil Remount-Flags nicht zuverlässig in Slave-Namespaces propagieren', 'Weil es zu langsam ist', 'Weil es nur für Dateien geht'], answer: 1, ok: 'Genau. Deshalb wird privat gestaged und dann verschoben.', bad: 'Die RO-Flags propagieren nicht zuverlässig — deshalb das Staging.' }
+      ]
     },
     {
-      id: 'm6', code: 'M6', num: '§6', title: 'Secrets & Broker',
-      sub: 'secretless agents, Vault, Sessions',
-      body: [
-        'Keine echten API-Keys in Env, Image, Logs oder /memory.',
-        'Vault: Argon2id + AES-256-GCM, AAD pro Eintrag, atomare Writes.',
-        'Broker injiziert den echten Key nur für feste Provider-Ziele.',
-        'Agent bekommt nur ein kurzlebiges Session-Token; Deny by default.'
-      ],
-      codeFiles: [
-        { file: 'internal/credentialvault/crypto.go', lang: 'go', code:
-`// Argon2id (OWASP: 64 MiB, 3 Iterationen, 4 Lanes) → 32-Byte-Key.
-func deriveKey(passphrase, salt []byte, p KDFParams) []byte {
+      id: 'm6', kicker: 'Modul 6', title: 'Secrets & Broker',
+      sub: 'secretless agents, Vault, Sessions', pages: [
+        { t: 'bullets', title: 'Ein API-Key in einer Env-Variable ist sichtbar für', points: [
+          'den Agenten und seine Tools,',
+          '<code>docker inspect</code>,',
+          '<code>/proc/&lt;pid&gt;/environ</code>,',
+          'versehentliche Logs,',
+          'Prompt Injection.'
+        ]},
+        { t: 'code', title: 'Besser: Secretless Agent', lang: 'text', file: 'Datenfluss', code:
+`Agent ──(Session-Token)──> Broker ──(echter Key)──> Provider` },
+        { t: 'bullets', title: 'Vault-Anforderungen', points: [
+          'Argon2id für die Passphrase',
+          'AES-256-GCM mit zufälliger Nonce',
+          'AAD pro Eintrag, damit Ciphertexte nicht getauscht werden können',
+          'atomare Writes, <code>0600</code>, Verzeichnis <code>0700</code>',
+          'kein Klartext in SQLite, Logs, Docker-Metadaten'
+        ]},
+        { t: 'bullets', title: 'Broker-Anforderungen', points: [
+          'feste Provider-Ziele (keine freie Zielwahl)',
+          'Redirects nicht verfolgen',
+          'Deny by default',
+          'Session-Tokens nur als Hash speichern',
+          'Ablauf und sofortiger Widerruf',
+          'Rate-/Kostenlimits pro Grant'
+        ]},
+        { t: 'code', title: 'Argon2id + AES-256-GCM im echten Code', lang: 'go', file: 'internal/credentialvault/crypto.go', url: GH_DW + 'internal/credentialvault/crypto.go', code:
+`func deriveKey(passphrase, salt []byte, p KDFParams) []byte {
     return argon2.IDKey(passphrase, salt, p.Time, p.Memory, p.Threads, p.KeyLen)
 }
-// AES-256-GCM mit zufälliger Nonce; AAD bindet den Ciphertext an den Eintrag.
 func seal(plaintext, key, aad []byte) (nonce, ciphertext []byte, err error) {
     block, _ := aes.NewCipher(key)
     gcm, _ := cipher.NewGCM(block)
@@ -517,73 +454,19 @@ func seal(plaintext, key, aad []byte) (nonce, ciphertext []byte, err error) {
     ciphertext = gcm.Seal(nil, nonce, plaintext, aad)
     return nonce, ciphertext, nil
 }` },
-        { file: 'internal/credentialbroker/util.go', lang: 'go', code:
+        { t: 'code', title: 'Nur der Hash wird gespeichert', lang: 'go', file: 'internal/credentialbroker/util.go', url: GH_DW + 'internal/credentialbroker/util.go', code:
 `// Nur der SHA-256-Hash eines Session-Tokens wird gespeichert.
 func hashToken(token string) string {
     h := sha256.Sum256([]byte(token))
     return hex.EncodeToString(h[:])
-}` }
-      ],
-      md: `## 6. Secrets: Warum EnvFiles nicht reichen
-
-Ein API-Key in einer Env-Variable ist sichtbar für:
-
-- den Agenten und seine Tools,
-- \`docker inspect\`,
-- \`/proc/<pid>/environ\`,
-- versehentliche Logs,
-- Prompt Injection.
-
-Besser: **Secretless Agent**.
-
-~~~text
-Agent ──(Session-Token)──> Broker ──(echter Key)──> Provider
-~~~
-
-Vault-Anforderungen:
-
-- Argon2id für die Passphrase
-- AES-256-GCM mit zufälliger Nonce
-- AAD pro Eintrag, damit Ciphertexte nicht getauscht werden können
-- atomare Writes, \`0600\`, Verzeichnis \`0700\`
-- kein Klartext in SQLite, Logs, Docker-Metadaten
-
-Broker-Anforderungen:
-
-- feste Provider-Ziele (keine freie Zielwahl)
-- Redirects nicht verfolgen
-- Deny by default
-- Session-Tokens nur als Hash speichern
-- Ablauf und sofortiger Widerruf
-- Rate-/Kostenlimits pro Grant
-
-Grenzen:
-
-- Ein kopiertes Session-Token ist bis Ablauf/Widerruf nutzbar.
-- Host-Root kann Prozessspeicher lesen.
-- Budgets sind Schätzungen.
-
-Referenz: \`internal/credentialvault\`, \`internal/credentialbroker\`, \`docs/threat-model-credential-broker.md\`.`,
-      links: [['crypto.go', GH_DW + 'internal/credentialvault/crypto.go'], ['Broker', GH_DW + 'internal/credentialbroker/broker.go']],
-      quiz: {
-        q: 'Was bekommt der Agent vom Broker?',
-        options: ['Den echten Provider-Key', 'Ein kurzlebiges Session-Token', 'Den Vault-Master-Key', 'Gar nichts'],
-        answer: 1,
-        ok: 'Richtig. Der echte Key bleibt im Broker.',
-        bad: 'Der Agent bekommt nur ein eingeschränktes Session-Token, nie den echten Key.'
-      }
+}` },
+        { t: 'quiz', q: 'Was bekommt der Agent vom Broker?', options: ['Den echten Provider-Key', 'Ein kurzlebiges Session-Token', 'Den Vault-Master-Key', 'Gar nichts'], answer: 1, ok: 'Richtig. Der echte Key bleibt im Broker.', bad: 'Der Agent bekommt nur ein eingeschränktes Session-Token, nie den echten Key.' }
+      ]
     },
     {
-      id: 'm7', code: 'M7', num: '§7', title: 'Egress',
-      sub: 'Proxy ist keine Netzgrenze',
-      body: [
-        'Wenn der Agent direkt ins Internet darf, umgeht er den Broker.',
-        '`offline`: kein Netz; `broker-only`: internes Docker-Netz.',
-        'Netzwerkregeln liegen außerhalb des Agenten und fail closed.',
-        'Host-Gateway-Portfilterung (nftables) ist ein eigener offener Schritt.'
-      ],
-      codeFiles: [
-        { file: 'internal/model/model.go', lang: 'go', code:
+      id: 'm7', kicker: 'Modul 7', title: 'Egress',
+      sub: 'Proxy ist keine Netzgrenze', pages: [
+        { t: 'code', title: 'Network-Profile', lang: 'go', file: 'internal/model/model.go', url: GH_DW + 'internal/model/model.go', code:
 `type NetworkProfile string
 
 const (
@@ -591,404 +474,237 @@ const (
     NetProfileBrokerOnly NetworkProfile = "broker-only"
     NetProfileRestricted NetworkProfile = "restricted-development"
     NetProfileLegacy     NetworkProfile = "unrestricted-legacy"
-)` }
-      ],
-      md: `## 7. Egress: Ein Proxy ist keine Netzgrenze
-
-Wenn der Agent direkt ins Internet darf, kann er den Broker umgehen. Deshalb:
-
-- \`offline\`: \`--network none\`
-- \`broker-only\`: internes Docker-Netz, keine externe Route, Broker am Host-Gateway
-- \`restricted-development\`: nicht implementiert → Fail closed
-- \`unrestricted-legacy\`: bewusst unsicher
-
-Wichtig:
-
-- Netzwerkregeln müssen **außerhalb** des Agenten liegen.
-- Fehler müssen **fail closed** sein.
-- Der Host-Gateway bleibt eine Restgefahr; Portfilterung per nftables ist ein eigener Schritt.
-- IPv4/IPv6, DNS, IMDS und private Bereiche separat testen.
-
-Referenz: \`docs/egress-security.md\`, \`internal/agents\`, \`tests/integration/egress_network_test.go\`.`,
-      links: [['egress-security.md', GH_DW + 'docs/egress-security.md']],
-      quiz: {
-        q: 'Warum ist ein HTTP-Proxy allein keine Egress-Sicherheit?',
-        options: ['Weil er zu langsam ist', 'Weil der Agent ihn umgehen kann, wenn er direkten Netzwerkzugriff hat', 'Weil er keine HTTPS kann', 'Weil er nur für Browser ist'],
-        answer: 1,
-        ok: 'Genau. Ohne erzwungene Netzgrenze ist der Proxy optional.',
-        bad: 'Der Agent kann einen Proxy umgehen, wenn er direkt routen darf.'
-      }
+)` },
+        { t: 'bullets', title: 'Wichtig', points: [
+          '<code>offline</code>: <code>--network none</code>',
+          '<code>broker-only</code>: internes Docker-Netz, keine externe Route, Broker am Host-Gateway',
+          '<code>restricted-development</code>: nicht implementiert → <b>fail closed</b>',
+          'Netzwerkregeln müssen <b>außerhalb</b> des Agenten liegen.',
+          'Der Host-Gateway bleibt eine Restgefahr; Portfilterung per nftables ist ein eigener Schritt.'
+        ]},
+        { t: 'quiz', q: 'Warum ist ein HTTP-Proxy allein keine Egress-Sicherheit?', options: ['Weil er zu langsam ist', 'Weil der Agent ihn umgehen kann, wenn er direkten Netzwerkzugriff hat', 'Weil er keine HTTPS kann', 'Weil er nur für Browser ist'], answer: 1, ok: 'Genau. Ohne erzwungene Netzgrenze ist der Proxy optional.', bad: 'Der Agent kann einen Proxy umgehen, wenn er direkt routen darf.' }
+      ]
     },
     {
-      id: 'm8', code: 'M8', num: '§8', title: 'Audit & Monitoring',
-      sub: 'Hash-Kette, Events, Konflikte',
-      body: [
-        'Sicherheitsrelevante Aktionen als Events protokollieren.',
-        'Hash-Kette macht nachträgliche Manipulation erkennbar.',
-        'Docker- und Prozessdaten für Aktivität/Konflikte beobachten.',
-        'Nie Secrets in Events oder Logs schreiben.'
-      ],
-      codeFiles: [
-        { file: 'internal/model/model.go', lang: 'go', code:
+      id: 'm8', kicker: 'Modul 8', title: 'Audit & Monitoring',
+      sub: 'Hash-Kette, Events, Konflikte', pages: [
+        { t: 'code', title: 'Hash-Kette', lang: 'go', file: 'internal/model/model.go', url: GH_DW + 'internal/model/model.go', code:
 `// Events bilden eine Hash-Kette (PrevHash/Hash), damit Manipulation
 // an der gespeicherten Historie erkennbar wird.
 type Event struct {
-    Type     EventType ` + "`json:\"type\"`" + `
-    Actor    string    ` + "`json:\"actor\"`" + `
-    Message  string    ` + "`json:\"message\"`" + `
-    PrevHash string    ` + "`json:\"prev_hash\"`" + `
-    Hash     string    ` + "`json:\"hash\"`" + `
-}` }
-      ],
-      md: `## 8. Audit und Monitoring
-
-Ohne Audit kannst du Sicherheitsvorfälle nicht nachvollziehen.
-
-Minimal:
-
-~~~go
-event := Event{Type: "grant.created", Actor: user, AgentID: a, Message: msg}
-event.PrevHash = lastHash
-event.Hash = SHA256(prevHash | fields)
-~~~
-
-Zusätzlich:
-
-- Docker-Events und Prozessdaten (procfs) beobachten.
-- Schreibkonflikte zwischen Agenten erkennen.
-- Keine Secrets in Events.
-
-Referenz: \`internal/persistence\` (Hash-Kette), \`internal/monitor\`.`,
-      links: [['model.go', GH_DW + 'internal/model/model.go'], ['monitor', GH_DW + 'internal/monitor']],
-      quiz: {
-        q: 'Was macht eine Audit-Hash-Kette?',
-        options: ['Sie verschlüsselt Events', 'Sie macht Manipulation an der Historie erkennbar', 'Sie löscht alte Events', 'Sie ersetzt Backups'],
-        answer: 1,
-        ok: 'Richtig. Jedes Event bindet an das vorherige.',
-        bad: 'Die Kette dient der Manipulationserkennung, nicht der Verschlüsselung.'
-      }
+    Type     EventType \`json:"type"\`
+    Actor    string    \`json:"actor"\`
+    Message  string    \`json:"message"\`
+    PrevHash string    \`json:"prev_hash"\`
+    Hash     string    \`json:"hash"\`
+}` },
+        { t: 'bullets', title: 'Zusätzlich', points: [
+          'Docker-Events und Prozessdaten (procfs) beobachten.',
+          'Schreibkonflikte zwischen Agenten erkennen.',
+          'Keine Secrets in Events.'
+        ]},
+        { t: 'quiz', q: 'Was macht eine Audit-Hash-Kette?', options: ['Sie verschlüsselt Events', 'Sie macht Manipulation an der Historie erkennbar', 'Sie löscht alte Events', 'Sie ersetzt Backups'], answer: 1, ok: 'Richtig. Jedes Event bindet an das vorherige.', bad: 'Die Kette dient der Manipulationserkennung, nicht der Verschlüsselung.' }
+      ]
     },
     {
-      id: 'm9', code: 'M9', num: '§9', title: 'UI: CLI, TUI, Web',
-      sub: 'Bedienung ohne Sicherheitsverlust',
-      body: [
-        'CLI zuerst: testbar, skriptbar, ehrlich.',
-        'TUI für interaktive Terminal-Bedienung.',
-        'Web braucht ein Gateway: Browser kann keinen Unix-Socket.',
-        'Token/Cookie, PTY über WebSocket, keine Secrets in der UI.'
-      ],
-      codeFiles: [
-        { file: 'cmd/dockweaved/main.go', lang: 'go', code:
-`// Terminal-Stream-Server (interaktive PTY-Sessions, eigener Raw-Socket).
-termSock := filepath.Join(filepath.Dir(cfg.SocketPath), "dockweaved.term.sock")
-termSrv := api.NewTermServer(api.TermConfig{
-    SocketPath: termSock, Docker: docker, Auth: authPolicy, ...,
-})` }
-      ],
-      md: `## 9. Oberflächen: CLI zuerst, dann TUI/Web
-
-Baue in dieser Reihenfolge:
-
-1. **CLI** — schnell testbar, skriptbar, ehrlich.
-2. **TUI** — interaktive Bedienung im Terminal.
-3. **Web** — Agentenliste, Chat/Terminal, Konfiguration, Analyse.
-
-Ein Browser kann keinen Unix-Socket sprechen. Für Web brauchst du ein Gateway:
-
-~~~text
-Browser ──HTTP/WebSocket──> Gateway ──Unix-Socket──> Daemon
-~~~
-
-Wichtig:
-
-- Token/Cookie für den Browser-Zugriff.
-- Kein privilegiertes Verhalten im Gateway.
-- Terminal über ein echtes PTY (z. B. xterm.js + WebSocket).
-- Keine Secrets in der UI anzeigen.
-
-Referenz: \`cmd/dockweave\`, \`ui/tui\`, \`ui/web\`, \`internal/webui\`.`,
-      links: [['web-ui.md', GH_DW + 'docs/web-ui.de.md']],
-      quiz: {
-        q: 'Warum braucht eine Web-UI ein Gateway?',
-        options: ['Weil Browser keinen Unix-Domain-Socket sprechen', 'Weil HTTP kein JSON kann', 'Weil Docker einen Browser braucht', 'Weil Tokens nur im Browser funktionieren'],
-        answer: 0,
-        ok: 'Genau. Das Gateway verbindet Browser HTTP/WS mit dem Unix-Socket.',
-        bad: 'Browser können keine Unix-Sockets öffnen — daher das Gateway.'
-      }
+      id: 'm9', kicker: 'Modul 9', title: 'UI: CLI, TUI, Web',
+      sub: 'Bedienung ohne Sicherheitsverlust', pages: [
+        { t: 'numbered', title: 'Baue in dieser Reihenfolge', items: [
+          '<b>CLI</b> — schnell testbar, skriptbar, ehrlich.',
+          '<b>TUI</b> — interaktive Bedienung im Terminal.',
+          '<b>Web</b> — Agentenliste, Chat/Terminal, Konfiguration, Analyse.'
+        ]},
+        { t: 'code', title: 'Ein Browser braucht ein Gateway', lang: 'text', file: 'Web → Daemon', code:
+`Browser ──HTTP/WebSocket──> Gateway ──Unix-Socket──> Daemon` },
+        { t: 'bullets', title: 'Wichtig', points: [
+          'Token/Cookie für den Browser-Zugriff.',
+          'Kein privilegiertes Verhalten im Gateway.',
+          'Terminal über ein echtes PTY (z. B. xterm.js + WebSocket).',
+          'Keine Secrets in der UI anzeigen.'
+        ]},
+        { t: 'quiz', q: 'Warum braucht eine Web-UI ein Gateway?', options: ['Weil Browser keinen Unix-Domain-Socket sprechen', 'Weil HTTP kein JSON kann', 'Weil Docker einen Browser braucht', 'Weil Tokens nur im Browser funktionieren'], answer: 0, ok: 'Genau. Das Gateway verbindet Browser HTTP/WS mit dem Unix-Socket.', bad: 'Browser können keine Unix-Sockets öffnen — daher das Gateway.' }
+      ]
     },
     {
-      id: 'm10', code: 'M10', num: '§10', title: 'MCP & Skills',
-      sub: 'Werkzeuge pro Agent konfigurierbar',
-      body: [
-        'MCP ist JSON-RPC 2.0; Tools haben ein inputSchema (JSON Schema).',
-        'Skills/MCP pro Agententyp als Vorlage speichern.',
-        'Beim Agentenanlegen in eigene, editierbare Zeilen kopieren.',
-        'Vor dem Start ins Memory-Home materialisieren.'
-      ],
-      codeFiles: [
-        { file: 'internal/model/model.go', lang: 'go', code:
-`// Secrets werden nie in EnvKeys gespeichert (nur Namen);
-// die Werte liegen im Credential Vault.
-type AgentMCP struct {
-    ID        string       ` + "`json:\"id\"`" + `
-    AgentID   string       ` + "`json:\"agent_id\"`" + `
-    Transport MCPTransport ` + "`json:\"transport\"`" + ` // stdio | http | sse
-    Command   string       ` + "`json:\"command,omitempty\"`" + `
-    EnvKeys   []string     ` + "`json:\"env_keys,omitempty\"`" + `
-}` }
-      ],
-      md: `## 10. MCP und Skills
-
-MCP ist JSON-RPC 2.0 (stdio oder Streamable HTTP). Wichtige Punkte:
-
-- \`initialize\` beschreibt Protokollversion und Capabilities.
-- \`tools/list\` liefert Tools mit \`inputSchema\` (JSON Schema).
-- Ein MCP-Server ist **kein** einzelnes Standard-JSON-Dokument.
-
-Für ein Agenten-System:
-
-- Skills/MCP pro Agententyp als Vorlage speichern.
-- Beim Anlegen eines Agenten in eigene, editierbare Zeilen kopieren.
-- Vor dem Start in das Memory-Home materialisieren (\`opencode.json\`, \`.claude.json\`, generisches Manifest).
-- Env-Werte nicht speichern, nur Namen; Werte in den Vault.
-
-Referenz: \`internal/agentconfig\`, \`internal/agents\`, \`docs/web-ui.md\`.`,
-      links: [['mcp.md', GH_DW + 'docs/mcp.md']],
-      quiz: {
-        q: 'Beschreibt MCP einen ganzen Server als ein Standard-JSON?',
-        options: ['Ja, genau ein Dokument', 'Nein: JSON-RPC-Methoden plus Schemas pro Tool', 'Nur für Claude', 'Nur für OpenAI'],
-        answer: 1,
-        ok: 'Richtig. Ein normalisierter Server-Contract ist eine Ergänzung, kein MCP-Standard.',
-        bad: 'MCP definiert Methoden und Tool-Schemas, kein einzelnes Gesamt-JSON.'
-      }
+      id: 'm10', kicker: 'Modul 10', title: 'MCP & Skills',
+      sub: 'Werkzeuge pro Agent konfigurierbar', pages: [
+        { t: 'bullets', title: 'MCP-Punkte', points: [
+          '<code>initialize</code> beschreibt Protokollversion und Capabilities.',
+          '<code>tools/list</code> liefert Tools mit <code>inputSchema</code> (JSON Schema).',
+          'Ein MCP-Server ist <b>kein</b> einzelnes Standard-JSON-Dokument.'
+        ]},
+        { t: 'bullets', title: 'Für ein Agenten-System', points: [
+          'Skills/MCP pro Agententyp als Vorlage speichern.',
+          'Beim Anlegen eines Agenten in eigene, editierbare Zeilen kopieren.',
+          'Vor dem Start ins Memory-Home materialisieren.',
+          'Env-Werte nicht speichern, nur Namen; Werte in den Vault.'
+        ]},
+        { t: 'code', title: 'AgentMCP im echten Code', lang: 'go', file: 'internal/model/model.go', url: GH_DW + 'internal/model/model.go', code:
+`type AgentMCP struct {
+    ID        string       \`json:"id"\`
+    AgentID   string       \`json:"agent_id"\`
+    Transport MCPTransport \`json:"transport"\` // stdio | http | sse
+    Command   string       \`json:"command,omitempty"\`
+    EnvKeys   []string     \`json:"env_keys,omitempty"\` // nur Namen, Werte im Vault
+}` },
+        { t: 'quiz', q: 'Beschreibt MCP einen ganzen Server als ein Standard-JSON?', options: ['Ja, genau ein Dokument', 'Nein: JSON-RPC-Methoden plus Schemas pro Tool', 'Nur für Claude', 'Nur für OpenAI'], answer: 1, ok: 'Richtig. Ein normalisierter Server-Contract ist eine Ergänzung, kein MCP-Standard.', bad: 'MCP definiert Methoden und Tool-Schemas, kein einzelnes Gesamt-JSON.' }
+      ]
     },
     {
-      id: 'm11', code: 'M11', num: '§11', title: 'Tests & Threat Modeling',
-      sub: 'Beweise statt Behauptungen',
-      body: [
-        'Unit-Tests für Policy, Vault, Pfade + Race Detector.',
-        'Integrationstests mit echten Mounts nur isoliert.',
-        'Fake-Provider statt echter API-Keys.',
-        'Angriffstests: Exfiltration, Traversal, Redirect, Budget, Session.'
-      ],
-      codeFiles: [],
-      md: `## 11. Tests und Threat Modeling
-
-Mindestens:
-
-- Unit-Tests für Policy, Vault, Pfade.
-- Race Detector.
-- Integrationstests mit echten Mounts nur in isolierter Umgebung.
-- Fake-Provider statt echter API-Keys.
-- Angriffstests: Secret-Exfiltration, Pfad-Traversal, Redirect, Budget, abgelaufene Session, falscher Agent.
-
-Threat-Model-Fragen:
-
-1. Wer ist vertrauenswürdig? (Operator, Daemon, Broker, Host)
-2. Was ist unvertrauenswürdig? (Agent, Prompt-Injection, Netzwerk)
-3. Welche Grenze schützt welches Gut?
-4. Was passiert bei Fehlern? (fail closed?)
-5. Welche Restrisiken bleiben?`,
-      links: [['Integrationstests', GH_DW + 'tests/integration']],
-      quiz: {
-        q: 'Wo laufen Integrationstests mit echten Mounts?',
-        options: ['Direkt auf dem Entwickler-Host', 'Nur in einer isolierten, privilegierten Umgebung', 'In der CI ohne Docker', 'Nirgends, sie werden übersprungen'],
-        answer: 1,
-        ok: 'Richtig. Privilegierte Mount-Tests laufen nie direkt auf dem Host.',
-        bad: 'Echte Mount-Tests brauchen CAP_SYS_ADMIN — nur isoliert, sonst t.Skip.'
-      }
+      id: 'm11', kicker: 'Modul 11', title: 'Tests & Threat Modeling',
+      sub: 'Beweise statt Behauptungen', pages: [
+        { t: 'bullets', title: 'Mindestens', points: [
+          'Unit-Tests für Policy, Vault, Pfade.',
+          'Race Detector.',
+          'Integrationstests mit echten Mounts nur in isolierter Umgebung.',
+          'Fake-Provider statt echter API-Keys.',
+          'Angriffstests: Secret-Exfiltration, Pfad-Traversal, Redirect, Budget, Session.'
+        ]},
+        { t: 'numbered', title: 'Threat-Model-Fragen', items: [
+          'Wer ist vertrauenswürdig? (Operator, Daemon, Broker, Host)',
+          'Was ist unvertrauenswürdig? (Agent, Prompt-Injection, Netzwerk)',
+          'Welche Grenze schützt welches Gut?',
+          'Was passiert bei Fehlern? (fail closed?)',
+          'Welche Restrisiken bleiben?'
+        ]},
+        { t: 'quiz', q: 'Wo laufen Integrationstests mit echten Mounts?', options: ['Direkt auf dem Entwickler-Host', 'Nur in einer isolierten, privilegierten Umgebung', 'In der CI ohne Docker', 'Nirgends, sie werden übersprungen'], answer: 1, ok: 'Richtig. Privilegierte Mount-Tests laufen nie direkt auf dem Host.', bad: 'Echte Mount-Tests brauchen CAP_SYS_ADMIN — nur isoliert, sonst t.Skip.' }
+      ]
     },
     {
-      id: 'm12', code: 'M12', num: '§12', title: 'Bau-Reihenfolge',
-      sub: 'Milestones mit Abnahmekriterium',
-      body: [
-        'Eine Phase nach der anderen bauen.',
-        'Jede Phase hat ein überprüfbares Abnahmekriterium.',
-        'Ein halbfertiger Broker ohne Egress-Schutz ist keine Sicherheit.'
-      ],
-      codeFiles: [],
-      md: `## 12. Bau-Reihenfolge (Milestones)
-
-| Phase | Ziel | Abnahmekriterium |
-|---|---|---|
-| M0 | Konzepte | Du kannst Harness, Agent, Sandbox, Grant erklären |
-| M1 | Sandbox | Container startet non-root, ohne Caps, ohne Docker-Socket |
-| M2 | Steuerung | CLI → Daemon → Docker funktioniert |
-| M3 | Identität | Agent überlebt Container-Neuerstellung |
-| M4 | Workspaces | Grant ro/rw funktioniert, Allowlist greift |
-| M5 | Mounts sicher | RO-Staging, TOCTOU-Schutz, kein Lazy-Unmount-Default |
-| M6 | Secrets | Vault + Broker, Agent sieht nur Session-Token |
-| M7 | Egress | \`offline\`/\`broker-only\` erzwungen, Fail closed |
-| M8 | Audit | Hash-Kette, keine Secrets in Events |
-| M9 | UI | CLI/TUI/Web mit klarer Rechteanzeige |
-| M10 | MCP/Skills | pro Agent konfigurierbar und materialisiert |
-
-Baue **eine Phase nach der anderen**. Ein halbfertiger Broker ohne Egress-Schutz ist keine Sicherheitslösung.`,
-      links: []
+      id: 'm12', kicker: 'Modul 12', title: 'Bau-Reihenfolge',
+      sub: 'Milestones mit Abnahmekriterium', pages: [
+        { t: 'table', title: 'Milestones', head: ['Phase', 'Ziel', 'Abnahmekriterium'], rows: [
+          ['M0', 'Konzepte', 'Du kannst Harness, Agent, Sandbox, Grant erklären'],
+          ['M1', 'Sandbox', 'Container startet non-root, ohne Caps, ohne Docker-Socket'],
+          ['M2', 'Steuerung', 'CLI → Daemon → Docker funktioniert'],
+          ['M3', 'Identität', 'Agent überlebt Container-Neuerstellung'],
+          ['M4', 'Workspaces', 'Grant ro/rw funktioniert, Allowlist greift'],
+          ['M5', 'Mounts sicher', 'RO-Staging, TOCTOU-Schutz, kein Lazy-Unmount-Default'],
+          ['M6', 'Secrets', 'Vault + Broker, Agent sieht nur Session-Token'],
+          ['M7', 'Egress', '<code>offline</code>/<code>broker-only</code> erzwungen, Fail closed'],
+          ['M8', 'Audit', 'Hash-Kette, keine Secrets in Events'],
+          ['M9', 'UI', 'CLI/TUI/Web mit klarer Rechteanzeige'],
+          ['M10', 'MCP/Skills', 'pro Agent konfigurierbar und materialisiert']
+        ]},
+        { t: 'note', text: 'Baue <strong>eine Phase nach der anderen</strong>. Ein halbfertiger Broker ohne Egress-Schutz ist keine Sicherheitslösung.' }
+      ]
     },
     {
-      id: 'm13', code: 'M13', num: '§13', title: 'Häufige Fehler',
-      sub: 'Die zehn Klassiker',
-      body: [
-        'API-Keys in Env, Docker-Socket im Agenten, --privileged.',
-        'Mounts ohne Allowlist, Symlinks nicht aufgelöst, umount -l.',
-        'Proxy als Netzwerksicherheit, Tokens im Klartext.',
-        'Sicherheit behaupten, die nicht erzwungen ist.'
-      ],
-      codeFiles: [],
-      md: `## 13. Häufige Fehler
-
-1. API-Keys in Env-Variablen.
-2. Docker-Socket im Agenten.
-3. \`--privileged\`, weil es „einfacher" ist.
-4. Mounts ohne Allowlist.
-5. Symlinks nicht auflösen.
-6. \`umount -l\` als Standard.
-7. Proxy als „Netzwerksicherheit" verkaufen.
-8. Session-Tokens im Klartext speichern.
-9. Budgets ohne Reservierung bei parallelen Requests.
-10. Sicherheit behaupten, obwohl sie nicht erzwungen ist.`,
-      links: []
+      id: 'm13', kicker: 'Modul 13', title: 'Häufige Fehler',
+      sub: 'Die zehn Klassiker', pages: [
+        { t: 'numbered', title: 'Die 10 häufigsten Fehler', items: [
+          'API-Keys in Env-Variablen.',
+          'Docker-Socket im Agenten.',
+          '<code>--privileged</code>, weil es „einfacher“ ist.',
+          'Mounts ohne Allowlist.',
+          'Symlinks nicht auflösen.',
+          '<code>umount -l</code> als Standard.',
+          'Proxy als „Netzwerksicherheit“ verkaufen.',
+          'Session-Tokens im Klartext speichern.',
+          'Budgets ohne Reservierung bei parallelen Requests.',
+          'Sicherheit behaupten, obwohl sie nicht erzwungen ist.'
+        ]}
+      ]
     },
     {
-      id: 'm14', code: 'M14', num: '§14', title: 'Sicherheits-Checkliste',
-      sub: 'Was wirklich zählt',
-      body: [
-        'Non-root, ohne Caps, ohne Docker-Socket.',
-        'Nur registrierte Pfade mountbar, RO korrekt gestaged.',
-        'Keine Secrets in Env/Inspect/SQLite/Logs; Broker Deny-by-default.',
-        'Fehler führen zu Ablehnung, nicht zu mehr Rechten.'
-      ],
-      codeFiles: [],
-      md: `## 14. Sicherheits-Checkliste
-
-- [ ] Agent läuft non-root, ohne Caps, ohne Docker-Socket.
-- [ ] Nur registrierte Host-Pfade sind mountbar.
-- [ ] RO-Mounts werden korrekt gestaged.
-- [ ] Keine Secrets in Env, Inspect, SQLite oder Logs.
-- [ ] Broker: Deny by default, feste Ziele, keine Redirects.
-- [ ] Session-Tokens gehasht, ablaufbar, widerrufbar.
-- [ ] Egress: \`broker-only\` blockt externe Routen.
-- [ ] Fehler führen zu Ablehnung, nicht zu mehr Rechten.
-- [ ] Audit-Events enthalten keine Secrets.
-- [ ] Offene Risiken sind dokumentiert.`,
-      links: []
+      id: 'm14', kicker: 'Modul 14', title: 'Sicherheits-Checkliste',
+      sub: 'Was wirklich zählt', pages: [
+        { t: 'checklist', title: 'Checkliste', items: [
+          'Agent läuft non-root, ohne Caps, ohne Docker-Socket.',
+          'Nur registrierte Host-Pfade sind mountbar.',
+          'RO-Mounts werden korrekt gestaged.',
+          'Keine Secrets in Env, Inspect, SQLite oder Logs.',
+          'Broker: Deny by default, feste Ziele, keine Redirects.',
+          'Session-Tokens gehasht, ablaufbar, widerrufbar.',
+          'Egress: broker-only blockt externe Routen.',
+          'Fehler führen zu Ablehnung, nicht zu mehr Rechten.',
+          'Audit-Events enthalten keine Secrets.',
+          'Offene Risiken sind dokumentiert.'
+        ]}
+      ]
     },
     {
-      id: 'm15', code: 'M15', num: '§15', title: 'Referenz-Map',
-      sub: 'Thema → DockWeave-Datei',
-      body: [
-        'Für jeden Aspekt genau eine Datei im Repo.',
-        'Die Lern-Map ist der Einstieg, die Referenz-Map der Index.'
-      ],
-      codeFiles: [],
-      md: `## 15. Referenz-Map
-
-| Thema | DockWeave-Datei |
-|---|---|
-| Agentenmodell | \`internal/model/model.go\` |
-| Persistenz/Migrationen | \`internal/persistence\` |
-| Docker-Sandbox | \`internal/dockerclient\` |
-| Agenten-Lifecycle | \`internal/agents\` |
-| Workspace-Grants | \`internal/workspaces\` |
-| Mount-Sicherheit | \`internal/mounts\` |
-| Vault | \`internal/credentialvault\` |
-| Broker | \`internal/credentialbroker\` |
-| Egress | \`internal/agents\`, \`tests/integration/egress_network_test.go\` |
-| UI-Gateway | \`internal/webui\` |
-| Angular-UI | \`ui/web\` |
-| TUI | \`ui/tui\` |
-| Lernleitfaden | \`docs/learning/agent-harness.de.md\` |`,
-      links: []
+      id: 'm15', kicker: 'Modul 15', title: 'Referenz-Map',
+      sub: 'Thema → DockWeave-Datei', pages: [
+        { t: 'table', title: 'Thema → Datei', head: ['Thema', 'DockWeave-Datei'], rows: [
+          ['Agentenmodell', '<code>internal/model/model.go</code>'],
+          ['Persistenz/Migrationen', '<code>internal/persistence</code>'],
+          ['Docker-Sandbox', '<code>internal/dockerclient</code>'],
+          ['Agenten-Lifecycle', '<code>internal/agents</code>'],
+          ['Workspace-Grants', '<code>internal/workspaces</code>'],
+          ['Mount-Sicherheit', '<code>internal/mounts</code>'],
+          ['Vault', '<code>internal/credentialvault</code>'],
+          ['Broker', '<code>internal/credentialbroker</code>'],
+          ['Egress', '<code>internal/agents</code>, <code>tests/integration/egress_network_test.go</code>'],
+          ['UI-Gateway', '<code>internal/webui</code>'],
+          ['Angular-UI', '<code>ui/web</code>'],
+          ['TUI', '<code>ui/tui</code>'],
+          ['Lernleitfaden', '<code>docs/learning/agent-harness.de.md</code>']
+        ]}
+      ]
     },
     {
-      id: 'm16', code: 'M16', num: '§16', title: 'Fazit',
-      sub: 'Vertrauensgrenzen bewusst ziehen',
-      body: [
-        'Was darf der Agent? Was darf er niemals sehen?',
-        'Wer entscheidet? Was passiert bei Fehlern?',
-        'Was ist tatsächlich erzwungen — und was nur dokumentiert?'
-      ],
-      codeFiles: [],
-      md: `## 16. Fazit
-
-Ein sicheres Agenten-System besteht nicht daraus, einen Container zu starten. Es besteht daraus, **Vertrauensgrenzen bewusst zu ziehen**:
-
-- Was darf der Agent?
-- Was darf er niemals sehen?
-- Wer entscheidet?
-- Was passiert bei Fehlern?
-- Was ist tatsächlich erzwungen — und was nur dokumentiert?
-
-Wenn du diese Fragen für dein eigenes System beantworten kannst, hast du das Wichtigste verstanden. Der Rest ist Implementierung.`,
-      links: []
-    }
-  ];
-
-  /* ================= comparison: DockWeave vs herdr ================= */
-  const comparison = {
-    tldr: 'Beide nennen sich eine „Runtime für Coding-Agents" — aber sie arbeiten auf <strong>verschiedenen Ebenen</strong>. <strong>DockWeave</strong> beantwortet die Sicherheitsfrage (<em>Was darf der Agent, was darf er sehen?</em>) mit Containern, Grants, Credential-Broker und Egress. <strong>herdr</strong> beantwortet die Betriebs-/UX-Frage (<em>Wo läuft der Agent, ohne dass du dabei bleiben musst?</em>) mit einem Terminal-Multiplexer, Detach/Reattach und Multi-Machine-Orchestrierung. Sie sind kein Ersatz füreinander — eher orthogonal.',
-    dimensions: [
-      ['Ebene', 'Container- / Sicherheitsebene', 'Terminal- / Prozess-Ebene'],
-      ['Kernfrage', 'Was darf der Agent?', 'Wo läuft der Agent, ohne dass du dabei sein musst?'],
-      ['Sprache / Auslieferung', 'Go, Daemon + CLI + TUI + Web', 'Rust, ein einziges Binary'],
-      ['Isolation', '<span class="ok">Docker-Container, cap-drop ALL, non-root</span>', '<span class="no">keine — läuft mit deinen Rechten</span>'],
-      ['Harness', 'keinen eigenen (OpenCode/Codex/Claude Code)', 'keinen eigenen (führt deine Agenten aus)'],
-      ['Identität', '<span class="ok">stabile ID, unabhängig vom Container</span>', '<span class="warn">terminal_id / pane_id</span>'],
-      ['Secrets', '<span class="ok">Vault + Broker (secretless)</span>', '<span class="no">keine Verwaltung — deine Keys</span>'],
-      ['Egress / Netz', '<span class="ok">offline / broker-only, fail closed</span>', '<span class="no">keine Netzgrenze</span>'],
-      ['Audit', '<span class="ok">Hash-Ketten-Events</span>', '<span class="no">kein Audit-Trail</span>'],
-      ['Session / Detach', '<span class="warn">Container stop/start</span>', '<span class="ok">detach/reattach, Layout-Restore</span>'],
-      ['Mehrere Maschinen', '<span class="no">nein (single host + Docker)</span>', '<span class="ok">ja (lokale + SSH-Maschinen)</span>'],
-      ['Agent-nativ', 'über REST-API / CLI steuerbar', 'CLI + Socket-API: spawn, prompt, wait']
-    ],
-    code: [
-      {
-        label: 'Start & Isolation — wie wird ein Agent gestartet?',
-        dw: {
-          file: 'internal/dockerclient/dockerclient.go', lang: 'go', url: GH_DW + 'internal/dockerclient/dockerclient.go',
-          code:
-`// DockWeave: Container mit gehärtetem Profil
-host := &container.HostConfig{
+      id: 'm16', kicker: 'Modul 16', title: 'Fazit',
+      sub: 'Vertrauensgrenzen bewusst ziehen', pages: [
+        { t: 'bullets', title: 'Die fünf Fragen', points: [
+          'Was darf der Agent?',
+          'Was darf er niemals sehen?',
+          'Wer entscheidet?',
+          'Was passiert bei Fehlern?',
+          'Was ist tatsächlich erzwungen — und was nur dokumentiert?'
+        ]},
+        { t: 'note', text: 'Ein sicheres Agenten-System besteht nicht daraus, einen Container zu starten. Es besteht daraus, <strong>Vertrauensgrenzen bewusst zu ziehen</strong>. Der Rest ist Implementierung.' }
+      ]
+    },
+    {
+      id: 'vs', kicker: 'Vergleich', title: 'DockWeave vs. herdr',
+      sub: 'Zwei „Runtimes für Coding-Agents“, zwei Ebenen — mit echtem Code aus beiden Repos.', pages: [
+        { t: 'note', tone: 'blue', text: 'Beide nennen sich eine „Runtime für Coding-Agents“ — aber sie arbeiten auf <strong>verschiedenen Ebenen</strong>. <strong>DockWeave</strong> beantwortet die Sicherheitsfrage, <strong>herdr</strong> die Betriebs-/UX-Frage. Sie sind kein Ersatz füreinander — eher orthogonal.' },
+        { t: 'vsCards', title: 'Zwei Runtimes, zwei Ebenen' },
+        { t: 'table', title: 'Dimensionen', head: ['Dimension', 'DockWeave', 'herdr'], rows: [
+          ['Ebene', 'Container- / Sicherheitsebene', 'Terminal- / Prozess-Ebene'],
+          ['Kernfrage', 'Was darf der Agent?', 'Wo läuft der Agent, ohne dass du dabei sein musst?'],
+          ['Sprache', 'Go, Daemon + CLI + TUI + Web', 'Rust, ein einziges Binary'],
+          ['Isolation', '<span class="ok">Docker, cap-drop ALL, non-root</span>', '<span class="no">keine — deine Rechte</span>'],
+          ['Harness', 'keinen eigenen (OpenCode/Codex/Claude)', 'keinen eigenen (führt deine Agenten aus)'],
+          ['Identität', '<span class="ok">stabile ID, unabhängig vom Container</span>', '<span class="warn">terminal_id / pane_id</span>'],
+          ['Secrets', '<span class="ok">Vault + Broker (secretless)</span>', '<span class="no">keine Verwaltung — deine Keys</span>'],
+          ['Egress / Netz', '<span class="ok">offline / broker-only, fail closed</span>', '<span class="no">keine Netzgrenze</span>'],
+          ['Audit', '<span class="ok">Hash-Ketten-Events</span>', '<span class="no">kein Audit-Trail</span>'],
+          ['Session / Detach', '<span class="warn">Container stop/start</span>', '<span class="ok">detach/reattach, Layout-Restore</span>'],
+          ['Mehrere Maschinen', '<span class="no">nein (single host + Docker)</span>', '<span class="ok">ja (lokale + SSH-Maschinen)</span>'],
+          ['Agent-nativ', 'über REST-API / CLI steuerbar', 'CLI + Socket-API: spawn, prompt, wait']
+        ]},
+        { t: 'codePair', title: 'Start & Isolation — wie wird ein Agent gestartet?',
+          dw: { file: 'internal/dockerclient/dockerclient.go', lang: 'go', url: GH_DW + 'internal/dockerclient/dockerclient.go', code:
+`host := &container.HostConfig{
     CapDrop:     []string{"ALL"},
     Privileged:  false,
     SecurityOpt: []string{"no-new-privileges"},
     NetworkMode: container.NetworkMode(a.NetworkMode),
     User:        fmt.Sprintf("%d:%d", a.UID, a.GID),
-}`
-        },
-        hr: {
-          file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs',
-          code:
-`// herdr: Agent in einem Terminal-Pane starten
-pub struct AgentStartParams {
+}` },
+          hr: { file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs', code:
+`pub struct AgentStartParams {
     pub name: String,      // Anzeigename
-    pub kind: String,      // claude-code | codex | opencode | cursor | …
+    pub kind: String,      // claude-code | codex | opencode | …
     pub pane_id: String,   // welches Pane ihn besitzt
     pub args: Vec<String>, // an die Agent-CLI durchgereicht
     pub timeout_ms: Option<u64>, // Warten auf Readiness
-}`
-        }
-      },
-      {
-        label: 'Identität & Datenmodell — was ist ein Agent?',
-        dw: {
-          file: 'internal/model/model.go', lang: 'go', url: GH_DW + 'internal/model/model.go',
-          code:
+}` } },
+        { t: 'codePair', title: 'Identität & Datenmodell — was ist ein Agent?',
+          dw: { file: 'internal/model/model.go', lang: 'go', url: GH_DW + 'internal/model/model.go', code:
 `type Agent struct {
-    ID   string ` + "`json:\"id\"`" + `    // ag_…, stabil
-    Type string ` + "`json:\"type\"`" + `  // codex | opencode | claude | …
-    Image string ` + "`json:\"image\"`" + `
-    UID  int    ` + "`json:\"uid\"`" + `
-    GID  int    ` + "`json:\"gid\"`" + `
-    NetworkProfile NetworkProfile ` + "`json:\"network_profile\"`" + `
-    State      AgentState ` + "`json:\"state\"`" + `
-    ContainerID string    ` + "`json:\"container_id,omitempty\"`" + `
-}`
-        },
-        hr: {
-          file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs',
-          code:
+    ID   string \`json:"id"\`   // ag_…, stabil
+    Type string \`json:"type"\` // codex | opencode | claude | …
+    Image string \`json:"image"\`
+    UID  int    \`json:"uid"\`
+    GID  int    \`json:"gid"\`
+    NetworkProfile NetworkProfile \`json:"network_profile"\`
+    State      AgentState \`json:"state"\`
+    ContainerID string    \`json:"container_id,omitempty"\`
+}` },
+          hr: { file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs', code:
 `pub struct AgentInfo {
     pub terminal_id: String,
     pub pane_id: String,
@@ -998,341 +714,266 @@ pub struct AgentStartParams {
     pub agent_session: Option<AgentSessionInfo>,
     pub interactive_ready: bool,
     // …
-}`
-        }
-      },
-      {
-        label: 'Zugriff & Zustand — woher weiß das System, was los ist?',
-        dw: {
-          file: 'internal/api/auth.go', lang: 'go', url: GH_DW + 'internal/api/auth.go',
-          code:
+}` } },
+        { t: 'codePair', title: 'Zugriff & Zustand — woher weiß das System, was los ist?',
+          dw: { file: 'internal/api/auth.go', lang: 'go', url: GH_DW + 'internal/api/auth.go', code:
 `// Strukturierter Zustand + SO_PEERCRED-Autorisierung
 cred, _ := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 role := policy.RoleOf(cred.Uid)
 if role == "" {
     http.Error(w, "forbidden: peer uid not authorized", 403)
     return
-}`
-        },
-        hr: {
-          file: 'src/cli/agent.rs', lang: 'rust', url: GH_HR + 'src/cli/agent.rs',
-          code:
+}` },
+          hr: { file: 'src/cli/agent.rs', lang: 'rust', url: GH_HR + 'src/cli/agent.rs', code:
 `// Zustand wird aus dem Terminal-Screen erkannt (Regeln),
 // nicht über eine Agent-API abgefragt:
 println!("    matchers: contains={:?} regex={:?} line_regex={:?} all={} any={} not={}",
     evidence["contains"], evidence["regex"], evidence["line_regex"],
-    evidence["all_count"], evidence["any_count"], evidence["not_count"]);`
-        }
-      }
-    ],
-    procontra: {
-      dw: {
-        goes: [
-          'Echte Isolation: Container, cap-drop ALL, non-root, kein Docker-Socket im Agenten.',
-          'Workspace-Grants mit Allowlist, TOCTOU-Schutz (openat2) und sauberem RO-Staging.',
-          'Secretless Credentials: Vault (Argon2id + AES-256-GCM) + Broker, Agent sieht nur ein kurzlebiges Session-Token.',
-          'Egress-Profile (offline / broker-only), fail closed.',
-          'Audit mit Hash-Kette, stabile Agenten-Identität, Recovery/Supervisor.'
-        ],
-        noes: [
-          'Kein Harness: nutzt OpenCode/Codex/Claude Code (bewusst so gebaut).',
-          'Kein Terminal-Multiplexing: kein tmux-artiges Detach/Reattach-Erlebnis.',
-          'Single-Host: braucht Docker + einen root-Daemon (CAP_SYS_ADMIN).',
-          'Keine Multi-Machine-Orchestrierung über SSH.',
-          'Mehr Setup-/Operations-Aufwand als ein einzelnes Binary.'
-        ]
-      },
-      hr: {
-        goes: [
-          'Detach/Reattach: Terminals laufen im Hintergrund-Server weiter; Layout-Restore nach Neustart.',
-          'Multi-Machine: lokale + gespeicherte SSH-Maschinen in einem Fenster.',
-          'Agent-nativ: CLI + Socket-API — Panes spawnen, prompten, auf „blocked“ warten.',
-          'Läuft mit dem, was du schon nutzt: Claude Code, Codex, Cursor, OpenCode, …',
-          'Ein Rust-Binary, Plugins und ein Marketplace.'
-        ],
-        noes: [
-          'Keine Isolation: Agenten laufen mit deinen Rechten, keine Sandbox.',
-          'Keine Credential-Verwaltung: deine API-Keys bleiben deine (kein Vault/Broker).',
-          'Keine Egress-/Netzgrenze.',
-          'Kein Audit-Trail (keine Hash-Kette).',
-          'Zustand wird über Screen-Detection erraten (Regeln auf Terminal-Output), nicht über eine Agent-API.'
-        ]
-      }
-    },
-    zusammen: 'Die beiden schließen sich nicht aus: Du kannst einen DockWeave-verwalteten Agenten in einem herdr-Pane laufen lassen — herdr <em>ownet</em> das Terminal und die Session, DockWeave <em>ownet</em> die Sandbox, die Secrets und die Grenzen. Oder du betreibst herdr selbst in einer DockWeave-Sandbox, wenn du dessen Zugriffe einschränken willst. Kurz: herdr löst die <strong>Bedienbarkeit</strong>, DockWeave die <strong>Sicherheit</strong>.'
-  };
-
-  /* ---------- progress ---------- */
-  const totalEl = document.getElementById('progress-total');
-  const countEl = document.getElementById('progress-count');
-  const barEl = document.getElementById('progress-bar');
-  const badgesEl = document.getElementById('badges');
-  totalEl.textContent = String(phases.length);
-
-  function renderProgress() {
-    const done = phases.filter(p => isDone(p.id)).length;
-    countEl.textContent = String(done);
-    barEl.style.width = `${(done / phases.length) * 100}%`;
-    const badges = [
-      ['🌱', 'Erste Schritte', done >= 1],
-      ['🧱', 'Sandbox-Versteher', done >= 4],
-      ['🔐', 'Secretless', done >= 7],
-      ['🛡️', 'Grenzgänger', done >= 11],
-      ['🏆', 'Systemarchitekt', done >= phases.length]
-    ];
-    badgesEl.innerHTML = badges.map(([i, label, on]) => `<span class="badge ${on ? 'on' : ''}">${i} ${label}</span>`).join('');
-    if (done === phases.length && !state.celebrated) {
-      state.celebrated = true; save(); confetti();
+    evidence["all_count"], evidence["any_count"], evidence["not_count"]);` } },
+        { t: 'procontra', title: 'Was geht, was nicht geht', cols: [
+          { tone: 'goes', head: '✓ Was DockWeave kann', items: [
+            'Echte Isolation: Container, cap-drop ALL, non-root, kein Docker-Socket im Agenten.',
+            'Workspace-Grants mit Allowlist, TOCTOU-Schutz (openat2) und sauberem RO-Staging.',
+            'Secretless Credentials: Vault (Argon2id + AES-256-GCM) + Broker, Agent sieht nur ein kurzlebiges Session-Token.',
+            'Egress-Profile (offline / broker-only), fail closed.',
+            'Audit mit Hash-Kette, stabile Agenten-Identität, Recovery/Supervisor.'
+          ]},
+          { tone: 'noes', head: '✗ Was DockWeave nicht kann (bewusst)', items: [
+            'Kein Harness: nutzt OpenCode/Codex/Claude Code.',
+            'Kein Terminal-Multiplexing: kein tmux-artiges Detach/Reattach.',
+            'Single-Host: braucht Docker + einen root-Daemon (CAP_SYS_ADMIN).',
+            'Keine Multi-Machine-Orchestrierung über SSH.',
+            'Mehr Setup-/Operations-Aufwand als ein einzelnes Binary.'
+          ]},
+          { tone: 'goes', head: '✓ Was herdr kann', items: [
+            'Detach/Reattach: Terminals laufen im Hintergrund-Server weiter; Layout-Restore nach Neustart.',
+            'Multi-Machine: lokale + gespeicherte SSH-Maschinen in einem Fenster.',
+            'Agent-nativ: CLI + Socket-API — Panes spawnen, prompten, auf „blocked“ warten.',
+            'Läuft mit dem, was du schon nutzt: Claude Code, Codex, Cursor, OpenCode, …',
+            'Ein Rust-Binary, Plugins und ein Marketplace.'
+          ]},
+          { tone: 'noes', head: '✗ Was herdr nicht kann', items: [
+            'Keine Isolation: Agenten laufen mit deinen Rechten, keine Sandbox.',
+            'Keine Credential-Verwaltung: deine API-Keys bleiben deine (kein Vault/Broker).',
+            'Keine Egress-/Netzgrenze.',
+            'Kein Audit-Trail (keine Hash-Kette).',
+            'Zustand wird über Screen-Detection erraten, nicht über eine Agent-API.'
+          ]}
+        ]},
+        { t: 'note', text: '<strong>Zusammenspiel:</strong> Die beiden schließen sich nicht aus. Du kannst einen DockWeave-verwalteten Agenten in einem herdr-Pane laufen lassen — herdr <em>ownet</em> das Terminal und die Session, DockWeave <em>ownet</em> die Sandbox, die Secrets und die Grenzen. Kurz: herdr löst die <strong>Bedienbarkeit</strong>, DockWeave die <strong>Sicherheit</strong>.' }
+      ]
     }
+  ];
+
+  /* ================= engine ================= */
+  const stage = document.getElementById('stage');
+  const chapterLabel = document.getElementById('chapter-label');
+  const pageCounter = document.getElementById('page-counter');
+  const dots = document.getElementById('dots');
+  const prevBtn = document.getElementById('prev-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const progressFill = document.getElementById('progress-fill');
+  const tocOverlay = document.getElementById('toc-overlay');
+  const tocEl = document.getElementById('toc');
+  const tocBtn = document.getElementById('toc-btn');
+  const tocClose = document.getElementById('toc-close');
+
+  let ci = 0, pi = 0, lastDir = 'next';
+
+  function flat() {
+    // global index across all pages for progress
+    let total = 0;
+    for (const c of chapters) total += c.pages.length;
+    return total;
+  }
+  function globalIndex() {
+    let n = 0;
+    for (let i = 0; i < ci; i++) n += chapters[i].pages.length;
+    return n + pi;
   }
 
-  function complete(id) {
-    if (!isDone(id)) { state.done.push(id); save(); renderProgress(); }
-    const el = document.querySelector(`[data-phase="${id}"]`);
-    if (el) { el.classList.add('done'); const s = el.querySelector('.phase-status'); if (s) s.textContent = '✓ verstanden'; }
+  function persist() { try { localStorage.setItem(POS_KEY, JSON.stringify({ ci, pi })); } catch {} }
+  function loadPos() {
+    try { const s = JSON.parse(localStorage.getItem(POS_KEY) || '{}'); if (Number.isInteger(s.ci) && Number.isInteger(s.pi)) return s; } catch {}
+    return null;
   }
 
-  /* ---------- phases ---------- */
-  const phasesEl = document.getElementById('phases');
-  function renderPhases() {
-    phasesEl.innerHTML = phases.map(p => `
-      <details class="phase ${isDone(p.id) ? 'done' : ''}" data-phase="${p.id}">
-        <summary>
-          <span class="phase-badge">${p.code}</span>
-          <span class="phase-title"><b>${p.num} · ${p.title}</b><span>${p.sub}</span></span>
-          <span class="phase-status">${isDone(p.id) ? '✓ verstanden' : 'offen'}</span>
-        </summary>
-        <div class="phase-body">
-          <div class="phase-tabs">
-            <button type="button" class="active" data-tab="kurz">Kurz</button>
-            <button type="button" data-tab="md">Original (build-your-own.de.md)</button>
-          </div>
-          <div class="phase-panel kurz active">
-            <ul>${p.body.map(x => `<li>${x}</li>`).join('')}</ul>
-            ${(p.codeFiles || []).map(cf => `
-              <div class="codefile">
-                <div class="codefile-head"><span class="fname">${cf.file}</span><span class="lang">${cf.lang}</span></div>
-                <pre><code>${escapeHtml(cf.code)}</code></pre>
-              </div>`).join('')}
-          </div>
-          <div class="phase-panel md">${p.md ? `<div class="mdview">${renderMd(p.md)}</div>` : ''}</div>
-          ${p.links && p.links.length ? `<div class="phase-links">${p.links.map(([l, u]) => `<a class="btn small ghost" href="${u}">${l}</a>`).join('')}</div>` : ''}
-          ${p.quiz ? `
-          <div class="quiz" data-quiz="${p.id}">
-            <h4>Mini-Check</h4>
-            <p>${p.quiz.q}</p>
-            <div class="quiz-options">
-              ${p.quiz.options.map((o, i) => `<button type="button" data-answer="${i}">${o}</button>`).join('')}
-            </div>
-            <div class="quiz-feedback"></div>
-          </div>` : ''}
-          <div class="phase-actions">
-            <button class="btn primary small" data-complete="${p.id}">${p.quiz ? 'Als verstanden markieren' : 'Abschnitt gesehen'}</button>
-          </div>
-        </div>
-      </details>
-    `).join('');
+  function goTo(nci, npi, dir) {
+    if (nci < 0) nci = 0;
+    if (nci >= chapters.length) { nci = chapters.length - 1; npi = chapters[nci].pages.length - 1; }
+    const ch = chapters[nci];
+    if (npi < 0) npi = 0;
+    if (npi >= ch.pages.length) npi = ch.pages.length - 1;
+    ci = nci; pi = npi;
+    lastDir = dir || 'next';
+    persist();
+    render();
+  }
 
-    // tabs
-    phasesEl.querySelectorAll('.phase-tabs').forEach(tabs => {
-      const body = tabs.parentElement;
-      tabs.querySelectorAll('button').forEach(btn => {
-        btn.addEventListener('click', () => {
-          tabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          body.querySelectorAll('.phase-panel').forEach(panel => panel.classList.remove('active'));
-          const panel = body.querySelector('.phase-panel.' + btn.dataset.tab);
-          if (panel) panel.classList.add('active');
-        });
-      });
-    });
+  function next() {
+    const ch = chapters[ci];
+    if (pi < ch.pages.length - 1) goTo(ci, pi + 1, 'next');
+    else if (ci < chapters.length - 1) goTo(ci + 1, 0, 'next');
+  }
+  function prev() {
+    if (pi > 0) goTo(ci, pi - 1, 'prev');
+    else if (ci > 0) goTo(ci - 1, chapters[ci - 1].pages.length - 1, 'prev');
+  }
 
+  function render() {
+    const ch = chapters[ci];
+    const page = ch.pages[pi];
+    const html = `<div class="page anim-${lastDir}"> <div class="page-inner">` + renderPage(ch, page, pi, ch.pages.length) + `</div></div>`;
+    stage.innerHTML = html;
+    const pageEl = stage.querySelector('.page');
+    void stage.offsetWidth;
+    pageEl.classList.add('active');
+    wirePage(pageEl);
+
+    chapterLabel.textContent = `${ch.kicker} · ${ch.title}`;
+    pageCounter.textContent = `${globalIndex() + 1} / ${flat()}`;
+    prevBtn.disabled = (ci === 0 && pi === 0);
+    const last = (ci === chapters.length - 1 && pi === ch.pages.length - 1);
+    nextBtn.textContent = last ? 'Fertig ✓' : 'Weiter →';
+
+    dots.innerHTML = ch.pages.map((_, i) => `<i class="${i === pi ? 'on' : ''}" data-dot="${i}"></i>`).join('');
+    dots.querySelectorAll('[data-dot]').forEach(d => d.addEventListener('click', () => goTo(ci, Number(d.dataset.dot), pi > Number(d.dataset.dot) ? 'prev' : 'next')));
+
+    progressFill.style.width = `${((globalIndex() + 1) / flat()) * 100}%`;
+  }
+
+  function wirePage(pageEl) {
     // quiz
-    phasesEl.querySelectorAll('.quiz').forEach(quiz => {
-      const id = quiz.dataset.quiz;
-      const p = phases.find(x => x.id === id);
+    pageEl.querySelectorAll('.quiz[data-quiz]').forEach(quiz => {
+      const answer = Number(quiz.dataset.answer);
       const fb = quiz.querySelector('.quiz-feedback');
-      quiz.querySelectorAll('button[data-answer]').forEach(btn => {
+      const okText = quiz.dataset.ok || '';
+      const badText = quiz.dataset.bad || '';
+      quiz.querySelectorAll('button[data-opt]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const ans = Number(btn.dataset.answer);
-          quiz.querySelectorAll('button[data-answer]').forEach(b => b.classList.remove('correct', 'wrong'));
-          if (ans === p.quiz.answer) {
-            btn.classList.add('correct');
-            fb.className = 'quiz-feedback ok';
-            fb.textContent = '✓ ' + p.quiz.ok;
-            complete(id);
+          quiz.querySelectorAll('button[data-opt]').forEach(b => b.classList.remove('correct', 'wrong'));
+          const v = Number(btn.dataset.opt);
+          if (v === answer) {
+            btn.classList.add('correct'); fb.className = 'quiz-feedback ok'; fb.textContent = '✓ ' + okText;
           } else {
-            btn.classList.add('wrong');
-            fb.className = 'quiz-feedback bad';
-            fb.textContent = '✗ ' + p.quiz.bad;
+            btn.classList.add('wrong'); fb.className = 'quiz-feedback bad'; fb.textContent = '✗ ' + badText;
           }
         });
       });
     });
 
-    phasesEl.querySelectorAll('[data-complete]').forEach(btn => {
-      btn.addEventListener('click', () => complete(btn.dataset.complete));
-    });
-  }
-
-  /* ---------- comparison render ---------- */
-  function renderComparison() {
-    const c = comparison;
-
-    const dimEl = document.getElementById('cmp-dimensions');
-    if (dimEl) {
-      dimEl.innerHTML = `
-        <div class="cmp-tldr">${c.tldr}</div>
-        <div class="cmp-grid">
-          <div class="cmp-card dw">
-            <h3>DockWeave <span class="cmp-tag">Go · Sandbox + Control Plane</span></h3>
-            <div class="cmp-role">Container-Sandbox, Workspace-Grants, Credential-Broker, Egress, Audit — die <strong>Sicherheits- und Grenzebene</strong>.</div>
-            <p><strong>Repository:</strong> <a href="https://github.com/ananta888/dockweave" target="_blank" rel="noopener">ananta888/dockweave</a></p>
-            <p>Führt KI-Agenten in <strong>isolierten Docker-Containern</strong> aus. Liefert Identität, Umgebung und Grenzen — bringt aber <strong>keinen eigenen Harness</strong> mit (nutzt OpenCode, Codex, Claude Code).</p>
-          </div>
-          <div class="cmp-card hr">
-            <h3>herdr <span class="cmp-tag">Rust · Terminal-Runtime</span></h3>
-            <div class="cmp-role">Terminal-Multiplexer &amp; Session-Manager — die <strong>Betriebs- und Bedienebene</strong>.</div>
-            <p><strong>Repository:</strong> <a href="https://github.com/herdrdev/herdr" target="_blank" rel="noopener">herdrdev/herdr</a> · <a href="https://herdr.dev" target="_blank" rel="noopener">herdr.dev</a></p>
-            <p>„the runtime your coding agents live on" — hält Terminals in einem Hintergrund-Server am Leben (detach/reattach), bündelt lokale + SSH-Maschinen und lässt Agenten Panes steuern. <strong>Ownet die Terminals, nicht die Container.</strong></p>
-          </div>
-        </div>
-        <div class="dim-wrap" style="margin-top:1.2rem">
-          <table class="dim-table">
-            <thead><tr><th class="dim">Dimension</th><th class="dw-col">DockWeave</th><th class="hr-col">herdr</th></tr></thead>
-            <tbody>${c.dimensions.map(r => `<tr><td class="dim">${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')}</tbody>
-          </table>
-        </div>`;
-    }
-
-    const codeEl = document.getElementById('cmp-code');
-    if (codeEl) {
-      codeEl.innerHTML = c.code.map(pair => {
-        const dw = pair.dw;
-        const hr = pair.hr;
-        return `
-          <div class="cmp-code-label"><code>${pair.label}</code></div>
-          <div class="cmp-code">
-            <div class="codefile">
-              <div class="codefile-head"><span class="fname">DockWeave · ${dw.file}</span><span class="lang">${dw.lang}</span><a href="${dw.url}" target="_blank" rel="noopener">↗</a></div>
-              <pre><code>${escapeHtml(dw.code)}</code></pre>
-            </div>
-            <div class="codefile">
-              <div class="codefile-head"><span class="fname">herdr · ${hr.file}</span><span class="lang">${hr.lang}</span><a href="${hr.url}" target="_blank" rel="noopener">↗</a></div>
-              <pre><code>${escapeHtml(hr.code)}</code></pre>
-            </div>
-          </div>`;
-      }).join('') + `
-        <div class="procontra">
-          <div class="pc-col goes"><h4>✓ Was DockWeave kann</h4><ul>${c.procontra.dw.goes.map(x => `<li>${x}</li>`).join('')}</ul></div>
-          <div class="pc-col noes"><h4>✗ Was DockWeave nicht kann (bewusst)</h4><ul>${c.procontra.dw.noes.map(x => `<li>${x}</li>`).join('')}</ul></div>
-          <div class="pc-col goes"><h4>✓ Was herdr kann</h4><ul>${c.procontra.hr.goes.map(x => `<li>${x}</li>`).join('')}</ul></div>
-          <div class="pc-col noes"><h4>✗ Was herdr nicht kann</h4><ul>${c.procontra.hr.noes.map(x => `<li>${x}</li>`).join('')}</ul></div>
-        </div>
-        <div class="cmp-note"><strong>Zusammenspiel:</strong> ${c.zusammen}</div>`;
-    }
-  }
-
-  /* ---------- layers ---------- */
-  const layers = [
-    ['Operator / UI', 'Identität, Policy, Audit', 'Der Operator entscheidet. Die UI ist nur ein Client; Rechte werden zentral geprüft.'],
-    ['Orchestrierung', 'Agenten, Ketten, Gates', 'Startet Agenten, verbindet Ketten und deterministische Gates — ohne selbst privilegiert zu sein.'],
-    ['Sandbox', 'Container, Dateien, Netz', 'Begrenzt Prozesse, Dateien und Netzwerk. Ein Container allein ist keine vollständige Netzgrenze.'],
-    ['Harness', 'Prompt, Tools, Loop', 'Das Programm um das Modell: Tool-Calls, Kontext, Schleife, Fehlerbehandlung.'],
-    ['Modell', 'LLM-Provider', 'Erzeugt Text. Der Modell-Provider sieht nur die Anfrage — nicht deine Secrets-Datei.'],
-    ['Memory & Skills', 'Memory, Knowledge, MCP', 'Persistentes Wissen und Werkzeuge. Pro Agent konfigurierbar, vor dem Start materialisiert.'],
-    ['Credentials', 'Vault, Broker, Sessions', 'Hält echte Keys außerhalb des Agenten und gibt nur kurzlebige Session-Tokens heraus.']
-  ];
-  const layersEl = document.getElementById('layers');
-  const layerExp = document.getElementById('layer-explanation');
-  if (layersEl) {
-    layersEl.innerHTML = layers.map(([name, sub], i) => `<button class="layer" data-layer="${i}"><b>${name}</b><span>${sub}</span></button>`).join('');
-    layersEl.querySelectorAll('[data-layer]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        layersEl.querySelectorAll('.layer').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const [name, , text] = layers[Number(btn.dataset.layer)];
-        layerExp.innerHTML = `<h4>${name}</h4><p>${text}</p>`;
+    // layers
+    const layersEl = pageEl.querySelector('[data-layers]');
+    if (layersEl) {
+      const layers = [
+        ['Operator / UI', 'Identität, Policy, Audit', 'Der Operator entscheidet. Die UI ist nur ein Client; Rechte werden zentral geprüft.'],
+        ['Orchestrierung', 'Agenten, Ketten, Gates', 'Startet Agenten, verbindet Ketten und deterministische Gates — ohne selbst privilegiert zu sein.'],
+        ['Sandbox', 'Container, Dateien, Netz', 'Begrenzt Prozesse, Dateien und Netzwerk. Ein Container allein ist keine vollständige Netzgrenze.'],
+        ['Harness', 'Prompt, Tools, Loop', 'Das Programm um das Modell: Tool-Calls, Kontext, Schleife, Fehlerbehandlung.'],
+        ['Modell', 'LLM-Provider', 'Erzeugt Text. Der Modell-Provider sieht nur die Anfrage — nicht deine Secrets-Datei.'],
+        ['Memory & Skills', 'Memory, Knowledge, MCP', 'Persistentes Wissen und Werkzeuge. Pro Agent konfigurierbar, vor dem Start materialisiert.'],
+        ['Credentials', 'Vault, Broker, Sessions', 'Hält echte Keys außerhalb des Agenten und gibt nur kurzlebige Session-Tokens heraus.']
+      ];
+      const exp = pageEl.querySelector('[data-layer-exp]');
+      layersEl.innerHTML = layers.map(([name, sub], i) => `<button class="layer" data-layer="${i}"><b>${name}</b><span>${sub}</span></button>`).join('');
+      layersEl.querySelectorAll('[data-layer]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          layersEl.querySelectorAll('.layer').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const [name, , text] = layers[Number(btn.dataset.layer)];
+          exp.innerHTML = `<h4>${name}</h4><p>${text}</p>`;
+        });
       });
-    });
-  }
+    }
 
-  /* ---------- simulator ---------- */
-  const sim = [
-    ['plan', 'Agent plant: „Ich muss die Datei lesen und dann patchen.“'],
-    ['act', 'Tool-Call: read_file({ path: "src/main.go" })'],
-    ['observe', 'Beobachtung: 312 Zeilen gelesen. Kontext aktualisiert.'],
-    ['plan', 'Agent plant: „Ich ändere Zeile 42 und prüfe den Build.“'],
-    ['act', 'Tool-Call: apply_patch(...)'],
-    ['observe', 'Beobachtung: Patch angewendet. Build gestartet.'],
-    ['act', 'Tool-Call: shell({ cmd: "go test ./..." })'],
-    ['observe', 'Beobachtung: Tests grün.'],
-    ['done', 'Fertig: Antwort an den Nutzer. (Im echten Harness: Max-Steps, Timeouts, Abbruch.)']
-  ];
-  let simIndex = 0;
-  const logEl = document.getElementById('sim-log');
-  const simNext = document.getElementById('sim-next');
-  const simReset = document.getElementById('sim-reset');
-  if (simNext && logEl) {
-    simNext.addEventListener('click', () => {
-      if (simIndex >= sim.length) return;
-      const [kind, text] = sim[simIndex++];
-      const line = document.createElement('div');
-      line.className = 'sim-line ' + kind;
-      line.textContent = text;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    });
-    simReset.addEventListener('click', () => {
-      simIndex = 0;
-      logEl.innerHTML = '<div class="sim-line plan">[bereit] Klicke „Nächster Schritt“.</div>';
-    });
-  }
-
-  /* ---------- checklist ---------- */
-  const checks = [
-    'Agent läuft non-root, ohne Caps, ohne Docker-Socket.',
-    'Nur registrierte Host-Pfade sind mountbar.',
-    'RO-Mounts werden korrekt gestaged.',
-    'Keine Secrets in Env, Inspect, SQLite oder Logs.',
-    'Broker: Deny by default, feste Ziele, keine Redirects.',
-    'Session-Tokens gehasht, ablaufbar, widerrufbar.',
-    'Egress: broker-only blockt externe Routen.',
-    'Fehler führen zu Ablehnung, nicht zu mehr Rechten.',
-    'Audit-Events enthalten keine Secrets.',
-    'Offene Risiken sind dokumentiert.'
-  ];
-  const checkEl = document.getElementById('checklist');
-  if (checkEl) {
-    checkEl.innerHTML = checks.map((c, i) => `<label><input type="checkbox" data-check="${i}" ${state.checks.includes(i) ? 'checked' : ''}><span>${c}</span></label>`).join('');
-    checkEl.querySelectorAll('input[data-check]').forEach(input => {
-      input.addEventListener('change', () => {
+    // checklist
+    const checkEl = pageEl.querySelector('[data-checklist]');
+    if (checkEl) {
+      let checks = [];
+      try { checks = JSON.parse(localStorage.getItem(CHK_KEY) || '[]'); } catch {}
+      checkEl.querySelectorAll('input[data-check]').forEach(input => {
         const i = Number(input.dataset.check);
-        if (input.checked) { if (!state.checks.includes(i)) state.checks.push(i); }
-        else state.checks = state.checks.filter(x => x !== i);
-        save();
+        input.checked = checks.includes(i);
+        input.addEventListener('change', () => {
+          let cur = []; try { cur = JSON.parse(localStorage.getItem(CHK_KEY) || '[]'); } catch {}
+          if (input.checked) { if (!cur.includes(i)) cur.push(i); }
+          else cur = cur.filter(x => x !== i);
+          try { localStorage.setItem(CHK_KEY, JSON.stringify(cur)); } catch {}
+        });
       });
+    }
+
+    // simulator
+    const logEl = pageEl.querySelector('[data-sim-log]');
+    if (logEl) {
+      const sim = [
+        ['plan', 'Agent plant: „Ich muss die Datei lesen und dann patchen.“'],
+        ['act', 'Tool-Call: read_file({ path: "src/main.go" })'],
+        ['observe', 'Beobachtung: 312 Zeilen gelesen. Kontext aktualisiert.'],
+        ['plan', 'Agent plant: „Ich ändere Zeile 42 und prüfe den Build.“'],
+        ['act', 'Tool-Call: apply_patch(...)'],
+        ['observe', 'Beobachtung: Patch angewendet. Build gestartet.'],
+        ['act', 'Tool-Call: shell({ cmd: "go test ./..." })'],
+        ['observe', 'Beobachtung: Tests grün.'],
+        ['done', 'Fertig: Antwort an den Nutzer. (Im echten Harness: Max-Steps, Timeouts, Abbruch.)']
+      ];
+      let idx = 0;
+      pageEl.querySelector('[data-sim-next]').addEventListener('click', () => {
+        if (idx >= sim.length) return;
+        const [kind, text] = sim[idx++];
+        const line = document.createElement('div');
+        line.className = 'sim-line ' + kind;
+        line.textContent = text;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      });
+      pageEl.querySelector('[data-sim-reset]').addEventListener('click', () => {
+        idx = 0;
+        logEl.innerHTML = '<div class="sim-line plan">[bereit] Klicke „Nächster Schritt“.</div>';
+      });
+    }
+  }
+
+  /* ================= TOC ================= */
+  function buildToc() {
+    tocEl.innerHTML = `<h2>Kapitelübersicht</h2>
+      <div class="toc-grid">${chapters.map((c, i) => {
+        const cur = i === ci ? 'style="border-color:var(--accent)"' : '';
+        return `<button class="toc-item" data-toc="${i}" ${cur}><span class="n">${c.kicker}</span><b>${c.title}</b><span>${c.pages.length} Seiten</span></button>`;
+      }).join('')}</div>`;
+    tocEl.querySelectorAll('[data-toc]').forEach(btn => {
+      btn.addEventListener('click', () => { goTo(Number(btn.dataset.toc), 0, 'next'); closeToc(); });
     });
   }
+  function openToc() { buildToc(); tocOverlay.classList.add('open'); }
+  function closeToc() { tocOverlay.classList.remove('open'); }
 
-  /* ---------- confetti ---------- */
-  function confetti() {
-    const wrap = document.createElement('div');
-    wrap.className = 'confetti';
-    const colors = ['#58a6ff', '#bc8cff', '#f0c000', '#3fb950', '#f85149'];
-    for (let i = 0; i < 70; i++) {
-      const p = document.createElement('i');
-      p.style.left = Math.random() * 100 + 'vw';
-      p.style.background = colors[i % colors.length];
-      p.style.animationDelay = (Math.random() * 0.8) + 's';
-      p.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
-      wrap.appendChild(p);
+  /* ================= events ================= */
+  nextBtn.addEventListener('click', () => {
+    if (ci === chapters.length - 1 && pi === chapters[ci].pages.length - 1) { goTo(0, 0, 'prev'); return; }
+    next();
+  });
+  prevBtn.addEventListener('click', prev);
+  tocBtn.addEventListener('click', openToc);
+  tocClose.addEventListener('click', closeToc);
+  tocOverlay.addEventListener('click', e => { if (e.target === tocOverlay) closeToc(); });
+
+  document.addEventListener('keydown', e => {
+    if (tocOverlay.classList.contains('open')) {
+      if (e.key === 'Escape') closeToc();
+      return;
     }
-    document.body.appendChild(wrap);
-    setTimeout(() => wrap.remove(), 5000);
-  }
+    const t = e.target;
+    const interactive = t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'A' || t.isContentEditable);
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === ' ' && !interactive) { e.preventDefault(); next(); }
+    else if (e.key === 'Home') { goTo(0, 0, 'prev'); }
+    else if (e.key === 'End') { goTo(chapters.length - 1, chapters[chapters.length - 1].pages.length - 1, 'next'); }
+    else if (e.key === 'Escape' || e.key.toLowerCase() === 't') { openToc(); }
+  });
 
-  renderPhases();
-  renderProgress();
-  renderComparison();
+  // resume position
+  const pos = loadPos();
+  goTo(pos ? pos.ci : 0, pos ? pos.pi : 0, 'next');
 })();

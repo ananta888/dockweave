@@ -3,134 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Interaktiver Leitfaden: Baue dein eigenes Agenten-System wie DockWeave — Harness, Sandbox, Identität, Grants, Secrets, Egress, Audit, UI und MCP. Inkl. direktem Vergleich DockWeave vs. herdr.">
+  <meta name="description" content="Geführte Präsentation: Baue dein eigenes Agenten-System wie DockWeave — Harness, Sandbox, Identität, Grants, Secrets, Egress, Audit, UI und MCP. Inkl. direktem Vergleich DockWeave vs. herdr.">
   <title>Baue dein eigenes Agenten-System · DockWeave vs. herdr</title>
-  <link rel="stylesheet" href="assets/learning.css?v=20261112-4">
+  <link rel="stylesheet" href="assets/learning.css?v=20261112-5">
   <link rel="icon" href="https://github.com/ananta888/dockweave/raw/main/ui/web/public/favicon.ico">
 </head>
 <body>
-  <header class="hero">
-    <span class="kicker">◈ DockWeave · Lernprojekt</span>
-    <h1>Baue dein eigenes<br><span class="gradient">Agenten-System</span></h1>
-    <p class="lead">
-      Kein fertiges Produkt, sondern ein Verstehensweg: vom Agent-Loop über die
-      Sandbox bis zu Workspace-Grants, secretless Credentials, Egress, Audit,
-      UI und MCP. Der vollständige Leitfaden <code>build-your-own.de.md</code>
-      ist jetzt als 17 klickbare Stationen eingearbeitet — und dazu ein
-      direkter Vergleich <strong>DockWeave vs. herdr</strong> mit echtem Code
-      aus beiden Repositories.
-    </p>
-    <div class="hero-actions">
-      <a class="btn primary" href="#phasen">▶ Learntrack starten</a>
-      <a class="btn" href="#vergleich">⚖️ DockWeave vs. herdr</a>
-      <a class="btn" href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">📘 Vollständiger Leitfaden</a>
-      <a class="btn ghost" href="https://github.com/ananta888/dockweave">GitHub</a>
-    </div>
-  </header>
+  <div class="progress-line"><span id="progress-fill"></span></div>
 
-  <div class="progress-wrap">
-    <div class="progress-top">
-      <span>Dein Fortschritt</span>
-      <strong><span id="progress-count">0</span> / <span id="progress-total">17</span> Stationen</strong>
-    </div>
-    <div class="bar"><span id="progress-bar"></span></div>
-    <div class="badge-row" id="badges"></div>
+  <div id="deck">
+    <header class="topbar">
+      <div class="brand"><span class="k">◈</span> DockWeave · Lernprojekt</div>
+      <div class="chapter-label" id="chapter-label"></div>
+      <div class="top-actions">
+        <span class="page-counter" id="page-counter"></span>
+        <button class="btn ghost" id="toc-btn" title="Kapitelübersicht">☰ Übersicht</button>
+      </div>
+    </header>
+
+    <main class="stage" id="stage"></main>
+
+    <footer class="bottombar">
+      <button class="btn" id="prev-btn">← Zurück</button>
+      <div class="dots" id="dots"></div>
+      <button class="btn primary" id="next-btn">Weiter →</button>
+    </footer>
   </div>
 
-  <main>
-    <section>
-      <h2>Worum geht es?</h2>
-      <p class="section-lead">
-        Ein Agent ist nicht ein Programm, sondern ein System aus Schichten.
-        Klicke die Schichten an und sieh, warum jede ihre eigene Grenze braucht.
-      </p>
-      <div class="cards-3">
-        <div class="mini-card"><div class="icon">🧠</div><h3>Harness</h3><p>Macht aus Modell-Text echte Aktionen: Tools, Shell, Dateien, Schleife.</p></div>
-        <div class="mini-card"><div class="icon">📦</div><h3>Sandbox</h3><p>Begrenzt, was der Agent erreichen kann — Dateien, Prozesse, Netzwerk.</p></div>
-        <div class="mini-card"><div class="icon">🔐</div><h3>Policy &amp; Secrets</h3><p>Entscheidet, wer was darf — und hält echte Keys aus dem Agenten heraus.</p></div>
-      </div>
-    </section>
+  <div class="toc-overlay" id="toc-overlay">
+    <button class="btn toc-close" id="toc-close">✕ Schließen</button>
+    <div class="toc" id="toc"></div>
+  </div>
 
-    <section>
-      <h2>Die Schichten</h2>
-      <p class="section-lead">Jede Schicht ist eine Vertrauensgrenze. Klicke für die Erklärung.</p>
-      <div class="layers" id="layers"></div>
-      <div class="layer-explanation" id="layer-explanation">
-        <h4>Los geht's</h4>
-        <p>Wähle eine Schicht, um zu sehen, welche Aufgabe und welches Risiko sie hat.</p>
-      </div>
-    </section>
-
-    <section id="phasen">
-      <h2>Der Learntrack</h2>
-      <p class="section-lead">
-        Öffne eine Station. Jede hat zwei Ansichten: <strong>„Kurz“</strong> (die
-        Kernpunkte plus echter DockWeave-Code) und <strong>„Original“</strong> (der
-        vollständige Abschnitt aus <code>build-your-own.de.md</code>). Beantworte
-        die Mini-Frage und markiere die Station als verstanden.
-      </p>
-      <div class="phases" id="phases"></div>
-    </section>
-
-    <section>
-      <h2>Spielwiese: der Agent-Loop</h2>
-      <p class="section-lead">
-        Ein Harness ist im Kern eine Schleife: planen → handeln → beobachten.
-        Klicke dich durch einen simulierten Lauf.
-      </p>
-      <div class="simulator">
-        <div class="sim-log" id="sim-log">
-          <div class="sim-line plan">[bereit] Klicke „Nächster Schritt“.</div>
-        </div>
-        <div class="phase-actions">
-          <button class="btn primary small" id="sim-next">Nächster Schritt</button>
-          <button class="btn small" id="sim-reset">Zurücksetzen</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="vergleich">
-      <h2>DockWeave vs. herdr</h2>
-      <p class="section-lead">
-        Zwei „Runtimes für Coding-Agents“ — aber auf verschiedenen Ebenen.
-        Direkter Vergleich mit echtem Code aus beiden Repositories
-        (<code>ananta888/dockweave</code> und <code>herdrdev/herdr</code>),
-        inklusive Verknüpfungen und einer ehrlichen Einschätzung, was geht
-        und was nicht geht.
-      </p>
-      <div id="cmp-dimensions"></div>
-      <div id="cmp-code"></div>
-    </section>
-
-    <section>
-      <h2>Sicherheits-Checkliste</h2>
-      <p class="section-lead">
-        Diese Punkte entscheiden, ob dein System wirklich Grenzen zieht — oder
-        nur so aussieht. Hake ab, was du in deinem eigenen Aufbau erfüllt hast.
-      </p>
-      <div class="checklist" id="checklist"></div>
-    </section>
-
-    <section>
-      <h2>Weiterlesen</h2>
-      <div class="cards-3">
-        <div class="mini-card"><h3>Bauanleitung</h3><p>Schritt für Schritt mit Code, Milestones und Checkliste.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">build-your-own.de.md →</a></p></div>
-        <div class="mini-card"><h3>Konzepte</h3><p>Harness, Agent, Sandbox, Grants, Broker und Egress erklärt.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/agent-harness.de.md">agent-harness.de.md →</a></p></div>
-        <div class="mini-card"><h3>Sicherheit</h3><p>Threat Model, ADR und Security Decisions im Detail.</p><p><a href="https://github.com/ananta888/dockweave/tree/main/docs">docs/ →</a></p></div>
-        <div class="mini-card"><h3>herdr</h3><p>Die Terminal-Runtime im Vergleich: Repo und Doku.</p><p><a href="https://github.com/herdrdev/herdr">github.com/herdrdev/herdr →</a></p></div>
-        <div class="mini-card"><h3>herdr Docs</h3><p>Session-State, Socket-API, Agents und Plugins.</p><p><a href="https://herdr.dev/docs/">herdr.dev/docs →</a></p></div>
-        <div class="mini-card"><h3>DockWeave Repo</h3><p>Der vollständige Go-Quellcode dieses Projekts.</p><p><a href="https://github.com/ananta888/dockweave">github.com/ananta888/dockweave →</a></p></div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <div class="footer-inner">
-      <span>DockWeave · Lernprojekt für Agenten-Harnesses und Systemarchitektur — inkl. Vergleich mit <a href="https://github.com/herdrdev/herdr">herdr</a></span>
-      <span><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.md">English guide</a></span>
-    </div>
-  </footer>
-
-  <script src="assets/learning.js?v=20261112-4"></script>
+  <script src="assets/learning.js?v=20261112-5"></script>
 </body>
 </html>
