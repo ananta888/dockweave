@@ -41,7 +41,7 @@
         'Validiere Tool-Aufrufe gegen ein JSON-Schema.',
         'Begrenze Tool-Ausgaben, damit der Kontext nicht überläuft.'
       ],
-      code: 'for step := 0; step < maxSteps; step++ {\n  resp := model.Chat(ctx, tools, history)\n  if len(resp.ToolCalls) == 0 { return resp.Text }\n  for _, call := range resp.ToolCalls {\n    history = append(history, executeTool(ctx, call))\n  }\n}',
+      snippet: 'for step := 0; step < maxSteps; step++ {\n  resp := model.Chat(ctx, tools, history)\n  if len(resp.ToolCalls) == 0 { return resp.Text }\n  for _, call := range resp.ToolCalls {\n    history = append(history, executeTool(ctx, call))\n  }\n}',
       quiz: {
         q: 'Warum braucht der Loop ein Max-Steps-Limit?',
         options: ['Damit das Modell schneller antwortet', 'Damit ein Agent nicht endlos Tools aufruft', 'Damit Docker schneller startet', 'Damit der API-Key gültig bleibt'],
@@ -59,7 +59,7 @@
         'Nur explizit erlaubte Host-Verzeichnisse mounten.',
         'CPU-, Memory- und Netzwerklimits setzen.'
       ],
-      code: 'docker run --rm -it \\\n  --user 1000:1000 --cap-drop ALL \\\n  --security-opt no-new-privileges \\\n  --network none --memory 2g --cpus 1 \\\n  -v /srv/project:/workspace/project:ro \\\n  codex-image',
+      snippet: 'docker run --rm -it \\\n  --user 1000:1000 --cap-drop ALL \\\n  --security-opt no-new-privileges \\\n  --network none --memory 2g --cpus 1 \\\n  -v /srv/project:/workspace/project:ro \\\n  codex-image',
       quiz: {
         q: 'Was gehört nicht in einen Agentencontainer?',
         options: ['Ein Projektverzeichnis', 'Der Docker-Socket', 'Ein Memory-Verzeichnis', 'Ein non-root User'],
@@ -111,7 +111,7 @@
         'Symlinks auflösen und die Quelle per openat2 erneut prüfen.',
         'Read-only sauber stagen; kein umount -l als Default.'
       ],
-      code: 'privat binden → remount,bind,ro → mount --move\n# nicht: mount -o ro direkt in den Shared-Baum',
+      snippet: 'privat binden → remount,bind,ro → mount --move\n# nicht: mount -o ro direkt in den Shared-Baum',
       quiz: {
         q: 'Warum reicht ein direktes `mount -o ro` nicht?',
         options: ['Weil Docker das ignoriert', 'Weil Remount-Flags nicht zuverlässig in Slave-Namespaces propagieren', 'Weil es zu langsam ist', 'Weil es nur für Dateien geht'],
@@ -249,7 +249,7 @@
         </summary>
         <div class="phase-body">
           <ul>${p.body.map(x => `<li>${x}</li>`).join('')}</ul>
-          ${p.code ? `<pre><code>${escapeHtml(p.code)}</code></pre>` : ''}
+          ${p.snippet ? `<pre><code>${escapeHtml(p.snippet)}</code></pre>` : ''}
           ${p.links ? `<div class="phase-links">${p.links.map(([l, u]) => `<a class="btn small ghost" href="${u}">${l}</a>`).join('')}</div>` : ''}
           <div class="quiz" data-quiz="${p.id}">
             <h4>Mini-Check</h4>
