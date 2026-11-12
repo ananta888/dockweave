@@ -63,10 +63,20 @@ func webCmd() *cobra.Command {
 				)
 			}
 			if mcpListen != "" && mcpToken == "" {
-				var err error
-				mcpToken, err = webui.NewMCPToken()
-				if err != nil {
-					fail(err)
+				home, _ := os.UserHomeDir()
+				tokenPath := filepath.Join(home, ".local", "share", "dockweave", "ui-mcp-token")
+				if b, err := os.ReadFile(tokenPath); err == nil {
+					mcpToken = strings.TrimSpace(string(b))
+				}
+				if mcpToken == "" {
+					var err error
+					mcpToken, err = webui.NewMCPToken()
+					if err != nil {
+						fail(err)
+					}
+					if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err == nil {
+						_ = os.WriteFile(tokenPath, []byte(mcpToken+"\n"), 0o600)
+					}
 				}
 			}
 			var roots []string
