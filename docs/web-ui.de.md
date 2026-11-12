@@ -120,7 +120,7 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   Antwort und validiert die Tool-Input-Schemas. Das Default-Graph-Schema
   enthält ein Beispiel unter `contracts.mcpServer`.
 - **UI-MCP-Server**: `dockweave web --mcp-listen 0.0.0.0:8791` stellt einen Streamable-HTTP-MCP-Endpunkt unter `/mcp/ui` bereit (Bearer-Token per `?token=` oder `Authorization`). Tools: `ui_get_state`, `ui_show_hint`, `ui_select_agent`, `ui_select_view`, `ui_set_main_agent`. Die Operator-UI verbindet sich über `/ws/ui` und zeigt Hinweise an CSS-Selektoren, Agentenzeilen oder Graph-Nodes. Typ-Defaults `dockweave-ui` für opencode/claude können auf den Endpunkt zeigen.
-- **Hauptagent**: über `☆ Hauptagent` im Agent-Header oder per Rechtsklick im Graph festlegen. Ein schwebendes Chat-Fenster rechts unten zeigt das gewählte SVG, den Anzeigenamen und ein Live-Terminal/Chat mit diesem Agenten (minimierbar/schließbar).
+- **Hauptagent**: über `☆ Hauptagent` im Agent-Header oder per Rechtsklick im Graph festlegen. Ein schwebendes Chat-Fenster rechts unten zeigt das gewählte SVG, den Anzeigenamen und ein Live-Terminal/Chat mit diesem Agenten. Beim Schließen bleibt der Hauptagent als schwebender Avatar-Button sichtbar; Klick auf den Avatar öffnet den Chat wieder.
 - **Agent Types** (oberes Menü): Default-MCP-Server und -Skills pro Agententyp,
   mit **Standardwerte einlesen**, das bestehende Agenten-Homes und übliche
   Host-Homes für OpenCode, Claude, Codex, Gemini und Antigravity scannt.

@@ -164,3 +164,38 @@ label { display: flex; flex-direction: column; gap: .25rem; font-size: .78rem; c
 .ui-hint.error { background: #3d1114; border-color: #f85149; border-left-color: #f85149; }
 .ui-hint .hint-text { padding-right: 1rem; white-space: pre-wrap; }
 .ui-hint .hint-close { position: absolute; top: .25rem; right: .35rem; background: transparent; border: none; color: #8b949e; cursor: pointer; }
+
+.main-chat-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 66px;
+  height: 78px;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #161b22;
+  border: 2px solid #d29922;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px #000a, 0 0 0 3px #d2992233;
+  cursor: pointer;
+}
+.main-chat-fab:hover { background: #1f2630; box-shadow: 0 10px 28px #000c, 0 0 0 4px #d2992266; }
+.fab-avatar { width: 46px; height: 54px; display: block; }
+.fab-avatar svg { width: 46px; height: 54px; }
+.fab-star {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d29922;
+  color: #0b0e14;
+  border-radius: 50%;
+  font-size: .8rem;
+  font-weight: 700;
+}

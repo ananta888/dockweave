@@ -181,7 +181,7 @@
           </div>
           <span class="spacer"></span>
           <button class="icon" title="Minimieren" (click)="chatMinimized.set(!chatMinimized())">{{ chatMinimized() ? '▢' : '—' }}</button>
-          <button class="icon" title="Schließen" (click)="chatVisible.set(false)">✕</button>
+          <button class="icon" title="Als Avatar einklappen" (click)="chatVisible.set(false)">✕</button>
         </header>
         @if (!chatMinimized()) {
           <dw-terminal
@@ -192,6 +192,12 @@
             (start)="startMainAgent(main)" />
         }
       </section>
+    } @else {
+      <button class="main-chat-fab" (click)="chatVisible.set(true); chatMinimized.set(false)"
+              [title]="'Chat mit ' + (main.display_name || main.name) + ' öffnen'">
+        <span class="fab-avatar" [innerHTML]="mainAvatar(main)"></span>
+        <span class="fab-star">★</span>
+      </button>
     }
   }
 
