@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Interaktiver Leitfaden: Baue dein eigenes Agenten-System wie DockWeave — Harness, Sandbox, Identität, Grants, Secrets, Egress, Audit, UI und MCP.">
-  <title>Baue dein eigenes Agenten-System · DockWeave</title>
-  <link rel="stylesheet" href="assets/learning.css?v=20261112-3">
+  <meta name="description" content="Interaktiver Leitfaden: Baue dein eigenes Agenten-System wie DockWeave — Harness, Sandbox, Identität, Grants, Secrets, Egress, Audit, UI und MCP. Inkl. direktem Vergleich DockWeave vs. herdr.">
+  <title>Baue dein eigenes Agenten-System · DockWeave vs. herdr</title>
+  <link rel="stylesheet" href="assets/learning.css?v=20261112-4">
   <link rel="icon" href="https://github.com/ananta888/dockweave/raw/main/ui/web/public/favicon.ico">
 </head>
 <body>
@@ -14,11 +14,15 @@
     <h1>Baue dein eigenes<br><span class="gradient">Agenten-System</span></h1>
     <p class="lead">
       Kein fertiges Produkt, sondern ein Verstehensweg: vom Agent-Loop über die
-      Sandbox bis zu Workspace-Grants, secretless Credentials, Egress,
-      Audit, UI und MCP. In 11 Stationen — mit Quiz, Simulation und Checkliste.
+      Sandbox bis zu Workspace-Grants, secretless Credentials, Egress, Audit,
+      UI und MCP. Der vollständige Leitfaden <code>build-your-own.de.md</code>
+      ist jetzt als 17 klickbare Stationen eingearbeitet — und dazu ein
+      direkter Vergleich <strong>DockWeave vs. herdr</strong> mit echtem Code
+      aus beiden Repositories.
     </p>
     <div class="hero-actions">
       <a class="btn primary" href="#phasen">▶ Learntrack starten</a>
+      <a class="btn" href="#vergleich">⚖️ DockWeave vs. herdr</a>
       <a class="btn" href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">📘 Vollständiger Leitfaden</a>
       <a class="btn ghost" href="https://github.com/ananta888/dockweave">GitHub</a>
     </div>
@@ -27,7 +31,7 @@
   <div class="progress-wrap">
     <div class="progress-top">
       <span>Dein Fortschritt</span>
-      <strong><span id="progress-count">0</span> / <span id="progress-total">11</span> Stationen</strong>
+      <strong><span id="progress-count">0</span> / <span id="progress-total">17</span> Stationen</strong>
     </div>
     <div class="bar"><span id="progress-bar"></span></div>
     <div class="badge-row" id="badges"></div>
@@ -60,8 +64,10 @@
     <section id="phasen">
       <h2>Der Learntrack</h2>
       <p class="section-lead">
-        Öffne eine Station, lies die Kernpunkte, beantworte die Mini-Frage und
-        markiere sie als verstanden. Dein Fortschritt bleibt lokal im Browser.
+        Öffne eine Station. Jede hat zwei Ansichten: <strong>„Kurz“</strong> (die
+        Kernpunkte plus echter DockWeave-Code) und <strong>„Original“</strong> (der
+        vollständige Abschnitt aus <code>build-your-own.de.md</code>). Beantworte
+        die Mini-Frage und markiere die Station als verstanden.
       </p>
       <div class="phases" id="phases"></div>
     </section>
@@ -83,6 +89,19 @@
       </div>
     </section>
 
+    <section id="vergleich">
+      <h2>DockWeave vs. herdr</h2>
+      <p class="section-lead">
+        Zwei „Runtimes für Coding-Agents“ — aber auf verschiedenen Ebenen.
+        Direkter Vergleich mit echtem Code aus beiden Repositories
+        (<code>ananta888/dockweave</code> und <code>herdrdev/herdr</code>),
+        inklusive Verknüpfungen und einer ehrlichen Einschätzung, was geht
+        und was nicht geht.
+      </p>
+      <div id="cmp-dimensions"></div>
+      <div id="cmp-code"></div>
+    </section>
+
     <section>
       <h2>Sicherheits-Checkliste</h2>
       <p class="section-lead">
@@ -98,17 +117,20 @@
         <div class="mini-card"><h3>Bauanleitung</h3><p>Schritt für Schritt mit Code, Milestones und Checkliste.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">build-your-own.de.md →</a></p></div>
         <div class="mini-card"><h3>Konzepte</h3><p>Harness, Agent, Sandbox, Grants, Broker und Egress erklärt.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/agent-harness.de.md">agent-harness.de.md →</a></p></div>
         <div class="mini-card"><h3>Sicherheit</h3><p>Threat Model, ADR und Security Decisions im Detail.</p><p><a href="https://github.com/ananta888/dockweave/tree/main/docs">docs/ →</a></p></div>
+        <div class="mini-card"><h3>herdr</h3><p>Die Terminal-Runtime im Vergleich: Repo und Doku.</p><p><a href="https://github.com/herdrdev/herdr">github.com/herdrdev/herdr →</a></p></div>
+        <div class="mini-card"><h3>herdr Docs</h3><p>Session-State, Socket-API, Agents und Plugins.</p><p><a href="https://herdr.dev/docs/">herdr.dev/docs →</a></p></div>
+        <div class="mini-card"><h3>DockWeave Repo</h3><p>Der vollständige Go-Quellcode dieses Projekts.</p><p><a href="https://github.com/ananta888/dockweave">github.com/ananta888/dockweave →</a></p></div>
       </div>
     </section>
   </main>
 
   <footer class="footer">
     <div class="footer-inner">
-      <span>DockWeave · Lernprojekt für Agenten-Harnesses und Systemarchitektur</span>
+      <span>DockWeave · Lernprojekt für Agenten-Harnesses und Systemarchitektur — inkl. Vergleich mit <a href="https://github.com/herdrdev/herdr">herdr</a></span>
       <span><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.md">English guide</a></span>
     </div>
   </footer>
 
-  <script src="assets/learning.js?v=20261112-3"></script>
+  <script src="assets/learning.js?v=20261112-4"></script>
 </body>
 </html>
