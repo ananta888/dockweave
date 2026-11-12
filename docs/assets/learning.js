@@ -176,6 +176,10 @@
 
       case 'note':
         return `<div class="note ${p.tone === 'blue' ? 'blue' : ''}" ${rv(0)}>${p.text}</div>`;
+
+      case 'threeCols':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2>${p.sub ? `<p class="sub" ${rv(1)}>${p.sub}</p>` : ''}</div>
+        <div class="threecols">${p.cols.map((c, i) => `<div class="tc-col ${c.tone}" ${rv(i + 1)}><h4>${c.head}</h4><ul>${c.items.map(x => `<li>${x}</li>`).join('')}</ul></div>`).join('')}</div>`;
     }
     return '';
   }
@@ -782,6 +786,30 @@ export const sessionCodec = {
             'Lokale Adapter laufen unsandboxed (keine Container-Isolation).',
             'Kein secretless Broker — Secrets werden in Runs injiziert.',
             'Kein Terminal-Multiplexing; Herzschlag-Modell statt Dauerlauf.'
+          ]}
+        ]},
+        { t: 'threeCols', title: 'Wo DockWeave nichts bringt — und wo doch', sub: 'Drei disjunkte Zonen: paperclip-only, Overlap und DockWeave-only.', cols: [
+          { tone: 'pp-only', head: 'Nur paperclip — hier bringt DockWeave nichts', items: [
+            'Menschliche Identität: SSO, RBAC, Rollen, Invites, responsible-user.',
+            'Freigabe-Workflows: Approvals, Review-Stufen, Human-in-the-loop.',
+            'Org-weite Budgets & Kosten-Dashboards (Schwellwerte, Hard-Stops).',
+            'Tool-/Connection-Gateway: „Allowed / Ask first / Off“ pro Connector.',
+            'Multi-Tenant-Org-Isolation (eine Instanz, mehrere Firmen).',
+            'Business-Audit: wer hat was genehmigt, Entscheidungs-Tracking.',
+            'Config-Revisionierung & Rollback.'
+          ]},
+          { tone: 'overlap', head: 'Overlap — beide, aber anders', items: [
+            '<b>Secrets:</b> paperclip verschlüsselt & injiziert; DockWeave ist secretless (Key bleibt draußen).',
+            '<b>Budgets:</b> paperclip org-weit; DockWeave nur Limits pro Broker-Grant.',
+            '<b>Audit:</b> paperclip Business-Ebene; DockWeave technische Hash-Kette.',
+            '<b>Sandbox:</b> paperclip via externe Provider; DockWeave lokal per Container.'
+          ]},
+          { tone: 'dw-only', head: 'Nur DockWeave — paperclips Lücke', items: [
+            'Container-Sandbox für lokale Agenten (paperclip lokal unsandboxed).',
+            'Netz-Egress: offline / broker-only, fail closed.',
+            'Secretless Credentials: echter Key kommt nie in den Agenten.',
+            'Mount-Sicherheit: Allowlist, TOCTOU, RO-Staging.',
+            'SO_PEERCRED-Zugriff auf dem lokalen Daemon.'
           ]}
         ]},
         { t: 'note', text: '<strong>In Kombination:</strong> Die drei stapeln sich sauber — <strong>paperclip</strong> entscheidet oben, <em>wer was wann mit welchem Budget</em> macht (Tasks, Approvals, Kosten). <strong>herdr</strong> hält darunter die <em>Terminals/Sessions</em> am Leben (detach, Multi-Machine). <strong>DockWeave</strong> ganz unten erzwingt die <em>Grenzen</em> (Sandbox, secretless Credentials, Egress, Audit). paperclip dokumentiert selbst, dass lokale Adapter <strong>unsandboxed</strong> laufen — genau diese Lücke schließt DockWeave; und das Dauerlauf-Fenster, das paperclip nicht bietet, deckt herdr ab.' }

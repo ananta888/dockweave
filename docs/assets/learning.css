@@ -262,6 +262,20 @@ table.tbl code { font-size: .82em; }
 .pc-col ul { margin: 0; padding-left: 1.1rem; }
 .pc-col li { margin: .32rem 0; font-size: .85rem; color: var(--muted); }
 
+/* three columns (gaps: paperclip-only / overlap / dockweave-only) */
+.threecols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: .4rem; }
+@media (max-width: 940px) { .threecols { grid-template-columns: 1fr; } }
+.tc-col { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: .95rem 1rem; }
+.tc-col h4 { margin: 0 0 .5rem; font-size: .92rem; }
+.tc-col ul { margin: 0; padding-left: 1.1rem; }
+.tc-col li { margin: .32rem 0; font-size: .84rem; color: var(--muted); }
+.tc-col.pp-only { border-top: 3px solid var(--pp); }
+.tc-col.pp-only h4 { color: var(--pp); }
+.tc-col.overlap { border-top: 3px solid var(--amber); }
+.tc-col.overlap h4 { color: var(--amber); }
+.tc-col.dw-only { border-top: 3px solid var(--go); }
+.tc-col.dw-only h4 { color: var(--go); }
+
 /* note */
 .note {
   background: rgba(240,192,0,.06); border: 1px solid rgba(240,192,0,.25);
