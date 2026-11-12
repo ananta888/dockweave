@@ -3,6 +3,7 @@
 
   const GH_DW = 'https://github.com/ananta888/dockweave/blob/main/';
   const GH_HR = 'https://github.com/herdrdev/herdr/blob/master/';
+  const GH_PP = 'https://github.com/paperclipai/paperclip/blob/master/';
   const POS_KEY = 'dockweave-deck-pos';
   const CHK_KEY = 'dockweave-deck-checks';
 
@@ -156,6 +157,22 @@
       case 'procontra':
         return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
         <div class="procontra">${p.cols.map((c, i) => `<div class="pc-col ${c.tone}" ${rv(i + 1)}><h4>${c.head}</h4><ul>${c.items.map(x => `<li>${x}</li>`).join('')}</ul></div>`).join('')}</div>`;
+
+      case 'vsCards3':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="vs-cards">
+          <div class="vs-card dw" ${rv(1)}><h3>DockWeave <span class="tag">Go · Sandbox</span></h3><div class="role">Container-Sandbox, Grants, Credential-Broker, Egress, Audit — die <strong>Sicherheits- und Grenzebene</strong>.</div><p><strong>Repo:</strong> <a href="https://github.com/ananta888/dockweave" target="_blank" rel="noopener">ananta888/dockweave</a></p><p>Führt Agenten in <strong>isolierten Docker-Containern</strong> aus. Liefert Identität, Umgebung und Grenzen.</p></div>
+          <div class="vs-card hr" ${rv(2)}><h3>herdr <span class="tag">Rust · Terminal</span></h3><div class="role">Terminal-Multiplexer &amp; Session-Manager — die <strong>Betriebs- und Bedienebene</strong>.</div><p><strong>Repo:</strong> <a href="https://github.com/herdrdev/herdr" target="_blank" rel="noopener">herdrdev/herdr</a></p><p>Hält Terminals in einem Hintergrund-Server am Leben (detach/reattach), bündelt lokale + SSH-Maschinen. <strong>Ownet die Terminals.</strong></p></div>
+          <div class="vs-card pp" ${rv(3)}><h3>paperclip <span class="tag">TS · Orchestration</span></h3><div class="role">Task-Manager, Org-Chart, Budgets, Governance, Heartbeats — die <strong>Management- und Orchestrierungsebene</strong>.</div><p><strong>Repo:</strong> <a href="https://github.com/paperclipai/paperclip" target="_blank" rel="noopener">paperclipai/paperclip</a> · <a href="https://paperclip.ing" target="_blank" rel="noopener">paperclip.ing</a></p><p>Verwaltet eine <strong>„Company“ aus KI-Agenten</strong>: Ziele, Rollen, Freigaben, Kosten. Agenten laufen in <strong>Heartbeats</strong>.</p></div>
+        </div>`;
+
+      case 'codeTriple':
+        return `<div class="page-head"><h2 ${rv(0)}>${p.title}</h2></div>
+        <div class="codetriple">
+          <div ${rv(1)}>${codeBlock('DockWeave · ' + p.dw.file, p.dw.lang, p.dw.code, p.dw.url)}</div>
+          <div ${rv(2)}>${codeBlock('herdr · ' + p.hr.file, p.hr.lang, p.hr.code, p.hr.url)}</div>
+          <div ${rv(3)}>${codeBlock('paperclip · ' + p.pp.file, p.pp.lang, p.pp.code, p.pp.url)}</div>
+        </div>`;
 
       case 'note':
         return `<div class="note ${p.tone === 'blue' ? 'blue' : ''}" ${rv(0)}>${p.text}</div>`;
@@ -657,24 +674,55 @@ type Event struct {
       ]
     },
     {
-      id: 'vs', kicker: 'Vergleich', title: 'DockWeave vs. herdr',
-      sub: 'Zwei „Runtimes für Coding-Agents“, zwei Ebenen — mit echtem Code aus beiden Repos.', pages: [
-        { t: 'note', tone: 'blue', text: 'Beide nennen sich eine „Runtime für Coding-Agents“ — aber sie arbeiten auf <strong>verschiedenen Ebenen</strong>. <strong>DockWeave</strong> beantwortet die Sicherheitsfrage, <strong>herdr</strong> die Betriebs-/UX-Frage. Sie sind kein Ersatz füreinander — eher orthogonal.' },
-        { t: 'vsCards', title: 'Zwei Runtimes, zwei Ebenen' },
-        { t: 'table', title: 'Dimensionen', head: ['Dimension', 'DockWeave', 'herdr'], rows: [
-          ['Ebene', 'Container- / Sicherheitsebene', 'Terminal- / Prozess-Ebene'],
-          ['Kernfrage', 'Was darf der Agent?', 'Wo läuft der Agent, ohne dass du dabei sein musst?'],
-          ['Sprache', 'Go, Daemon + CLI + TUI + Web', 'Rust, ein einziges Binary'],
-          ['Isolation', '<span class="ok">Docker, cap-drop ALL, non-root</span>', '<span class="no">keine — deine Rechte</span>'],
-          ['Harness', 'keinen eigenen (OpenCode/Codex/Claude)', 'keinen eigenen (führt deine Agenten aus)'],
-          ['Identität', '<span class="ok">stabile ID, unabhängig vom Container</span>', '<span class="warn">terminal_id / pane_id</span>'],
-          ['Secrets', '<span class="ok">Vault + Broker (secretless)</span>', '<span class="no">keine Verwaltung — deine Keys</span>'],
-          ['Egress / Netz', '<span class="ok">offline / broker-only, fail closed</span>', '<span class="no">keine Netzgrenze</span>'],
-          ['Audit', '<span class="ok">Hash-Ketten-Events</span>', '<span class="no">kein Audit-Trail</span>'],
-          ['Session / Detach', '<span class="warn">Container stop/start</span>', '<span class="ok">detach/reattach, Layout-Restore</span>'],
-          ['Mehrere Maschinen', '<span class="no">nein (single host + Docker)</span>', '<span class="ok">ja (lokale + SSH-Maschinen)</span>'],
-          ['Agent-nativ', 'über REST-API / CLI steuerbar', 'CLI + Socket-API: spawn, prompt, wait']
+      id: 'vs', kicker: 'Vergleich', title: 'DockWeave · herdr · paperclip',
+      sub: 'Drei „Runtimes für Coding-Agents“, drei Ebenen — und wie sie sich kombinieren lassen.', pages: [
+        { t: 'note', tone: 'blue', text: 'Ein Agenten-Stack hat <strong>drei Ebenen</strong>, und jedes dieser drei Tools besetzt genau eine: <strong>paperclip</strong> = Management (wer macht was, wann, mit welchem Budget), <strong>herdr</strong> = Laufzeit/Session (wo lebt das Terminal), <strong>DockWeave</strong> = Sicherheit (was darf der Agent). Sie sind kein Ersatz füreinander — sie stapeln sich.' },
+        { t: 'vsCards3', title: 'Drei Runtimes, drei Ebenen' },
+        { t: 'table', title: 'Dimensionen', head: ['Dimension', 'DockWeave', 'herdr', 'paperclip'], rows: [
+          ['Ebene', 'Container- / Sicherheitsebene', 'Terminal- / Prozess-Ebene', 'Management- / Orchestrierungs-Ebene'],
+          ['Kernfrage', 'Was darf der Agent?', 'Wo läuft der Agent?', 'Wer macht was, wann, mit welchem Budget?'],
+          ['Sprache', 'Go (Daemon + CLI + TUI + Web)', 'Rust (ein Binary)', 'TypeScript (Node + React)'],
+          ['Isolation', '<span class="ok">Docker, cap-drop ALL, non-root</span>', '<span class="no">keine — deine Rechte</span>', '<span class="warn">lokal unsandboxed, Sandbox via Provider</span>'],
+          ['Harness', 'keinen eigenen (OpenCode/Codex/Claude)', 'keinen eigenen (führt deine Agenten aus)', 'keinen eigenen (Adapter: Claude, Codex, OpenClaw, HTTP)'],
+          ['Identität', '<span class="ok">stabile ID, unabhängig vom Container</span>', '<span class="warn">terminal_id / pane_id</span>', '<span class="ok">Agent im Org-Chart (Rolle, Titel, Berichtslinie)</span>'],
+          ['Secrets', '<span class="ok">Vault + Broker (secretless)</span>', '<span class="no">keine Verwaltung — deine Keys</span>', '<span class="warn">verschlüsselte Secrets, aber Injection statt secretless</span>'],
+          ['Egress / Netz', '<span class="ok">offline / broker-only, fail closed</span>', '<span class="no">keine Netzgrenze</span>', '<span class="warn">Tool-Gateway (Allowed / Ask / Off)</span>'],
+          ['Audit', '<span class="ok">Hash-Ketten-Events</span>', '<span class="no">kein Audit-Trail</span>', '<span class="ok">Activity, Runs, Kosten, Aktionen</span>'],
+          ['Session / Detach', '<span class="warn">Container stop/start</span>', '<span class="ok">detach/reattach, Layout-Restore</span>', '<span class="ok">Heartbeat + Session-Resume</span>'],
+          ['Mehrere Maschinen', '<span class="no">nein (single host + Docker)</span>', '<span class="ok">ja (lokale + SSH-Maschinen)</span>', '<span class="ok">Cloud/Sandbox-Provider, Multi-Org</span>'],
+          ['Agent-nativ', 'über REST-API / CLI steuerbar', 'CLI + Socket-API: spawn, prompt, wait', 'Heartbeats, Assignments, Routines, Webhooks']
         ]},
+        { t: 'codeTriple', title: 'Zustand eines Agenten — drei Antworten',
+          dw: { file: 'internal/model/model.go', lang: 'go', url: GH_DW + 'internal/model/model.go', code:
+`type Agent struct {
+    ID   string \`json:"id"\`   // ag_…, stabil
+    Type string \`json:"type"\` // codex | opencode | …
+    UID  int    \`json:"uid"\`
+    State      AgentState \`json:"state"\`
+    ContainerID string    \`json:"container_id,omitempty"\`
+}` },
+          hr: { file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs', code:
+`pub struct AgentInfo {
+    pub terminal_id: String,
+    pub pane_id: String,
+    pub tab_id: String,
+    pub workspace_id: String,
+    pub agent_status: AgentStatus,
+    // idle | blocked | working | done | unknown
+}` },
+          pp: { file: 'packages/adapter-utils/src/acpx-engine/session-codec.ts', lang: 'ts', url: GH_PP + 'packages/adapter-utils/src/acpx-engine/session-codec.ts', code:
+`// Session-Resume über Heartbeats hinweg
+export const sessionCodec = {
+  deserialize(record) {
+    const runtimeSessionName = readString(record.runtimeSessionName);
+    const agentSessionId = readString(record.agentSessionId);
+    return {
+      ...(runtimeSessionName ? { runtimeSessionName } : {}),
+      ...(agentSessionId ? { agentSessionId } : {}),
+      ...(readString(record.cwd) ? { cwd: readString(record.cwd) } : {}),
+    };
+  },
+};` } },
         { t: 'codePair', title: 'Start & Isolation — wie wird ein Agent gestartet?',
           dw: { file: 'internal/dockerclient/dockerclient.go', lang: 'go', url: GH_DW + 'internal/dockerclient/dockerclient.go', code:
 `host := &container.HostConfig{
@@ -690,77 +738,53 @@ type Event struct {
     pub kind: String,      // claude-code | codex | opencode | …
     pub pane_id: String,   // welches Pane ihn besitzt
     pub args: Vec<String>, // an die Agent-CLI durchgereicht
-    pub timeout_ms: Option<u64>, // Warten auf Readiness
+    pub timeout_ms: Option<u64>,
 }` } },
-        { t: 'codePair', title: 'Identität & Datenmodell — was ist ein Agent?',
-          dw: { file: 'internal/model/model.go', lang: 'go', url: GH_DW + 'internal/model/model.go', code:
-`type Agent struct {
-    ID   string \`json:"id"\`   // ag_…, stabil
-    Type string \`json:"type"\` // codex | opencode | claude | …
-    Image string \`json:"image"\`
-    UID  int    \`json:"uid"\`
-    GID  int    \`json:"gid"\`
-    NetworkProfile NetworkProfile \`json:"network_profile"\`
-    State      AgentState \`json:"state"\`
-    ContainerID string    \`json:"container_id,omitempty"\`
+        { t: 'code', title: 'paperclip: Heartbeat-Policy statt Dauerlauf', lang: 'ts', file: 'docs/agents-runtime.md', url: GH_PP + 'docs/agents-runtime.md', code:
+`// Agenten laufen NICHT dauerhaft — sie werden geweckt (Heartbeats).
+// Wakeup-Quellen: timer | assignment | on_demand | automation
+{
+  enabled: true,
+  intervalSec: 300,        // Timer-Intervall (0 = aus)
+  wakeOnAssignment: true,  // wecke bei zugewiesener Arbeit
+  wakeOnOnDemand: true,    // manuelle Weckrufe
+  cwd: "/workspace",
+  timeoutSec: 900,         // max. Laufzeit pro Heartbeat
 }` },
-          hr: { file: 'src/api/schema/agents.rs', lang: 'rust', url: GH_HR + 'src/api/schema/agents.rs', code:
-`pub struct AgentInfo {
-    pub terminal_id: String,
-    pub pane_id: String,
-    pub tab_id: String,
-    pub workspace_id: String,
-    pub agent_status: AgentStatus, // idle | blocked | working | done | unknown
-    pub agent_session: Option<AgentSessionInfo>,
-    pub interactive_ready: bool,
-    // …
-}` } },
-        { t: 'codePair', title: 'Zugriff & Zustand — woher weiß das System, was los ist?',
-          dw: { file: 'internal/api/auth.go', lang: 'go', url: GH_DW + 'internal/api/auth.go', code:
-`// Strukturierter Zustand + SO_PEERCRED-Autorisierung
-cred, _ := unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
-role := policy.RoleOf(cred.Uid)
-if role == "" {
-    http.Error(w, "forbidden: peer uid not authorized", 403)
-    return
-}` },
-          hr: { file: 'src/cli/agent.rs', lang: 'rust', url: GH_HR + 'src/cli/agent.rs', code:
-`// Zustand wird aus dem Terminal-Screen erkannt (Regeln),
-// nicht über eine Agent-API abgefragt:
-println!("    matchers: contains={:?} regex={:?} line_regex={:?} all={} any={} not={}",
-    evidence["contains"], evidence["regex"], evidence["line_regex"],
-    evidence["all_count"], evidence["any_count"], evidence["not_count"]);` } },
         { t: 'procontra', title: 'Was geht, was nicht geht', cols: [
           { tone: 'goes', head: '✓ Was DockWeave kann', items: [
-            'Echte Isolation: Container, cap-drop ALL, non-root, kein Docker-Socket im Agenten.',
-            'Workspace-Grants mit Allowlist, TOCTOU-Schutz (openat2) und sauberem RO-Staging.',
-            'Secretless Credentials: Vault (Argon2id + AES-256-GCM) + Broker, Agent sieht nur ein kurzlebiges Session-Token.',
+            'Echte Isolation: Container, cap-drop ALL, non-root, kein Docker-Socket.',
+            'Secretless Credentials: Vault + Broker, Agent sieht nur ein Session-Token.',
             'Egress-Profile (offline / broker-only), fail closed.',
-            'Audit mit Hash-Kette, stabile Agenten-Identität, Recovery/Supervisor.'
+            'Audit mit Hash-Kette, stabile Agenten-Identität.'
           ]},
-          { tone: 'noes', head: '✗ Was DockWeave nicht kann (bewusst)', items: [
-            'Kein Harness: nutzt OpenCode/Codex/Claude Code.',
-            'Kein Terminal-Multiplexing: kein tmux-artiges Detach/Reattach.',
-            'Single-Host: braucht Docker + einen root-Daemon (CAP_SYS_ADMIN).',
-            'Keine Multi-Machine-Orchestrierung über SSH.',
-            'Mehr Setup-/Operations-Aufwand als ein einzelnes Binary.'
+          { tone: 'noes', head: '✗ Was DockWeave nicht kann', items: [
+            'Kein Harness, kein Task-/Org-Management, keine Budgets.',
+            'Kein Terminal-Multiplexing (Detach/Reattach).',
+            'Single-Host: braucht Docker + root-Daemon.'
           ]},
           { tone: 'goes', head: '✓ Was herdr kann', items: [
-            'Detach/Reattach: Terminals laufen im Hintergrund-Server weiter; Layout-Restore nach Neustart.',
-            'Multi-Machine: lokale + gespeicherte SSH-Maschinen in einem Fenster.',
-            'Agent-nativ: CLI + Socket-API — Panes spawnen, prompten, auf „blocked“ warten.',
-            'Läuft mit dem, was du schon nutzt: Claude Code, Codex, Cursor, OpenCode, …',
-            'Ein Rust-Binary, Plugins und ein Marketplace.'
+            'Detach/Reattach: Terminals laufen im Hintergrund weiter.',
+            'Multi-Machine: lokale + SSH-Maschinen in einem Fenster.',
+            'Agent-nativ: CLI + Socket-API, auf „blocked“ warten.'
           ]},
           { tone: 'noes', head: '✗ Was herdr nicht kann', items: [
-            'Keine Isolation: Agenten laufen mit deinen Rechten, keine Sandbox.',
-            'Keine Credential-Verwaltung: deine API-Keys bleiben deine (kein Vault/Broker).',
-            'Keine Egress-/Netzgrenze.',
-            'Kein Audit-Trail (keine Hash-Kette).',
-            'Zustand wird über Screen-Detection erraten, nicht über eine Agent-API.'
+            'Keine Isolation, keine Credential-Verwaltung, kein Audit.',
+            'Kein Task-/Budget-/Governance-Management.',
+            'Zustand wird über Screen-Detection erraten.'
+          ]},
+          { tone: 'goes', head: '✓ Was paperclip kann', items: [
+            'Org-Chart, Rollen, Berichtslinien, Delegation.',
+            'Tasks mit Heartbeats, Approvals, Budgets & Kostenkontrolle.',
+            'Routines/Schedules, Multi-Org, Plugins, Mobile.'
+          ]},
+          { tone: 'noes', head: '✗ Was paperclip nicht kann', items: [
+            'Lokale Adapter laufen unsandboxed (keine Container-Isolation).',
+            'Kein secretless Broker — Secrets werden in Runs injiziert.',
+            'Kein Terminal-Multiplexing; Herzschlag-Modell statt Dauerlauf.'
           ]}
         ]},
-        { t: 'note', text: '<strong>Zusammenspiel:</strong> Die beiden schließen sich nicht aus. Du kannst einen DockWeave-verwalteten Agenten in einem herdr-Pane laufen lassen — herdr <em>ownet</em> das Terminal und die Session, DockWeave <em>ownet</em> die Sandbox, die Secrets und die Grenzen. Kurz: herdr löst die <strong>Bedienbarkeit</strong>, DockWeave die <strong>Sicherheit</strong>.' }
+        { t: 'note', text: '<strong>In Kombination:</strong> Die drei stapeln sich sauber — <strong>paperclip</strong> entscheidet oben, <em>wer was wann mit welchem Budget</em> macht (Tasks, Approvals, Kosten). <strong>herdr</strong> hält darunter die <em>Terminals/Sessions</em> am Leben (detach, Multi-Machine). <strong>DockWeave</strong> ganz unten erzwingt die <em>Grenzen</em> (Sandbox, secretless Credentials, Egress, Audit). paperclip dokumentiert selbst, dass lokale Adapter <strong>unsandboxed</strong> laufen — genau diese Lücke schließt DockWeave; und das Dauerlauf-Fenster, das paperclip nicht bietet, deckt herdr ab.' }
       ]
     }
   ];

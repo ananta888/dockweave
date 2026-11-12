@@ -13,6 +13,7 @@
   --gold: #f0c000;
   --rust: #f74c00;
   --go: #00add8;
+  --pp: #a78bfa;
   --shadow: 0 18px 50px rgba(0, 0, 0, .45);
 }
 
@@ -160,6 +161,10 @@ pre code { background: transparent; padding: 0; }
 .codepair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 820px) { .codepair { grid-template-columns: 1fr; } }
 
+/* codetriple */
+.codetriple { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+@media (max-width: 1080px) { .codetriple { grid-template-columns: 1fr; } }
+
 /* mdview */
 .mdview { font-size: .9rem; color: #c6d2e0; }
 .mdview h3, .mdview h4 { color: var(--text); margin: 1rem 0 .4rem; font-size: 1.02rem; }
@@ -267,15 +272,16 @@ table.tbl code { font-size: .82em; }
 .note.blue strong { color: var(--accent); }
 
 /* compare identity cards */
-.vs-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-@media (max-width: 820px) { .vs-cards { grid-template-columns: 1fr; } }
+.vs-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
 .vs-card { background: linear-gradient(180deg, var(--panel), #0f141c); border: 1px solid var(--border); border-radius: 14px; padding: 1.2rem; }
 .vs-card.dw { border-top: 3px solid var(--go); }
 .vs-card.hr { border-top: 3px solid var(--rust); }
+.vs-card.pp { border-top: 3px solid var(--pp); }
 .vs-card h3 { margin: 0 0 .2rem; font-size: 1.2rem; }
 .vs-card .tag { display: inline-block; font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; padding: .14rem .5rem; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
 .vs-card.dw .tag { color: var(--go); border-color: rgba(0,173,216,.4); background: rgba(0,173,216,.08); }
 .vs-card.hr .tag { color: var(--rust); border-color: rgba(247,76,0,.4); background: rgba(247,76,0,.08); }
+.vs-card.pp .tag { color: var(--pp); border-color: rgba(167,139,250,.4); background: rgba(167,139,250,.08); }
 .vs-card .role { color: var(--muted); font-size: .86rem; margin: .3rem 0 .6rem; }
 .vs-card p { font-size: .88rem; color: var(--muted); margin: .4rem 0; }
 .vs-card p strong { color: var(--text); }
