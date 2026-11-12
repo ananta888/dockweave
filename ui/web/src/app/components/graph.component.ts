@@ -132,7 +132,7 @@ interface GraphEdge {
           </div>
         }
         @if (selectedEdge(); as edge) {
-          <div class="edge-toolbar">
+          <div class="edge-toolbar" [style.left.px]="edgeToolbarPos()?.x ?? 100" [style.top.px]="edgeToolbarPos()?.y ?? 100">
             <span>Verbindung: <b>{{ edge.label }}</b> · {{ edge.kind }}</span>
             <button class="small danger" (click)="deleteEdge(edge)">Löschen</button>
             <button class="small" (click)="selectedEdge.set(null)">✕</button>
@@ -163,7 +163,7 @@ interface GraphEdge {
                 [fReassignDisabled]="true"
                 [attr.data-kind]="edge.kind"
                 [class.selected-edge]="selectedEdge()?.id === edge.id"
-                (click)="$event.stopPropagation(); selectEdge(edge)"
+                (click)="$event.stopPropagation(); selectEdge(edge, $event)"
                 (contextmenu)="openEdgeContext($event, edge)">
                 <svg fMarker type="end-all-states" [width]="10" [height]="10" [refX]="10" [refY]="5" markerUnits="userSpaceOnUse" viewBox="0 0 10 10">
                   <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"></path>
@@ -292,8 +292,8 @@ interface GraphEdge {
       </div>
 
       @if (settingsOpen()) {
-        <div class="settings-backdrop" (click)="settingsOpen.set(false)">
-          <div class="settings-modal" (click)="$event.stopPropagation()">
+        <div class="settings-backdrop floating">
+          <div class="settings-modal popover popover-settings" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 64" (click)="$event.stopPropagation()">
             <header>
               <h3>Graph settings &amp; schema</h3>
               <button class="ghost small" (click)="settingsOpen.set(false)">✕</button>
@@ -434,8 +434,8 @@ interface GraphEdge {
       }
 
       @if (connectorsOpen()) {
-        <div class="settings-backdrop" (click)="connectorsOpen.set(false)">
-          <div class="settings-modal" (click)="$event.stopPropagation()">
+        <div class="settings-backdrop floating">
+          <div class="settings-modal popover popover-wide" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Connectoren · {{ connectorAgent()?.display_name || connectorAgent()?.name }}</h3>
               <button class="ghost small" (click)="connectorsOpen.set(false)">✕</button>
@@ -580,8 +580,8 @@ interface GraphEdge {
       }
 
       @if (connectOpen()) {
-        <div class="settings-backdrop" (click)="connectOpen.set(false)">
-          <div class="settings-modal" (click)="$event.stopPropagation()">
+        <div class="settings-backdrop floating">
+          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Neue Verbindung · {{ connectSource()?.title }}</h3>
               <button class="ghost small" (click)="connectOpen.set(false)">✕</button>
@@ -606,8 +606,8 @@ interface GraphEdge {
       }
 
       @if (editConnectorId()) {
-        <div class="settings-backdrop" (click)="editConnectorId.set(null)">
-          <div class="settings-modal" (click)="$event.stopPropagation()">
+        <div class="settings-backdrop floating">
+          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Node konfigurieren</h3>
               <button class="ghost small" (click)="editConnectorId.set(null)">✕</button>
@@ -719,7 +719,13 @@ interface GraphEdge {
     .connect-banner { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:20; background:#11263b; border:1px solid #1f6feb; border-radius:7px; padding:.4rem .7rem; font-size:.75rem; display:flex; align-items:center; gap:.5rem; }
     .node-link-btn { position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; border:1px solid #58a6ff; background:#0d1117; color:#58a6ff; cursor:pointer; font-size:.85rem; line-height:1; z-index:6; padding:0; }
     .node-link-btn:hover { background:#58a6ff; color:#0b0e14; }
-    .edge-toolbar { position:absolute; bottom:14px; left:50%; transform:translateX(-50%); z-index:20; background:#161b22; border:1px solid #58a6ff; border-radius:8px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; font-size:.75rem; box-shadow:0 6px 18px #000a; }
+    .edge-toolbar { position:fixed; z-index:120; background:#161b22; border:1px solid #58a6ff; border-radius:8px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; font-size:.75rem; box-shadow:0 6px 18px #000a; }
+    .settings-backdrop.floating { position:fixed; inset:0; background:transparent; display:block; pointer-events:none; }
+    .settings-backdrop.floating .settings-modal.popover { position:fixed; pointer-events:auto; width:420px; max-width:calc(100vw - 16px); max-height:76vh; overflow:auto; }
+    .settings-backdrop.floating .settings-modal.popover.popover-wide { width:520px; }
+    .settings-backdrop.floating .settings-modal.popover.popover-settings { width:680px; max-height:82vh; }
+    .settings-modal.popover .settings-body { padding:.55rem; }
+    .settings-modal.popover .settings-body section { padding:.5rem .6rem; }
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
     f-canvas { background:#0b0e14; }
     .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
@@ -918,6 +924,8 @@ export class GraphComponent implements OnChanges {
   connectingType = signal('custom');
   connectError = signal('');
   selectedEdge = signal<GraphEdge | null>(null);
+  popoverPos = signal<{ x: number; y: number } | null>(null);
+  edgeToolbarPos = signal<{ x: number; y: number } | null>(null);
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -1116,8 +1124,23 @@ export class GraphComponent implements OnChanges {
     this.nodeClicked(node);
   }
 
+  private positionPopoverForNode(node: GraphNode | null, width = 430): void {
+    let x = 120, y = 90;
+    if (node) {
+      const el = document.querySelector(`[data-node-id="${node.id}"]`) as HTMLElement | null;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        x = r.right + 12;
+        if (x + width > window.innerWidth - 8) x = Math.max(8, r.left - width - 12);
+        y = Math.max(8, Math.min(window.innerHeight - 480, r.top));
+      }
+    }
+    this.popoverPos.set({ x: Math.max(8, Math.min(x, window.innerWidth - width - 8)), y });
+  }
+
   beginConnect(node: GraphNode): void {
     if (node.kind === 'ghost') return;
+    this.positionPopoverForNode(node, 340);
     this.connectSource.set(node);
     this.connectType = this.schema().connectionTypes[0]?.id || 'custom';
     this.connectError.set('');
@@ -1172,14 +1195,16 @@ export class GraphComponent implements OnChanges {
     return dy >= 0 ? { sourceSide: 'bottom', targetSide: 'top' } : { sourceSide: 'top', targetSide: 'bottom' };
   }
 
-  selectEdge(edge: GraphEdge): void {
+  selectEdge(edge: GraphEdge, ev?: MouseEvent): void {
     this.selectedEdge.set(edge);
+    if (ev) this.edgeToolbarPos.set({ x: Math.min(window.innerWidth - 340, ev.clientX + 10), y: Math.min(window.innerHeight - 60, ev.clientY + 10) });
   }
 
   openEdgeContext(ev: MouseEvent, edge: GraphEdge): void {
     ev.preventDefault();
     ev.stopPropagation();
     this.selectedEdge.set(edge);
+    this.edgeToolbarPos.set({ x: Math.min(window.innerWidth - 340, ev.clientX + 10), y: Math.min(window.innerHeight - 60, ev.clientY + 10) });
     this.contextMenu.set({ x: ev.clientX, y: ev.clientY, edge });
   }
 
@@ -1227,6 +1252,8 @@ export class GraphComponent implements OnChanges {
   }
 
   openLocalEditor(c: ConnectorConfig): void {
+    const node = this.nodes().find(n => `connector-${c.id}` === n.id) ?? null;
+    this.positionPopoverForNode(node, 380);
     this.editConnectorId.set(c.id);
     this.ecName = c.name;
     this.ecKind = c.kind;
@@ -1524,6 +1551,14 @@ export class GraphComponent implements OnChanges {
 
   openConnectorDialog(a: Agent): void {
     this.closeContext();
+    const el = document.querySelector(`[data-agent-id="${a.id}"]`) as HTMLElement | null;
+    let x = 140, y = 90;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      x = Math.max(8, Math.min(r.right + 12, window.innerWidth - 470));
+      y = Math.max(8, Math.min(window.innerHeight - 560, r.top));
+    }
+    this.popoverPos.set({ x, y });
     this.connectorAgent.set(a);
     this.connKind = 'mcp';
     this.connName = '';
@@ -2001,6 +2036,7 @@ export class GraphComponent implements OnChanges {
   }
 
   openSettings(): void {
+    this.popoverPos.set({ x: Math.max(8, window.innerWidth - 700), y: 64 });
     this.schemaJson = JSON.stringify(this.schema(), null, 2);
     this.schemaError.set('');
     this.settingsOpen.set(true);
