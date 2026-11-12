@@ -6,12 +6,14 @@ beliebige freigegebene Projektverzeichnisse bereit — ohne Container-Neustart.
 
 **Sprache:** Deutsch · [English](README.md)
 
-> **Lernprojekt:** DockWeave ist in erster Linie eine Lern- und
-> Experimentierplattform, um Agenten-Harnesses, Agenten-Systemarchitektur,
-> Technologien und Sicherheitsgrenzen zu verstehen — keine
-> produktionsreife Plattform. Einstieg:
-> [docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md)
-> und [docs/learning/build-your-own.de.md](docs/learning/build-your-own.de.md).
+> **Neu hier? Baue dein eigenes Agenten-System.** DockWeave ist in erster
+> Linie ein Lernprojekt: Es zeigt, wie Agenten-Harnesses, Sandboxen,
+> Identitäten, Workspace-Grants, ein secretless Credential-Broker, Egress,
+> Audit, UI und MCP/Skills zusammenspielen. Der vollständige
+> Schritt-für-Schritt-Leitfaden steht in
+> **[docs/learning/build-your-own.de.md](docs/learning/build-your-own.de.md)**;
+> die Konzepte dahinter in
+> **[docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md)**.
 
 ## Kernkonzept
 

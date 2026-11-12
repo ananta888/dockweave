@@ -9,6 +9,14 @@ project directories at runtime — without restarting containers.
 
 **Language:** [Deutsch](README.de.md) · English
 
+> **New here? Build your own agent system.** DockWeave is primarily a
+> learning project: it shows how agent harnesses, sandboxes, identities,
+> workspace grants, a secretless credential broker, egress, audit, UI and
+> MCP/skills fit together. The full step-by-step guide is
+> **[docs/learning/build-your-own.md](docs/learning/build-your-own.md)**;
+> the concepts behind it are in
+> **[docs/learning/agent-harness.md](docs/learning/agent-harness.md)**.
+
 ## Why DockWeave?
 
 - Run Codex CLI, OpenCode, Claude Code, Gemini CLI, or custom agents side by side
@@ -16,12 +24,6 @@ project directories at runtime — without restarting containers.
 - Share project directories dynamically (read-only or read-write) per agent
 - Monitor which agents write which files, detect conflicts in real time
 - All privileged operations isolated in a hardened daemon
-
-> **Learning project:** DockWeave is primarily a teaching/experimentation
-> platform for understanding agent harnesses, agent-system architecture,
-> technologies and security boundaries — not a production-ready platform.
-> Start with [docs/learning/agent-harness.md](docs/learning/agent-harness.md)
-> and [docs/learning/build-your-own.md](docs/learning/build-your-own.md).
 
 ## Three-Mount Architecture
 
