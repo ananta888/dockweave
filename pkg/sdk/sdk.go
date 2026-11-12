@@ -701,6 +701,11 @@ type AgentMCP = model.AgentMCP
 // AgentSkill is a per-agent skill entry.
 type AgentSkill = model.AgentSkill
 
+func (c *Client) ApplyTypeDefaults(ctx context.Context, agent string) (map[string]int, error) {
+	var out map[string]int
+	return out, c.do(ctx, "POST", "/api/v1/agents/"+agent+"/apply-type-defaults", map[string]string{}, &out)
+}
+
 func (c *Client) ListMCP(ctx context.Context, agent string) ([]*AgentMCP, error) {
 	var out []*AgentMCP
 	return out, c.do(ctx, "GET", "/api/v1/agents/"+agent+"/mcp", nil, &out)

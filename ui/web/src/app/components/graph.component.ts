@@ -442,6 +442,13 @@ interface GraphEdge {
             </header>
             <div class="settings-body">
               <section>
+                <div class="settings-row">
+                  <span class="muted">Projekte: <b>{{ agentProjects(connectorAgent()?.id || '').join(', ') || 'keine' }}</b></span>
+                  <span class="spacer"></span>
+                  <button class="primary small" (click)="applyDefaults()" [disabled]="configBusy()">Typ-Defaults übernehmen</button>
+                </div>
+              </section>
+              <section>
                 <h4>MCP Server (Datenbank)</h4>
                 @for (m of mcpServers(); track m.id) {
                   <div class="custom-edge">
@@ -1727,6 +1734,30 @@ export class GraphComponent implements OnChanges {
     return errors;
   }
 
+
+  applyDefaults(): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    this.configBusy.set(true);
+    this.api.applyTypeDefaults(a.id).subscribe({
+      next: r => {
+        this.configBusy.set(false);
+        this.configError.set('');
+        this.message.set(`${r.mcp_added} MCP, ${r.skills_added} Skills aus Typ-Defaults übernommen`);
+        this.loadAgentConfig(a.id);
+        this.changed.emit();
+      },
+      error: e => { this.configBusy.set(false); this.configError.set(e.message ?? String(e)); },
+    });
+  }
+
+  agentProjects(agentId: string): string[] {
+    const names = this.grants
+      .filter(g => g.agent_id === agentId && g.status !== 'revoked')
+      .map(g => this.workspaces.find(w => w.id === g.workspace_id)?.name)
+      .filter((n): n is string => !!n);
+    return [...new Set(names)];
+  }
 
   private loadAgentConfig(agentId: string): void {
     this.configError.set('');

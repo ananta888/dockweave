@@ -115,6 +115,7 @@ export class ApiService {
   updateTypeSkill(agentType: string, id: string, sk: Partial<AgentTypeSkill>): Observable<AgentTypeSkill> { return this.req(this.http.patch<AgentTypeSkill>(`${this.base}/agent-types/${agentType}/skills/${id}`, sk)); }
   deleteTypeSkill(agentType: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agent-types/${agentType}/skills/${id}`)); }
   importTypeDefaults(agentType: string): Observable<{ mcp_added: number; skills_added: number }> { return this.req(this.http.post<{ mcp_added: number; skills_added: number }>(`${this.base}/agent-types/${agentType}/import`, {})); }
+  applyTypeDefaults(agent: string): Observable<{ mcp_added: number; skills_added: number }> { return this.req(this.http.post<{ mcp_added: number; skills_added: number }>(`${this.base}/agents/${agent}/apply-type-defaults`, {})); }
   listMCP(agent: string): Observable<AgentMCP[]> { return this.req(this.http.get<AgentMCP[]>(`${this.base}/agents/${agent}/mcp`)); }
   addMCP(agent: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.post<AgentMCP>(`${this.base}/agents/${agent}/mcp`, m)); }
   updateMCP(agent: string, id: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.patch<AgentMCP>(`${this.base}/agents/${agent}/mcp/${id}`, m)); }

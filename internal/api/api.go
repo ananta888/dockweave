@@ -129,6 +129,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/skills", s.addSkill)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}/skills/{skill}", s.updateSkill)
 	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/skills/{skill}", s.deleteSkill)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/apply-type-defaults", s.applyTypeDefaults)
 	s.mux.HandleFunc("GET /api/v1/agent-types/{type}/mcp", s.listTypeMCP)
 	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/mcp", s.addTypeMCP)
 	s.mux.HandleFunc("PATCH /api/v1/agent-types/{type}/mcp/{mcp}", s.updateTypeMCP)
@@ -1143,4 +1144,13 @@ func (s *Server) setAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) applyTypeDefaults(w http.ResponseWriter, r *http.Request) {
+	mcp, skills, err := s.Agents.ApplyTypeDefaults(r.Context(), r.PathValue("id"), actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"mcp_added": mcp, "skills_added": skills})
 }

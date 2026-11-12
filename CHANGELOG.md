@@ -48,6 +48,9 @@ All notable changes to DockWeave are documented here. The format follows
   input-schema validation. Add SQLite-backed per-agent MCP server and skill
   configuration (`agent_mcp`, `agent_skills`, migration 8), API/UI management,
   and materialization into OpenCode/Claude/generic config files before start.
+  Prefill every new agent with editable per-agent copies of its type
+  defaults and add an apply-type-defaults action; show assigned projects in
+  the per-agent connector dialog.
   Add per-agent-type default MCP servers and skills with a scanner for
   existing OpenCode/Claude/Codex/Gemini homes and an Agent Types view in the
   web UI. Add a visible node palette, deterministic gate configuration with

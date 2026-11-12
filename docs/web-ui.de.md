@@ -125,7 +125,10 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   mit **Standardwerte einlesen**, das bestehende Agenten-Homes und übliche
   Host-Homes für OpenCode, Claude, Codex, Gemini und Antigravity scannt.
   Defaults gelten für alle Agenten des Typs; Per-Agent-Einträge mit gleichem
-  Namen überschreiben sie. Die Ansicht erlaubt Anlegen/Enable/Disable/Löschen.
+  Namen überschreiben sie. Neue Agenten werden mit den Typ-Defaults
+  vorbefüllt und haben eigene editierbare MCP-/Skill-Einträge; der
+  Connector-Dialog zeigt die Projekte des Agenten und bietet
+  *Typ-Defaults übernehmen*, um fehlende Typ-Einträge zu kopieren. Die Ansicht erlaubt Anlegen/Enable/Disable/Löschen.
 - **MCP-/Skill-Speicherung**: MCP-Server und Skills werden pro Agent in SQLite
   persistiert (`agent_mcp`, `agent_skills`, Migration 8) und über
   `/api/v1/agents/{id}/mcp` bzw. `/skills` verwaltet. Vor dem Agentenstart

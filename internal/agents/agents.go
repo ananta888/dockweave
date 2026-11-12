@@ -416,6 +416,9 @@ func (s *Service) Create(ctx context.Context, a *model.Agent, actor string) (*mo
 			return nil, err
 		}
 	}
+	// Prefill per-agent MCP/skill rows from type defaults so each agent has its
+	// own editable copy (type defaults remain the catalog/template).
+	_, _, _ = s.seedAgentDefaults(ctx, a.ID, a.Type)
 	s.event(ctx, model.EventAgentCreated, actor, a.ID, fmt.Sprintf("agent %q created (image %s, memory %s)", a.Name, a.Image, mem.ID))
 	return a, nil
 }
@@ -845,6 +848,80 @@ func validateMCP(m *model.AgentMCP) error {
 	return nil
 }
 
+// ApplyTypeDefaults copies missing type-default MCP servers/skills into the
+// agent's own rows and materializes the result.
+func (s *Service) ApplyTypeDefaults(ctx context.Context, idOrName, actor string) (int, int, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return 0, 0, err
+	}
+	m, sk, err := s.seedAgentDefaults(ctx, a.ID, a.Type)
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := s.materializeConfig(ctx, a); err != nil {
+		return m, sk, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID,
+		fmt.Sprintf("type defaults applied: %d MCP, %d skills", m, sk))
+	return m, sk, nil
+}
+
+func (s *Service) seedAgentDefaults(ctx context.Context, agentID, agentType string) (int, int, error) {
+	typeMCP, err := s.Store.ListAgentTypeMCP(ctx, agentType)
+	if err != nil {
+		return 0, 0, err
+	}
+	ownMCP, err := s.Store.ListAgentMCP(ctx, agentID)
+	if err != nil {
+		return 0, 0, err
+	}
+	haveMCP := map[string]bool{}
+	for _, m := range ownMCP {
+		haveMCP[m.Name] = true
+	}
+	typeSkills, err := s.Store.ListAgentTypeSkills(ctx, agentType)
+	if err != nil {
+		return 0, 0, err
+	}
+	ownSkills, err := s.Store.ListAgentSkills(ctx, agentID)
+	if err != nil {
+		return 0, 0, err
+	}
+	haveSkill := map[string]bool{}
+	for _, sk := range ownSkills {
+		haveSkill[sk.Name] = true
+	}
+	now := time.Now()
+	addedMCP, addedSkills := 0, 0
+	for _, t := range typeMCP {
+		if haveMCP[t.Name] {
+			continue
+		}
+		m := &model.AgentMCP{
+			ID: model.NewID("mcp"), AgentID: agentID, Name: t.Name, Transport: t.Transport,
+			Command: t.Command, Args: t.Args, URL: t.URL, EnvKeys: t.EnvKeys,
+			Contract: t.Contract, Enabled: t.Enabled, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.Store.CreateAgentMCP(ctx, m); err == nil {
+			addedMCP++
+		}
+	}
+	for _, t := range typeSkills {
+		if haveSkill[t.Name] {
+			continue
+		}
+		sk := &model.AgentSkill{
+			ID: model.NewID("skl"), AgentID: agentID, Name: t.Name, Description: t.Description,
+			SourcePath: t.SourcePath, Config: t.Config, Enabled: t.Enabled, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.Store.CreateAgentSkill(ctx, sk); err == nil {
+			addedSkills++
+		}
+	}
+	return addedMCP, addedSkills, nil
+}
+
 func (s *Service) materializeConfig(ctx context.Context, a *model.Agent) error {
 	memPath := s.Mounts.MemoryDir(a.ID)
 	if s.Memory != nil {
@@ -1076,9 +1153,11 @@ func (s *Service) ImportTypeDefaults(ctx context.Context, agentType, actor strin
 			addedSkills++
 		}
 	}
-	// Re-materialize existing agents of this type so defaults take effect.
+	// Copy new defaults into each existing agent of this type and
+	// re-materialize so per-agent rows stay prefilled but editable.
 	for _, a := range agents {
 		if a.Type == agentType {
+			_, _, _ = s.seedAgentDefaults(ctx, a.ID, a.Type)
 			_ = s.materializeConfig(ctx, a)
 		}
 	}
