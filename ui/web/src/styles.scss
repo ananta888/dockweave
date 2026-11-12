@@ -1,4 +1,8 @@
+@use '@foblex/flow/styles' as flow;
 @import '@xterm/xterm/css/xterm.css';
+@include flow.theme-tokens();
+@include flow.flow-canvas();
+@include flow.connection();
 
 :root {
   color-scheme: dark;

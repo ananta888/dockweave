@@ -7,13 +7,14 @@ import { TerminalComponent } from './components/terminal.component';
 import { ConfigComponent } from './components/config.component';
 import { AnalysisComponent } from './components/analysis.component';
 import { DirPickerComponent } from './components/dir-picker.component';
+import { GraphComponent } from './components/graph.component';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'analysis' | 'workspaces';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -51,6 +52,12 @@ export class App implements OnInit, OnDestroy {
 
   select(a: Agent): void {
     this.store.select(a.id);
+    this.view.set('agent');
+    this.agentTab.set('chat');
+  }
+
+  selectById(id: string): void {
+    this.store.select(id);
     this.view.set('agent');
     this.agentTab.set('chat');
   }

@@ -38,6 +38,7 @@ DOCKWEAVE_WEB_TOKEN=… dockweave web                        # festes Token
 | Memory | Memory-Identität anhängen/lösen, Snapshots anlegen/restoren/löschen |
 | Credentials | Broker-Credential-Grants ansehen (nur Metadaten) |
 | Analyse | Aktivität/CPU/Memory, Dateikonflikte, Events, Broker-Traffic, Provider-Status |
+| Graph | Foblex-Flow-Graph aus Agenten, Workspaces, Memory-Stores, Credential-Grants und dem gemeinsamen Knowledge-Store; Klick auf Agenten-Knoten öffnet den Agenten |
 | Workspaces | Host-Verzeichnisse registrieren/entfernen |
 
 Secret-Werte werden nie angezeigt. Anlegen/Rotieren von Secrets und
@@ -78,4 +79,5 @@ npm run build        # Produktions-Build
 ```
 
 Das Go-Binary bettet `internal/webui/dist` ein; `make web` baut Angular neu
-und kopiert die Assets vor `make build`.
+und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
+`@foblex/flow` (dasselbe Framework wie das ObjectGraph-Policy-Frontend).

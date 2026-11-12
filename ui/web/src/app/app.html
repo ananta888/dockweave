@@ -38,6 +38,7 @@
     <header class="topbar">
       <nav class="tabs">
         <button [class.active]="view() === 'agent'" (click)="view.set('agent')">Agent</button>
+        <button [class.active]="view() === 'graph'" (click)="view.set('graph')">Graph</button>
         <button [class.active]="view() === 'analysis'" (click)="view.set('analysis')">Analysis</button>
         <button [class.active]="view() === 'workspaces'" (click)="view.set('workspaces')">Workspaces</button>
       </nav>
@@ -94,6 +95,17 @@
           } @else {
             <div class="empty big">Select an agent on the left, or create a new one.</div>
           }
+        }
+        @case ('graph') {
+          <dw-graph
+            [agents]="store.agents()"
+            [activity]="store.activity()"
+            [workspaces]="store.workspaces()"
+            [grants]="store.grants()"
+            [brokerGrants]="store.brokerGrants()"
+            [paths]="store.paths()"
+            [selectedAgentId]="store.selectedId()"
+            (agentSelected)="selectById($event)" />
         }
         @case ('analysis') {
           <dw-analysis

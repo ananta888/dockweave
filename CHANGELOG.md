@@ -31,7 +31,8 @@ All notable changes to DockWeave are documented here. The format follows
 - SSH broker design (documented only): `docs/ssh-broker-design.md`.
 - Angular web UI (`ui/web`) served by `dockweave web`: agent list, browser
   PTY/chat (xterm.js), per-agent configuration, project access, memory,
-  broker grant metadata and an analysis dashboard. The gateway is
+  broker grant metadata, an analysis dashboard and a Foblex Flow agent graph
+  (agents, workspaces, memory, credential grants, knowledge). The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 
