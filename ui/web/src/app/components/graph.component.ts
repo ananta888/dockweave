@@ -2,9 +2,31 @@ import { Component, Input, ViewChild, computed, inject, output, signal } from '@
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
+import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, NodePorts, Side } from '../core/graph-schema';
 import { Agent, AgentActivity, AgentPaths, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
+type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'free' | 'mixed';
+
+interface GraphPort {
+  id: string;
+  type: 'in' | 'out';
+  side: Side;
+  left: number;
+  top: number;
+}
+
+interface CustomEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourcePort: string;
+  targetPort: string;
+  label: string;
+  kind: string;
+  sourceSide: Side;
+  targetSide: Side;
+}
 type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge';
 
 interface GraphNode {
@@ -23,10 +45,12 @@ interface GraphEdge {
   id: string;
   source: string;
   target: string;
+  sourcePort: string;
+  targetPort: string;
   label: string;
   kind: string;
-  sourceSide: 'top' | 'bottom' | 'left' | 'right';
-  targetSide: 'top' | 'bottom' | 'left' | 'right';
+  sourceSide: Side;
+  targetSide: Side;
   type: 'segment' | 'bezier' | 'adaptive-curve';
 }
 
@@ -43,6 +67,16 @@ interface GraphEdge {
         </div>
         <span class="muted">{{ mode() === 'organization' ? 'units · roles · agents' : 'agents · workspaces · memory · credentials · knowledge' }}</span>
         <span class="spacer"></span>
+        <select class="small-select" [ngModel]="layout()" (ngModelChange)="setLayout($event)">
+          <option value="mixed">Gemischt</option>
+          <option value="hierarchy">Hierarchie (hart)</option>
+          <option value="columns">Spalten (hart)</option>
+          <option value="grid">Grid</option>
+          <option value="radial">Radial</option>
+          <option value="free">Frei (manuell)</option>
+        </select>
+        <button class="small" (click)="cleanup()">Aufräumen</button>
+        <button class="small" (click)="openSettings()">Ports &amp; Schema</button>
         <button class="small" (click)="fit()">Fit</button>
       </div>
 
@@ -52,8 +86,8 @@ interface GraphEdge {
             @for (edge of edges(); track edge.id) {
               <f-connection
                 [fConnectionId]="edge.id"
-                [fSourceId]="edge.source + ':out:' + edge.sourceSide"
-                [fTargetId]="edge.target + ':in:' + edge.targetSide"
+                [fSourceId]="edge.sourcePort"
+                [fTargetId]="edge.targetPort"
                 [fSourceSide]="edge.sourceSide"
                 [fTargetSide]="edge.targetSide"
                 [fType]="edge.type"
@@ -73,6 +107,7 @@ interface GraphEdge {
                 fDragHandle
                 [fGroupId]="node.id"
                 [fGroupPosition]="node.position"
+                (fGroupPositionChange)="moveNode(node.id, $event)"
                 class="gw-node"
                 [class]="'kind-' + node.kind"
                 [class.selected]="selectedAgentId === agentIdOf(node)"
@@ -102,12 +137,16 @@ interface GraphEdge {
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
                 }
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:left'" fConnectorConnectableSide="left" class="gw-port" style="left:0%;top:50%"></span>
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:top'" fConnectorConnectableSide="top" class="gw-port" style="left:50%;top:0%"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:right'" fConnectorConnectableSide="right" class="gw-port" style="left:100%;top:50%"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:bottom'" fConnectorConnectableSide="bottom" class="gw-port" style="left:50%;top:100%"></span>
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:right'" fConnectorConnectableSide="right" class="gw-port" style="left:100%;top:50%"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:top'" fConnectorConnectableSide="top" class="gw-port" style="left:50%;top:0%"></span>
+                @for (p of portsFor(node); track p.id) {
+                  <span
+                    fConnector
+                    [fConnectorType]="p.type === 'out' ? 'source' : 'target'"
+                    [fConnectorId]="p.id"
+                    [fConnectorConnectableSide]="p.side"
+                    class="gw-port"
+                    [style.left.%]="p.left"
+                    [style.top.%]="p.top"></span>
+                }
               </div>
             }
           </f-canvas>
@@ -153,6 +192,130 @@ interface GraphEdge {
           </aside>
         }
       </div>
+
+      @if (settingsOpen()) {
+        <div class="settings-backdrop" (click)="settingsOpen.set(false)">
+          <div class="settings-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Graph settings &amp; schema</h3>
+              <button class="ghost small" (click)="settingsOpen.set(false)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <h4>Layout &amp; cleanup</h4>
+                <div class="settings-row">
+                  <select [ngModel]="layout()" (ngModelChange)="setLayout($event)">
+                    <option value="mixed">Gemischt (Organisation hart, Ressourcen frei)</option>
+                    <option value="hierarchy">Hierarchie (hart)</option>
+                    <option value="columns">Spalten (hart)</option>
+                    <option value="grid">Grid</option>
+                    <option value="radial">Radial</option>
+                    <option value="free">Frei (manuell, Positionen bleiben)</option>
+                  </select>
+                  <button class="primary" (click)="cleanup()">Aufräumen</button>
+                </div>
+              </section>
+
+              <section>
+                <h4>Ports per node kind (in / out)</h4>
+                <table class="ports-table">
+                  <thead>
+                    <tr><th>Kind</th>@for (side of sides; track side) { <th>{{ side }}</th> }</tr>
+                  </thead>
+                  <tbody>
+                    @for (kind of nodeKinds(); track kind) {
+                      <tr>
+                        <td class="mono">{{ kind }}</td>
+                        @for (side of sides; track side) {
+                          <td class="port-cell">
+                            <input type="number" min="0" max="12"
+                              [ngModel]="portCount(kind, side, 'inputs')" [ngModelOptions]="{ standalone: true }"
+                              (ngModelChange)="setPortCount(kind, side, 'inputs', $event)" />
+                            <span>/</span>
+                            <input type="number" min="0" max="12"
+                              [ngModel]="portCount(kind, side, 'outputs')" [ngModelOptions]="{ standalone: true }"
+                              (ngModelChange)="setPortCount(kind, side, 'outputs', $event)" />
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </section>
+
+              <section>
+                <h4>JSON schema contract</h4>
+                <p class="muted hint">Template for ports, connection types and reusable connection templates. Export it as a contract or load your own JSON.</p>
+                <textarea rows="10" [(ngModel)]="schemaJson" name="schemaJson"></textarea>
+                <div class="settings-row">
+                  <button class="primary" (click)="applySchemaJson()">Apply JSON</button>
+                  <button (click)="resetSchema()">Reset default</button>
+                  <button (click)="downloadSchema()">Download</button>
+                  <label class="file-button">Load file<input type="file" accept="application/json,.json" (change)="loadSchemaFile($event)" hidden /></label>
+                </div>
+                @if (schemaError()) { <div class="notice error">{{ schemaError() }}</div> }
+              </section>
+
+              <section>
+                <h4>Connection builder</h4>
+                <div class="settings-grid">
+                  <label>Template
+                    <select [(ngModel)]="connTemplate" (ngModelChange)="applyTemplate()" name="connTemplate">
+                      <option value="">— custom —</option>
+                      @for (t of schema().templates; track t.id) { <option [value]="t.id">{{ t.name }}</option> }
+                    </select>
+                  </label>
+                  <label>Type
+                    <select [(ngModel)]="connType" name="connType">
+                      @for (t of schema().connectionTypes; track t.id) { <option [value]="t.id">{{ t.label }} ({{ t.id }})</option> }
+                    </select>
+                  </label>
+                  <label>Source node
+                    <select [(ngModel)]="connSource" name="connSource" (ngModelChange)="connSourcePort = ''">
+                      <option value="">— select —</option>
+                      @for (n of nodes(); track n.id) { <option [value]="n.id">{{ n.title }} · {{ n.kind }}</option> }
+                    </select>
+                  </label>
+                  <label>Source port
+                    <select [(ngModel)]="connSourcePort" name="connSourcePort">
+                      <option value="">— select —</option>
+                      @for (p of portsForId(connSource, 'out'); track p.id) { <option [value]="p.id">{{ p.side }} #{{ $index + 1 }} (out)</option> }
+                    </select>
+                  </label>
+                  <label>Target node
+                    <select [(ngModel)]="connTarget" name="connTarget" (ngModelChange)="connTargetPort = ''">
+                      <option value="">— select —</option>
+                      @for (n of nodes(); track n.id) { <option [value]="n.id">{{ n.title }} · {{ n.kind }}</option> }
+                    </select>
+                  </label>
+                  <label>Target port
+                    <select [(ngModel)]="connTargetPort" name="connTargetPort">
+                      <option value="">— select —</option>
+                      @for (p of portsForId(connTarget, 'in'); track p.id) { <option [value]="p.id">{{ p.side }} #{{ $index + 1 }} (in)</option> }
+                    </select>
+                  </label>
+                  <label class="wide">Label
+                    <input [(ngModel)]="connLabel" name="connLabel" placeholder="rw, memory, custom…" />
+                  </label>
+                </div>
+                <div class="settings-row">
+                  <button class="primary" (click)="addCustomEdge()">Add connection</button>
+                  <span class="muted">{{ customEdges().length }} custom connection(s)</span>
+                </div>
+                @for (e of customEdges(); track e.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ e.label }}</span>
+                    <span class="muted">{{ e.source }} → {{ e.target }} · {{ e.kind }}</span>
+                    <span class="spacer"></span>
+                    <button class="small danger" (click)="deleteCustomEdge(e.id)">delete</button>
+                  </div>
+                }
+                @if (schemaError()) { <div class="notice error">{{ schemaError() }}</div> }
+              </section>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -211,6 +374,30 @@ interface GraphEdge {
     .inspector label { display:flex; flex-direction:column; gap:.25rem; font-size:.75rem; color:#8b949e; }
     .inspector-row { display:flex; align-items:center; gap:.4rem; }
     .inspector-actions { display:flex; gap:.5rem; }
+    .settings-backdrop { position:fixed; inset:0; background:#010409cc; display:flex; align-items:center; justify-content:center; z-index:90; }
+    .settings-modal { width:min(980px,95vw); max-height:90vh; display:flex; flex-direction:column; background:#161b22; border:1px solid #30363d; border-radius:10px; overflow:hidden; }
+    .settings-modal header { display:flex; align-items:center; gap:.5rem; padding:.7rem .9rem; border-bottom:1px solid #30363d; }
+    .settings-modal header h3 { margin:0; font-size:.95rem; flex:1; }
+    .settings-body { overflow:auto; padding:.8rem .9rem; display:flex; flex-direction:column; gap:.8rem; }
+    .settings-body section { border:1px solid #21262d; border-radius:8px; padding:.7rem .8rem; background:#0f141b; }
+    .settings-body h4 { margin:0 0 .5rem; font-size:.82rem; color:#58a6ff; text-transform:uppercase; letter-spacing:.06em; }
+    .settings-row { display:flex; align-items:center; gap:.5rem; margin-top:.4rem; flex-wrap:wrap; }
+    .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:.5rem; }
+    .settings-grid label { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; color:#8b949e; }
+    .settings-grid label.wide { grid-column:1/-1; }
+    .ports-table { width:100%; border-collapse:collapse; font-size:.75rem; }
+    .ports-table th { text-align:left; color:#8b949e; font-weight:500; padding:.2rem; border-bottom:1px solid #30363d; }
+    .ports-table td { padding:.2rem; border-bottom:1px solid #21262d; }
+    .port-cell { display:flex; align-items:center; gap:.25rem; }
+    .port-cell input { width:3.2rem; padding:.15rem .25rem; }
+    .port-cell span { color:#8b949e; }
+    .mono { font-family:ui-monospace, monospace; }
+    .muted { color:#8b949e; }
+    .hint { font-size:.72rem; margin:.2rem 0 .5rem; }
+    .file-button { display:inline-flex; align-items:center; border:1px solid #30363d; border-radius:6px; padding:.35rem .6rem; cursor:pointer; font-size:.75rem; }
+    .custom-edge { display:flex; align-items:center; gap:.5rem; padding:.3rem 0; border-bottom:1px solid #21262d; font-size:.75rem; }
+    .small-select { padding:.2rem .35rem; font-size:.72rem; }
+    .danger { background:#da3633; border-color:#f85149; color:#fff; }
     .notice { padding:.45rem .6rem; background:#11263b; border:1px solid #1f6feb; border-radius:6px; font-size:.78rem; }
     .notice.error { background:#3d1114; border-color:#f85149; }
     .primary { background:#238636; border-color:#2ea043; color:#fff; }
@@ -241,12 +428,29 @@ export class GraphComponent {
   editRole = '';
 
   readonly roles = ['CEO', 'CTO', 'COO', 'CFO', 'Head of Engineering', 'Lead', 'Developer', 'Reviewer', 'QA', 'DevOps', 'Researcher', 'Operations'];
+  readonly sides: Side[] = ['left', 'right', 'top', 'bottom'];
+
+  schema = signal<GraphSchema>(this.loadSchema());
+  layout = signal<LayoutAlgorithm>('mixed');
+  settingsOpen = signal(false);
+  customEdges = signal<CustomEdge[]>(this.loadCustomEdges());
+  layoutNonce = signal(0);
+  schemaJson = '';
+  schemaError = signal('');
+  connSource = '';
+  connSourcePort = '';
+  connTarget = '';
+  connTargetPort = '';
+  connType = 'rw';
+  connLabel = '';
+  connTemplate = '';
+  private manualPositions = this.loadPositions();
 
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
   private readonly api = inject(ApiService);
 
-  readonly nodes = computed(() => this.buildNodes());
-  readonly edges = computed(() => this.buildEdges());
+  readonly nodes = computed(() => { this.layoutNonce(); this.schema(); return this.buildNodes(); });
+  readonly edges = computed(() => { this.schema(); this.customEdges(); return this.buildEdges(); });
   readonly unitSuggestions = computed(() => {
     const units = new Set(this.agents.map(a => a.org_unit).filter(Boolean) as string[]);
     ['Executive', 'Engineering', 'Quality', 'Operations', 'Research'].forEach(u => units.add(u));
@@ -347,6 +551,239 @@ export class GraphComponent {
     this.agentSelected.emit(a.id);
   }
 
+
+  nodeKinds(): string[] {
+    return Object.keys(this.schema().nodePorts).sort();
+  }
+
+  portCount(kind: string, side: Side, type: 'inputs' | 'outputs'): number {
+    return this.schema().nodePorts[kind]?.[side]?.[type] ?? 0;
+  }
+
+  setPortCount(kind: string, side: Side, type: 'inputs' | 'outputs', value: number | string): void {
+    const n = Math.max(0, Math.min(12, Number(value) || 0));
+    const schema = structuredClone(this.schema());
+    if (!schema.nodePorts[kind]) {
+      schema.nodePorts[kind] = { left: { inputs: 0, outputs: 0 }, right: { inputs: 0, outputs: 0 }, top: { inputs: 0, outputs: 0 }, bottom: { inputs: 0, outputs: 0 } };
+    }
+    schema.nodePorts[kind][side][type] = n;
+    this.schema.set(schema);
+    this.persistSchema(schema);
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  setLayout(algo: LayoutAlgorithm): void {
+    this.layout.set(algo);
+    this.layoutNonce.update(v => v + 1);
+    setTimeout(() => this.fit(), 100);
+  }
+
+  cleanup(): void {
+    if (this.layout() === 'free') {
+      this.manualPositions = {};
+      this.persistPositions({});
+    }
+    this.layoutNonce.update(v => v + 1);
+    setTimeout(() => this.fit(), 100);
+  }
+
+  moveNode(id: string, pos: { x: number; y: number }): void {
+    this.manualPositions[id] = { x: pos.x, y: pos.y };
+    this.persistPositions(this.manualPositions);
+  }
+
+  openSettings(): void {
+    this.schemaJson = JSON.stringify(this.schema(), null, 2);
+    this.schemaError.set('');
+    this.settingsOpen.set(true);
+  }
+
+  applySchemaJson(): void {
+    try {
+      const parsed = JSON.parse(this.schemaJson) as GraphSchema;
+      if (!parsed.nodePorts || !parsed.connectionTypes) throw new Error('nodePorts and connectionTypes are required');
+      this.schema.set(parsed);
+      this.persistSchema(parsed);
+      this.schemaError.set('');
+      this.layoutNonce.update(v => v + 1);
+    } catch (e) {
+      this.schemaError.set(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  resetSchema(): void {
+    this.schema.set(structuredClone(DEFAULT_GRAPH_SCHEMA));
+    this.persistSchema(this.schema());
+    this.schemaJson = JSON.stringify(this.schema(), null, 2);
+    this.schemaError.set('');
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  downloadSchema(): void {
+    const blob = new Blob([JSON.stringify(this.schema(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'dockweave-agent-graph.schema.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  loadSchemaFile(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    file.text().then(text => { this.schemaJson = text; this.applySchemaJson(); }).catch(() => this.schemaError.set('read failed'));
+    input.value = '';
+  }
+
+  private loadSchema(): GraphSchema {
+    try {
+      const raw = localStorage.getItem('dockweave.graphSchema');
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return structuredClone(DEFAULT_GRAPH_SCHEMA);
+  }
+
+  private persistSchema(v: GraphSchema): void {
+    try { localStorage.setItem('dockweave.graphSchema', JSON.stringify(v)); } catch { /* ignore */ }
+  }
+
+  private loadCustomEdges(): CustomEdge[] {
+    try { return JSON.parse(localStorage.getItem('dockweave.customEdges') || '[]'); } catch { return []; }
+  }
+
+  private persistCustomEdges(v: CustomEdge[]): void {
+    try { localStorage.setItem('dockweave.customEdges', JSON.stringify(v)); } catch { /* ignore */ }
+  }
+
+  private loadPositions(): Record<string, { x: number; y: number }> {
+    try { return JSON.parse(localStorage.getItem('dockweave.graphPositions') || '{}'); } catch { return {}; }
+  }
+
+  private persistPositions(v: Record<string, { x: number; y: number }>): void {
+    try { localStorage.setItem('dockweave.graphPositions', JSON.stringify(v)); } catch { /* ignore */ }
+  }
+
+  portsForId(nodeId: string, type?: 'in' | 'out'): GraphPort[] {
+    const node = this.nodes().find(n => n.id === nodeId);
+    if (!node) return [];
+    const all = this.portsFor(node);
+    return type ? all.filter(p => p.type === type) : all;
+  }
+
+  portsFor(node: GraphNode): GraphPort[] {
+    const spec = this.schema().nodePorts[node.kind] ?? DEFAULT_GRAPH_SCHEMA.nodePorts[node.kind];
+    if (!spec) return [];
+    const out: GraphPort[] = [];
+    for (const side of this.sides) {
+      const counts = spec[side];
+      for (let i = 0; i < counts.inputs; i++) {
+        const pos = this.portPosition(side, i, counts.inputs);
+        out.push({ id: `${node.id}:in:${side}:${i}`, type: 'in', side, ...pos });
+      }
+      for (let i = 0; i < counts.outputs; i++) {
+        const pos = this.portPosition(side, i, counts.outputs);
+        out.push({ id: `${node.id}:out:${side}:${i}`, type: 'out', side, ...pos });
+      }
+    }
+    return out;
+  }
+
+  private portPosition(side: Side, index: number, count: number): { left: number; top: number } {
+    const pct = ((index + 1) / (count + 1)) * 100;
+    switch (side) {
+      case 'left': return { left: 0, top: pct };
+      case 'right': return { left: 100, top: pct };
+      case 'top': return { left: pct, top: 0 };
+      default: return { left: pct, top: 100 };
+    }
+  }
+
+  private pickPort(nodeId: string, type: 'in' | 'out', preferred: Side): { id: string; side: Side } | null {
+    const ports = this.portsForId(nodeId, type);
+    const match = ports.find(p => p.side === preferred) ?? ports[0];
+    return match ? { id: match.id, side: match.side } : null;
+  }
+
+  private pickPortAt(nodeId: string, type: 'in' | 'out', preferred: Side, index: number): { id: string; side: Side } | null {
+    const ports = this.portsForId(nodeId, type).filter(p => p.side === preferred);
+    const pool = ports.length ? ports : this.portsForId(nodeId, type);
+    if (!pool.length) return null;
+    const p = pool[index % pool.length];
+    return { id: p.id, side: p.side };
+  }
+
+  applyTemplate(): void {
+    const t = this.schema().templates.find(x => x.id === this.connTemplate);
+    if (!t) return;
+    this.connType = t.type;
+    this.connLabel = t.label;
+  }
+
+  addCustomEdge(): void {
+    if (!this.connSource || !this.connTarget || !this.connSourcePort || !this.connTargetPort) {
+      this.schemaError.set('source, target and both ports are required');
+      return;
+    }
+    const edge: CustomEdge = {
+      id: `custom-${Date.now()}`,
+      source: this.connSource,
+      target: this.connTarget,
+      sourcePort: this.connSourcePort,
+      targetPort: this.connTargetPort,
+      label: this.connLabel || this.connType,
+      kind: this.connType,
+      sourceSide: (this.portsForId(this.connSource).find(p => p.id === this.connSourcePort)?.side ?? 'right') as Side,
+      targetSide: (this.portsForId(this.connTarget).find(p => p.id === this.connTargetPort)?.side ?? 'left') as Side,
+    };
+    const next = [...this.customEdges(), edge];
+    this.customEdges.set(next);
+    this.persistCustomEdges(next);
+    this.schemaError.set('');
+  }
+
+  deleteCustomEdge(id: string): void {
+    const next = this.customEdges().filter(e => e.id !== id);
+    this.customEdges.set(next);
+    this.persistCustomEdges(next);
+  }
+
+  private applyLayout(nodes: GraphNode[]): GraphNode[] {
+    const algo = this.layout();
+    if (algo === 'hierarchy') return nodes;
+    if (algo === 'free') {
+      return nodes.map(n => ({ ...n, position: this.manualPositions[n.id] ?? n.position }));
+    }
+    if (algo === 'mixed') {
+      return this.mode() === 'organization' ? nodes : this.columnLayout(nodes);
+    }
+    if (algo === 'columns') return this.columnLayout(nodes);
+    if (algo === 'grid') {
+      const sorted = [...nodes].sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
+      const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
+      return sorted.map((n, i) => ({ ...n, position: { x: (i % cols) * 300, y: Math.floor(i / cols) * 200 } }));
+    }
+    // radial
+    const cx = 0, cy = 0, r = Math.max(260, nodes.length * 24);
+    return nodes.map((n, i) => ({ ...n, position: { x: cx + Math.cos((i / nodes.length) * 2 * Math.PI) * r, y: cy + Math.sin((i / nodes.length) * 2 * Math.PI) * r } }));
+  }
+
+  private columnLayout(nodes: GraphNode[]): GraphNode[] {
+    const order: NodeKind[] = ['org', 'unit', 'agent', 'workspace', 'memory', 'credential', 'knowledge'];
+    const groups = new Map<NodeKind, GraphNode[]>();
+    for (const kind of order) groups.set(kind, []);
+    for (const n of nodes) groups.get(n.kind)?.push(n);
+    const out: GraphNode[] = [];
+    let col = 0;
+    for (const kind of order) {
+      const list = groups.get(kind) ?? [];
+      list.sort((a, b) => a.title.localeCompare(b.title));
+      list.forEach((n, i) => out.push({ ...n, position: { x: col * 340, y: i * 160 } }));
+      if (list.length) col++;
+    }
+    return out;
+  }
+
   private effective(a: Agent): Agent {
     const o = this.orgOverrides()[a.id];
     return o ? { ...a, ...o } : a;
@@ -365,7 +802,8 @@ export class GraphComponent {
   }
 
   private buildNodes(): GraphNode[] {
-    return this.mode() === 'organization' ? this.buildOrgNodes() : this.buildResourceNodes();
+    const nodes = this.mode() === 'organization' ? this.buildOrgNodes() : this.buildResourceNodes();
+    return this.applyLayout(nodes);
   }
 
   private buildOrgNodes(): GraphNode[] {
@@ -447,20 +885,35 @@ export class GraphComponent {
   }
 
   private buildEdges(): GraphEdge[] {
-    return this.mode() === 'organization' ? this.buildOrgEdges() : this.buildResourceEdges();
+    const base = this.mode() === 'organization' ? this.buildOrgEdges() : this.buildResourceEdges();
+    const custom = this.customEdges().map(e => ({
+      id: e.id, source: e.source, target: e.target, sourcePort: e.sourcePort, targetPort: e.targetPort,
+      label: e.label, kind: e.kind, sourceSide: e.sourceSide, targetSide: e.targetSide,
+      type: 'bezier' as const,
+    }));
+    return [...base, ...custom];
   }
 
   private buildOrgEdges(): GraphEdge[] {
     const edges: GraphEdge[] = [];
     const units = [...new Set(this.agents.map(a => this.effective(a).org_unit || 'Unassigned'))];
     for (const u of units) {
-      edges.push({ id: `org-unit-${slug(u)}`, source: 'org-root', target: `unit-${slug(u)}`, label: 'unit', kind: 'org', sourceSide: 'bottom', targetSide: 'top', type: 'segment' });
-      for (const a of this.agents.map(x => this.effective(x)).filter(x => (x.org_unit || 'Unassigned') === u)) {
+      const orgOut = this.pickPort('org-root', 'out', 'bottom');
+      const unitIn = this.pickPort(`unit-${slug(u)}`, 'in', 'top');
+      if (orgOut && unitIn) {
+        edges.push({ id: `org-unit-${slug(u)}`, source: 'org-root', target: `unit-${slug(u)}`, sourcePort: orgOut.id, targetPort: unitIn.id, label: 'unit', kind: 'org', sourceSide: orgOut.side, targetSide: unitIn.side, type: 'segment' });
+      }
+      const members = this.agents.map(x => this.effective(x)).filter(x => (x.org_unit || 'Unassigned') === u);
+      members.forEach((a, j) => {
+        const out = this.pickPortAt(`unit-${slug(u)}`, 'out', 'bottom', j);
+        const inn = this.pickPort(`agent-${a.id}`, 'in', 'top');
+        if (!out || !inn) return;
         edges.push({
           id: `unit-agent-${a.id}`, source: `unit-${slug(u)}`, target: `agent-${a.id}`,
-          label: a.role || 'member', kind: 'unit', sourceSide: 'bottom', targetSide: 'top', type: 'segment',
+          sourcePort: out.id, targetPort: inn.id,
+          label: a.role || 'member', kind: 'unit', sourceSide: out.side, targetSide: inn.side, type: 'segment',
         });
-      }
+      });
     }
     return edges;
   }
@@ -473,17 +926,30 @@ export class GraphComponent {
       if (g.status === 'revoked' || g.status === 'unmount_failed') continue;
       const ws = wsById.get(g.workspace_id);
       if (!ws) continue;
-      edges.push({ id: `grant-${g.id}`, source: `agent-${g.agent_id}`, target: `workspace-${ws.id}`, label: g.mode, kind: g.mode === 'rw' ? 'rw' : 'ro', sourceSide: 'left', targetSide: 'right', type: 'bezier' });
+      const out = this.pickPort(`agent-${g.agent_id}`, 'out', 'left');
+      const inn = this.pickPort(`workspace-${ws.id}`, 'in', 'right');
+      if (out && inn) edges.push({ id: `grant-${g.id}`, source: `agent-${g.agent_id}`, target: `workspace-${ws.id}`, sourcePort: out.id, targetPort: inn.id, label: g.mode, kind: g.mode === 'rw' ? 'rw' : 'ro', sourceSide: out.side, targetSide: inn.side, type: 'bezier' });
     }
+    let ki = 0;
     for (const a of this.agents) {
       const p = this.paths[a.id];
-      if (p?.memory_id) edges.push({ id: `memory-edge-${a.id}`, source: `agent-${a.id}`, target: `memory-${a.id}`, label: 'memory', kind: 'memory', sourceSide: 'right', targetSide: 'left', type: 'bezier' });
-      if (p?.knowledge_dir) edges.push({ id: `knowledge-edge-${a.id}`, source: `agent-${a.id}`, target: 'knowledge', label: 'knowledge', kind: 'knowledge', sourceSide: 'bottom', targetSide: 'top', type: 'bezier' });
+      if (p?.memory_id) {
+        const out = this.pickPort(`agent-${a.id}`, 'out', 'right');
+        const inn = this.pickPort(`memory-${a.id}`, 'in', 'left');
+        if (out && inn) edges.push({ id: `memory-edge-${a.id}`, source: `agent-${a.id}`, target: `memory-${a.id}`, sourcePort: out.id, targetPort: inn.id, label: 'memory', kind: 'memory', sourceSide: out.side, targetSide: inn.side, type: 'bezier' });
+      }
+      if (p?.knowledge_dir) {
+        const out = this.pickPort(`agent-${a.id}`, 'out', 'bottom');
+        const inn = this.pickPortAt('knowledge', 'in', 'top', ki++);
+        if (out && inn) edges.push({ id: `knowledge-edge-${a.id}`, source: `agent-${a.id}`, target: 'knowledge', sourcePort: out.id, targetPort: inn.id, label: 'knowledge', kind: 'knowledge', sourceSide: out.side, targetSide: inn.side, type: 'bezier' });
+      }
     }
     for (const g of this.brokerGrants) {
       const agentId = agentNameToId.get(g.agent);
       if (!agentId) continue;
-      edges.push({ id: `credential-edge-${g.id}`, source: `agent-${agentId}`, target: `credential-${g.id}`, label: 'credential', kind: 'credential', sourceSide: 'right', targetSide: 'left', type: 'bezier' });
+      const out = this.pickPort(`agent-${agentId}`, 'out', 'right');
+      const inn = this.pickPort(`credential-${g.id}`, 'in', 'left');
+      if (out && inn) edges.push({ id: `credential-edge-${g.id}`, source: `agent-${agentId}`, target: `credential-${g.id}`, sourcePort: out.id, targetPort: inn.id, label: 'credential', kind: 'credential', sourceSide: out.side, targetSide: inn.side, type: 'bezier' });
     }
     return edges;
   }

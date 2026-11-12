@@ -38,7 +38,7 @@ DOCKWEAVE_WEB_TOKEN=… dockweave web                        # festes Token
 | Memory | Memory-Identität anhängen/lösen, Snapshots anlegen/restoren/löschen |
 | Credentials | Broker-Credential-Grants ansehen (nur Metadaten) |
 | Analyse | Aktivität/CPU/Memory, Dateikonflikte, Events, Broker-Traffic, Provider-Status |
-| Graph | Foblex-Flow-Graph in zwei Modi: **Organisation** (Einheiten → Agenten als 2D-Figuren mit Rollenlabels, direkt im Seiten-Inspektor editierbar) und **Ressourcen** (Workspaces, Memory, Credentials, Knowledge) |
+| Graph | Foblex-Flow-Graph in zwei Modi: **Organisation** (Einheiten → Agenten als 2D-Figuren mit Rollenlabels, direkt im Seiten-Inspektor editierbar) und **Ressourcen** (Workspaces, Memory, Credentials, Knowledge). Ports pro Node-Art und Seite konfigurierbar; Layout-Bereinigung mit Hierarchie/Spalten/Grid/Radial/Frei/Gemischt; Connection-Builder und JSON-Schema-Contract |
 | Workspaces | Host-Verzeichnisse registrieren/entfernen |
 
 Secret-Werte werden nie angezeigt. Anlegen/Rotieren von Secrets und
@@ -81,6 +81,20 @@ npm run build        # Produktions-Build
 Das Go-Binary bettet `internal/webui/dist` ein; `make web` baut Angular neu
 und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
 `@foblex/flow` (dasselbe Framework wie das ObjectGraph-Policy-Frontend).
+
+### Graph-Einstellungen
+
+- **Layout**: Hierarchie, Spalten, Grid, Radial, Frei oder Gemischt;
+  **Aufräumen** wendet den gewählten Algorithmus an. Im Frei-Modus bleiben
+  gezogene Node-Positionen erhalten.
+- **Ports**: Inputs/Outputs pro Seite (`left`, `right`, `top`, `bottom`) für
+  jede Node-Art, gespeichert in `localStorage`.
+- **JSON-Schema-Contract**: `dockweave.graphSchema` enthält Node-Ports,
+  Verbindungstypen und Verbindungs-Templates. Editierbar, downloadbar, aus
+  Datei ladbar und auf Default zurücksetzbar.
+- **Connection-Builder**: Template, Quell-Node/Port, Ziel-Node/Port, Typ und
+  Label wählen; eigene Kanten werden lokal gespeichert und im Graph
+  dargestellt.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer
