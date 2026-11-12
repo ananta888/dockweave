@@ -25,6 +25,9 @@ interface GraphEdge {
   target: string;
   label: string;
   kind: string;
+  sourceSide: 'top' | 'bottom' | 'left' | 'right';
+  targetSide: 'top' | 'bottom' | 'left' | 'right';
+  type: 'segment' | 'bezier' | 'adaptive-curve';
 }
 
 @Component({
@@ -49,12 +52,18 @@ interface GraphEdge {
             @for (edge of edges(); track edge.id) {
               <f-connection
                 [fConnectionId]="edge.id"
-                [fSourceId]="edge.source + ':out'"
-                [fTargetId]="edge.target + ':in'"
-                fType="bezier"
+                [fSourceId]="edge.source + ':out:' + edge.sourceSide"
+                [fTargetId]="edge.target + ':in:' + edge.targetSide"
+                [fSourceSide]="edge.sourceSide"
+                [fTargetSide]="edge.targetSide"
+                [fType]="edge.type"
+                [fRadius]="14"
                 [fSelectionDisabled]="true"
                 [fReassignDisabled]="true"
                 [attr.data-kind]="edge.kind">
+                <svg fMarker type="end-all-states" [width]="10" [height]="10" [refX]="10" [refY]="5" markerUnits="userSpaceOnUse" viewBox="0 0 10 10">
+                  <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"></path>
+                </svg>
                 <div fConnectionContent [position]="0.5" class="edge-label" [class]="'edge-' + edge.kind">{{ edge.label }}</div>
               </f-connection>
             }
@@ -93,8 +102,12 @@ interface GraphEdge {
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
                 }
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in'" fConnectorConnectableSide="left"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out'" fConnectorConnectableSide="right"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:left'" fConnectorConnectableSide="left" class="gw-port"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:top'" fConnectorConnectableSide="top" class="gw-port"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:right'" fConnectorConnectableSide="right" class="gw-port"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:bottom'" fConnectorConnectableSide="bottom" class="gw-port"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:right'" fConnectorConnectableSide="right" class="gw-port"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:top'" fConnectorConnectableSide="top" class="gw-port"></span>
               </div>
             }
           </f-canvas>
@@ -186,6 +199,8 @@ interface GraphEdge {
     .edge-label.edge-knowledge { color:#39c5cf; border-color:#1f6feb; }
     .edge-label.edge-unit { color:#3fb950; border-color:#238636; }
     .edge-label.edge-org { color:#58a6ff; border-color:#1f6feb; }
+    .gw-port { width:7px; height:7px; border-radius:50%; background:#58a6ff88; border:1px solid #58a6ff; opacity:0; transition:opacity .15s; }
+    .gw-node:hover .gw-port, .gw-node.selected .gw-port { opacity:1; }
     .small { padding:.2rem .5rem; font-size:.75rem; }
     .inspector { width:300px; border-left:1px solid #30363d; background:#161b22; padding:.9rem; display:flex; flex-direction:column; gap:.65rem; overflow:auto; }
     .inspector header { display:flex; align-items:flex-start; gap:.5rem; }
@@ -437,11 +452,11 @@ export class GraphComponent {
     const edges: GraphEdge[] = [];
     const units = [...new Set(this.agents.map(a => this.effective(a).org_unit || 'Unassigned'))];
     for (const u of units) {
-      edges.push({ id: `org-unit-${slug(u)}`, source: 'org-root', target: `unit-${slug(u)}`, label: 'unit', kind: 'org' });
+      edges.push({ id: `org-unit-${slug(u)}`, source: 'org-root', target: `unit-${slug(u)}`, label: 'unit', kind: 'org', sourceSide: 'bottom', targetSide: 'top', type: 'segment' });
       for (const a of this.agents.map(x => this.effective(x)).filter(x => (x.org_unit || 'Unassigned') === u)) {
         edges.push({
           id: `unit-agent-${a.id}`, source: `unit-${slug(u)}`, target: `agent-${a.id}`,
-          label: a.role || 'member', kind: 'unit',
+          label: a.role || 'member', kind: 'unit', sourceSide: 'bottom', targetSide: 'top', type: 'segment',
         });
       }
     }
@@ -456,17 +471,17 @@ export class GraphComponent {
       if (g.status === 'revoked' || g.status === 'unmount_failed') continue;
       const ws = wsById.get(g.workspace_id);
       if (!ws) continue;
-      edges.push({ id: `grant-${g.id}`, source: `agent-${g.agent_id}`, target: `workspace-${ws.id}`, label: g.mode, kind: g.mode === 'rw' ? 'rw' : 'ro' });
+      edges.push({ id: `grant-${g.id}`, source: `agent-${g.agent_id}`, target: `workspace-${ws.id}`, label: g.mode, kind: g.mode === 'rw' ? 'rw' : 'ro', sourceSide: 'left', targetSide: 'right', type: 'bezier' });
     }
     for (const a of this.agents) {
       const p = this.paths[a.id];
-      if (p?.memory_id) edges.push({ id: `memory-edge-${a.id}`, source: `agent-${a.id}`, target: `memory-${a.id}`, label: 'memory', kind: 'memory' });
-      if (p?.knowledge_dir) edges.push({ id: `knowledge-edge-${a.id}`, source: `agent-${a.id}`, target: 'knowledge', label: 'knowledge', kind: 'knowledge' });
+      if (p?.memory_id) edges.push({ id: `memory-edge-${a.id}`, source: `agent-${a.id}`, target: `memory-${a.id}`, label: 'memory', kind: 'memory', sourceSide: 'right', targetSide: 'left', type: 'bezier' });
+      if (p?.knowledge_dir) edges.push({ id: `knowledge-edge-${a.id}`, source: `agent-${a.id}`, target: 'knowledge', label: 'knowledge', kind: 'knowledge', sourceSide: 'bottom', targetSide: 'top', type: 'bezier' });
     }
     for (const g of this.brokerGrants) {
       const agentId = agentNameToId.get(g.agent);
       if (!agentId) continue;
-      edges.push({ id: `credential-edge-${g.id}`, source: `agent-${agentId}`, target: `credential-${g.id}`, label: 'credential', kind: 'credential' });
+      edges.push({ id: `credential-edge-${g.id}`, source: `agent-${agentId}`, target: `credential-${g.id}`, label: 'credential', kind: 'credential', sourceSide: 'right', targetSide: 'left', type: 'bezier' });
     }
     return edges;
   }

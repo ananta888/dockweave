@@ -49,3 +49,21 @@ code { background: #21262d; padding: .1rem .3rem; border-radius: 4px; font-famil
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* DockWeave graph connections: color and highlight by edge kind. */
+.f-connection .f-connection-path {
+  stroke: #30363d;
+  stroke-width: 2;
+  transition: stroke .15s, stroke-width .15s, filter .15s;
+}
+.f-connection[data-kind="rw"] .f-connection-path { stroke: #3fb950; }
+.f-connection[data-kind="ro"] .f-connection-path { stroke: #d29922; }
+.f-connection[data-kind="memory"] .f-connection-path { stroke: #bc8cff; }
+.f-connection[data-kind="credential"] .f-connection-path { stroke: #d29922; }
+.f-connection[data-kind="knowledge"] .f-connection-path { stroke: #39c5cf; }
+.f-connection[data-kind="unit"] .f-connection-path { stroke: #3fb950; }
+.f-connection[data-kind="org"] .f-connection-path { stroke: #58a6ff; }
+.f-connection:hover .f-connection-path {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px currentColor);
+}
