@@ -8,13 +8,14 @@ import { ConfigComponent } from './components/config.component';
 import { AnalysisComponent } from './components/analysis.component';
 import { DirPickerComponent } from './components/dir-picker.component';
 import { GraphComponent } from './components/graph.component';
+import { AgentTypesComponent } from './components/agent-types.component';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'graph' | 'analysis' | 'workspaces';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

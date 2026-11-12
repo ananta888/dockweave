@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 8
+const schemaVersion = 9
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -150,6 +150,36 @@ var migrations = []string{
 		UNIQUE(agent_id, name)
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills(agent_id);`,
+	// 9: per-agent-type defaults for MCP servers and skills.
+	`CREATE TABLE IF NOT EXISTS agent_type_mcp (
+		id TEXT PRIMARY KEY,
+		agent_type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		transport TEXT NOT NULL,
+		command TEXT NOT NULL DEFAULT '',
+		args TEXT NOT NULL DEFAULT '[]',
+		url TEXT NOT NULL DEFAULT '',
+		env_keys TEXT NOT NULL DEFAULT '[]',
+		contract TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(agent_type, name)
+	);
+	CREATE INDEX IF NOT EXISTS idx_agent_type_mcp_type ON agent_type_mcp(agent_type);
+	CREATE TABLE IF NOT EXISTS agent_type_skills (
+		id TEXT PRIMARY KEY,
+		agent_type TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		source_path TEXT NOT NULL DEFAULT '',
+		config TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(agent_type, name)
+	);
+	CREATE INDEX IF NOT EXISTS idx_agent_type_skills_type ON agent_type_skills(agent_type);`,
 }
 
 // Store is the DockWeave registry.
@@ -1022,6 +1052,147 @@ func (s *Store) DeleteAgentSkill(ctx context.Context, agentID, idOrName string) 
 	res, err := s.db.ExecContext(ctx, `DELETE FROM agent_skills WHERE agent_id=? AND (id=? OR name=?)`, agentID, idOrName, idOrName)
 	if err != nil {
 		return fmt.Errorf("delete agent skill: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ---- Agent-type MCP defaults ----
+
+func (s *Store) CreateAgentTypeMCP(ctx context.Context, m *model.AgentTypeMCP) error {
+	args, _ := json.Marshal(m.Args)
+	env, _ := json.Marshal(m.EnvKeys)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO agent_type_mcp
+		(id,agent_type,name,transport,command,args,url,env_keys,contract,enabled,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		m.ID, m.AgentType, m.Name, string(m.Transport), m.Command, string(args), m.URL, string(env),
+		m.Contract, m.Enabled, ts(m.CreatedAt), ts(m.UpdatedAt))
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: type MCP name %q", ErrConflict, m.Name)
+	}
+	if err != nil {
+		return fmt.Errorf("insert type MCP: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListAgentTypeMCP(ctx context.Context, agentType string) ([]*model.AgentTypeMCP, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,agent_type,name,transport,command,args,url,env_keys,contract,enabled,created_at,updated_at
+		FROM agent_type_mcp WHERE agent_type=? ORDER BY name`, agentType)
+	if err != nil {
+		return nil, fmt.Errorf("list type MCP: %w", err)
+	}
+	defer rows.Close()
+	var out []*model.AgentTypeMCP
+	for rows.Next() {
+		m := &model.AgentTypeMCP{}
+		var args, env, ca, ua, tr string
+		var enabled int
+		if err := rows.Scan(&m.ID, &m.AgentType, &m.Name, &tr, &m.Command, &args, &m.URL, &env,
+			&m.Contract, &enabled, &ca, &ua); err != nil {
+			return nil, fmt.Errorf("scan type MCP: %w", err)
+		}
+		m.Transport = model.MCPTransport(tr)
+		m.Enabled = enabled != 0
+		_ = json.Unmarshal([]byte(args), &m.Args)
+		_ = json.Unmarshal([]byte(env), &m.EnvKeys)
+		m.CreatedAt, _ = parseTS(ca)
+		m.UpdatedAt, _ = parseTS(ua)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpdateAgentTypeMCP(ctx context.Context, m *model.AgentTypeMCP) error {
+	args, _ := json.Marshal(m.Args)
+	env, _ := json.Marshal(m.EnvKeys)
+	res, err := s.db.ExecContext(ctx, `UPDATE agent_type_mcp SET name=?,transport=?,command=?,args=?,url=?,env_keys=?,contract=?,enabled=?,updated_at=?
+		WHERE id=? AND agent_type=?`,
+		m.Name, string(m.Transport), m.Command, string(args), m.URL, string(env), m.Contract, m.Enabled, ts(m.UpdatedAt), m.ID, m.AgentType)
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: type MCP name %q", ErrConflict, m.Name)
+	}
+	if err != nil {
+		return fmt.Errorf("update type MCP: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) DeleteAgentTypeMCP(ctx context.Context, agentType, idOrName string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM agent_type_mcp WHERE agent_type=? AND (id=? OR name=?)`, agentType, idOrName, idOrName)
+	if err != nil {
+		return fmt.Errorf("delete type MCP: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ---- Agent-type skill defaults ----
+
+func (s *Store) CreateAgentTypeSkill(ctx context.Context, sk *model.AgentTypeSkill) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO agent_type_skills
+		(id,agent_type,name,description,source_path,config,enabled,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?)`,
+		sk.ID, sk.AgentType, sk.Name, sk.Description, sk.SourcePath, sk.Config, sk.Enabled, ts(sk.CreatedAt), ts(sk.UpdatedAt))
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: type skill name %q", ErrConflict, sk.Name)
+	}
+	if err != nil {
+		return fmt.Errorf("insert type skill: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListAgentTypeSkills(ctx context.Context, agentType string) ([]*model.AgentTypeSkill, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,agent_type,name,description,source_path,config,enabled,created_at,updated_at
+		FROM agent_type_skills WHERE agent_type=? ORDER BY name`, agentType)
+	if err != nil {
+		return nil, fmt.Errorf("list type skills: %w", err)
+	}
+	defer rows.Close()
+	var out []*model.AgentTypeSkill
+	for rows.Next() {
+		sk := &model.AgentTypeSkill{}
+		var enabled int
+		var ca, ua string
+		if err := rows.Scan(&sk.ID, &sk.AgentType, &sk.Name, &sk.Description, &sk.SourcePath, &sk.Config, &enabled, &ca, &ua); err != nil {
+			return nil, fmt.Errorf("scan type skill: %w", err)
+		}
+		sk.Enabled = enabled != 0
+		sk.CreatedAt, _ = parseTS(ca)
+		sk.UpdatedAt, _ = parseTS(ua)
+		out = append(out, sk)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) UpdateAgentTypeSkill(ctx context.Context, sk *model.AgentTypeSkill) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE agent_type_skills SET name=?,description=?,source_path=?,config=?,enabled=?,updated_at=?
+		WHERE id=? AND agent_type=?`,
+		sk.Name, sk.Description, sk.SourcePath, sk.Config, sk.Enabled, ts(sk.UpdatedAt), sk.ID, sk.AgentType)
+	if isUniqueErr(err) {
+		return fmt.Errorf("%w: type skill name %q", ErrConflict, sk.Name)
+	}
+	if err != nil {
+		return fmt.Errorf("update type skill: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) DeleteAgentTypeSkill(ctx context.Context, agentType, idOrName string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM agent_type_skills WHERE agent_type=? AND (id=? OR name=?)`, agentType, idOrName, idOrName)
+	if err != nil {
+		return fmt.Errorf("delete type skill: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound

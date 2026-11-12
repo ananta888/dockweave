@@ -209,3 +209,30 @@ export interface AgentSkill {
   created_at: string;
   updated_at: string;
 }
+
+export interface AgentTypeMCP {
+  id: string;
+  agent_type: string;
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  env_keys?: string[];
+  contract?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentTypeSkill {
+  id: string;
+  agent_type: string;
+  name: string;
+  description?: string;
+  source_path?: string;
+  config?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}

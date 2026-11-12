@@ -348,3 +348,33 @@ type AgentSkill struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// AgentTypeMCP is an MCP server default for an agent type (opencode, claude,
+// codex, ...). Per-agent entries override defaults with the same name.
+type AgentTypeMCP struct {
+	ID        string       `json:"id"`
+	AgentType string       `json:"agent_type"`
+	Name      string       `json:"name"`
+	Transport MCPTransport `json:"transport"`
+	Command   string       `json:"command,omitempty"`
+	Args      []string     `json:"args,omitempty"`
+	URL       string       `json:"url,omitempty"`
+	EnvKeys   []string     `json:"env_keys,omitempty"`
+	Contract  string       `json:"contract,omitempty"`
+	Enabled   bool         `json:"enabled"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// AgentTypeSkill is a skill default for an agent type.
+type AgentTypeSkill struct {
+	ID          string    `json:"id"`
+	AgentType   string    `json:"agent_type"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SourcePath  string    `json:"source_path,omitempty"`
+	Config      string    `json:"config,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

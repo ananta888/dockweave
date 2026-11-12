@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
-  AgentMCP, AgentSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
+  AgentMCP, AgentSkill, AgentTypeMCP, AgentTypeSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
   MountState, ProviderStatus, Workspace,
 } from './models';
 
@@ -103,6 +103,15 @@ export class ApiService {
   }
 
   memories(): Observable<MemoryInfo[]> { return this.req(this.http.get<MemoryInfo[]>(`${this.base}/memories`)); }
+  listTypeMCP(agentType: string): Observable<AgentTypeMCP[]> { return this.req(this.http.get<AgentTypeMCP[]>(`${this.base}/agent-types/${agentType}/mcp`)); }
+  addTypeMCP(agentType: string, m: Partial<AgentTypeMCP>): Observable<AgentTypeMCP> { return this.req(this.http.post<AgentTypeMCP>(`${this.base}/agent-types/${agentType}/mcp`, m)); }
+  updateTypeMCP(agentType: string, id: string, m: Partial<AgentTypeMCP>): Observable<AgentTypeMCP> { return this.req(this.http.patch<AgentTypeMCP>(`${this.base}/agent-types/${agentType}/mcp/${id}`, m)); }
+  deleteTypeMCP(agentType: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agent-types/${agentType}/mcp/${id}`)); }
+  listTypeSkills(agentType: string): Observable<AgentTypeSkill[]> { return this.req(this.http.get<AgentTypeSkill[]>(`${this.base}/agent-types/${agentType}/skills`)); }
+  addTypeSkill(agentType: string, sk: Partial<AgentTypeSkill>): Observable<AgentTypeSkill> { return this.req(this.http.post<AgentTypeSkill>(`${this.base}/agent-types/${agentType}/skills`, sk)); }
+  updateTypeSkill(agentType: string, id: string, sk: Partial<AgentTypeSkill>): Observable<AgentTypeSkill> { return this.req(this.http.patch<AgentTypeSkill>(`${this.base}/agent-types/${agentType}/skills/${id}`, sk)); }
+  deleteTypeSkill(agentType: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agent-types/${agentType}/skills/${id}`)); }
+  importTypeDefaults(agentType: string): Observable<{ mcp_added: number; skills_added: number }> { return this.req(this.http.post<{ mcp_added: number; skills_added: number }>(`${this.base}/agent-types/${agentType}/import`, {})); }
   listMCP(agent: string): Observable<AgentMCP[]> { return this.req(this.http.get<AgentMCP[]>(`${this.base}/agents/${agent}/mcp`)); }
   addMCP(agent: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.post<AgentMCP>(`${this.base}/agents/${agent}/mcp`, m)); }
   updateMCP(agent: string, id: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.patch<AgentMCP>(`${this.base}/agents/${agent}/mcp/${id}`, m)); }

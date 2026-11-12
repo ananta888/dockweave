@@ -33,3 +33,33 @@ func TestWriteOpenCodeAndClaude(t *testing.T) {
 		t.Fatalf("generic manifest missing: %v", err)
 	}
 }
+
+func TestScanFindsSkillsAndMCP(t *testing.T) {
+	home := t.TempDir()
+	skillDir := filepath.Join(home, ".config", "opencode", "skills", "review")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Review\n\nFind bugs.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oc := filepath.Join(home, ".config", "opencode", "opencode.json")
+	if err := os.WriteFile(oc, []byte(`{"mcp":{"fs":{"type":"local","command":["npx","-y","pkg"],"enabled":true}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	claude := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(claude, []byte(`{"mcpServers":{"remote":{"url":"http://127.0.0.1:3001/mcp"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mcps, skills := Scan("opencode", []string{home})
+	if len(mcps) != 1 {
+		t.Fatalf("opencode mcps = %+v", mcps)
+	}
+	claudeMCP, _ := Scan("claude", []string{home})
+	if len(claudeMCP) != 1 {
+		t.Fatalf("claude mcps = %+v", claudeMCP)
+	}
+	if len(skills) != 1 || skills[0].Name != "review" {
+		t.Fatalf("skills = %+v", skills)
+	}
+}

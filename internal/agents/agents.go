@@ -860,7 +860,238 @@ func (s *Service) materializeConfig(ctx context.Context, a *model.Agent) error {
 	if err != nil {
 		return err
 	}
-	return agentconfig.Write(memPath, a.Type, a.UID, a.GID, mcps, skills)
+	typeMCP, err := s.Store.ListAgentTypeMCP(ctx, a.Type)
+	if err != nil {
+		return err
+	}
+	typeSkills, err := s.Store.ListAgentTypeSkills(ctx, a.Type)
+	if err != nil {
+		return err
+	}
+	return agentconfig.Write(memPath, a.Type, a.UID, a.GID,
+		mergeMCP(typeMCP, mcps), mergeSkills(typeSkills, skills))
+}
+
+func mergeMCP(defaults []*model.AgentTypeMCP, own []*model.AgentMCP) []*model.AgentMCP {
+	out := make([]*model.AgentMCP, 0, len(defaults)+len(own))
+	overridden := map[string]bool{}
+	for _, o := range own {
+		overridden[o.Name] = true
+	}
+	for _, d := range defaults {
+		if overridden[d.Name] {
+			continue
+		}
+		out = append(out, &model.AgentMCP{
+			Name: d.Name, Transport: d.Transport, Command: d.Command, Args: d.Args,
+			URL: d.URL, EnvKeys: d.EnvKeys, Contract: d.Contract, Enabled: d.Enabled,
+		})
+	}
+	out = append(out, own...)
+	return out
+}
+
+func mergeSkills(defaults []*model.AgentTypeSkill, own []*model.AgentSkill) []*model.AgentSkill {
+	out := make([]*model.AgentSkill, 0, len(defaults)+len(own))
+	overridden := map[string]bool{}
+	for _, o := range own {
+		overridden[o.Name] = true
+	}
+	for _, d := range defaults {
+		if overridden[d.Name] {
+			continue
+		}
+		out = append(out, &model.AgentSkill{
+			Name: d.Name, Description: d.Description, SourcePath: d.SourcePath,
+			Config: d.Config, Enabled: d.Enabled,
+		})
+	}
+	out = append(out, own...)
+	return out
+}
+
+// ---- per-agent-type defaults ----
+
+func (s *Service) ListTypeMCP(ctx context.Context, agentType string) ([]*model.AgentTypeMCP, error) {
+	return s.Store.ListAgentTypeMCP(ctx, agentType)
+}
+
+func (s *Service) AddTypeMCP(ctx context.Context, agentType string, m *model.AgentTypeMCP, actor string) (*model.AgentTypeMCP, error) {
+	if err := validateMCP(&model.AgentMCP{Name: m.Name, Transport: m.Transport, Command: m.Command, URL: m.URL}); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	m.ID, m.AgentType = model.NewID("tmcp"), agentType
+	m.CreatedAt, m.UpdatedAt = now, now
+	if err := s.Store.CreateAgentTypeMCP(ctx, m); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, "", "type MCP added: "+agentType+"/"+m.Name)
+	return m, nil
+}
+
+func (s *Service) UpdateTypeMCP(ctx context.Context, agentType, id string, m *model.AgentTypeMCP, actor string) (*model.AgentTypeMCP, error) {
+	if err := validateMCP(&model.AgentMCP{Name: m.Name, Transport: m.Transport, Command: m.Command, URL: m.URL}); err != nil {
+		return nil, err
+	}
+	list, err := s.Store.ListAgentTypeMCP(ctx, agentType)
+	if err != nil {
+		return nil, err
+	}
+	var old *model.AgentTypeMCP
+	for _, x := range list {
+		if x.ID == id || x.Name == id {
+			old = x
+			break
+		}
+	}
+	if old == nil {
+		return nil, persistence.ErrNotFound
+	}
+	m.ID, m.AgentType = old.ID, agentType
+	m.CreatedAt, m.UpdatedAt = old.CreatedAt, time.Now()
+	if err := s.Store.UpdateAgentTypeMCP(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func (s *Service) DeleteTypeMCP(ctx context.Context, agentType, id, actor string) error {
+	if err := s.Store.DeleteAgentTypeMCP(ctx, agentType, id); err != nil {
+		return err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, "", "type MCP removed: "+agentType+"/"+id)
+	return nil
+}
+
+func (s *Service) ListTypeSkills(ctx context.Context, agentType string) ([]*model.AgentTypeSkill, error) {
+	return s.Store.ListAgentTypeSkills(ctx, agentType)
+}
+
+func (s *Service) AddTypeSkill(ctx context.Context, agentType string, sk *model.AgentTypeSkill, actor string) (*model.AgentTypeSkill, error) {
+	if strings.TrimSpace(sk.Name) == "" {
+		return nil, errors.New("skill name is required")
+	}
+	now := time.Now()
+	sk.ID, sk.AgentType = model.NewID("tskl"), agentType
+	sk.CreatedAt, sk.UpdatedAt = now, now
+	if err := s.Store.CreateAgentTypeSkill(ctx, sk); err != nil {
+		return nil, err
+	}
+	return sk, nil
+}
+
+func (s *Service) UpdateTypeSkill(ctx context.Context, agentType, id string, sk *model.AgentTypeSkill, actor string) (*model.AgentTypeSkill, error) {
+	list, err := s.Store.ListAgentTypeSkills(ctx, agentType)
+	if err != nil {
+		return nil, err
+	}
+	var old *model.AgentTypeSkill
+	for _, x := range list {
+		if x.ID == id || x.Name == id {
+			old = x
+			break
+		}
+	}
+	if old == nil {
+		return nil, persistence.ErrNotFound
+	}
+	sk.ID, sk.AgentType = old.ID, agentType
+	sk.CreatedAt, sk.UpdatedAt = old.CreatedAt, time.Now()
+	if err := s.Store.UpdateAgentTypeSkill(ctx, sk); err != nil {
+		return nil, err
+	}
+	return sk, nil
+}
+
+func (s *Service) DeleteTypeSkill(ctx context.Context, agentType, id, actor string) error {
+	return s.Store.DeleteAgentTypeSkill(ctx, agentType, id)
+}
+
+// ImportTypeDefaults scans existing agents of the given type and common host
+// homes, then stores discovered skills/MCP servers as type defaults. Existing
+// entries are kept (operator edits win).
+func (s *Service) ImportTypeDefaults(ctx context.Context, agentType, actor string) (int, int, error) {
+	if !validAgentType(agentType) {
+		return 0, 0, fmt.Errorf("unsupported agent type %q", agentType)
+	}
+	dirs := map[string]bool{}
+	agents, err := s.Store.ListAgents(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, a := range agents {
+		if a.Type != agentType {
+			continue
+		}
+		memPath := s.Mounts.MemoryDir(a.ID)
+		if s.Memory != nil {
+			if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+				memPath = s.memDir(mem)
+			}
+		}
+		dirs[memPath] = true
+	}
+	homes, _ := filepath.Glob("/home/*")
+	for _, h := range homes {
+		dirs[h] = true
+	}
+	if _, err := os.Stat("/root"); err == nil {
+		dirs["/root"] = true
+	}
+	candidates := make([]string, 0, len(dirs))
+	for d := range dirs {
+		candidates = append(candidates, d)
+	}
+	mcps, skills := agentconfig.Scan(agentType, candidates)
+	existingMCP, _ := s.Store.ListAgentTypeMCP(ctx, agentType)
+	haveMCP := map[string]bool{}
+	for _, m := range existingMCP {
+		haveMCP[m.Name] = true
+	}
+	existingSkills, _ := s.Store.ListAgentTypeSkills(ctx, agentType)
+	haveSkill := map[string]bool{}
+	for _, sk := range existingSkills {
+		haveSkill[sk.Name] = true
+	}
+	addedMCP, addedSkills := 0, 0
+	now := time.Now()
+	for _, m := range mcps {
+		if haveMCP[m.Name] {
+			continue
+		}
+		m.ID, m.AgentType = model.NewID("tmcp"), agentType
+		m.CreatedAt, m.UpdatedAt = now, now
+		if err := s.Store.CreateAgentTypeMCP(ctx, m); err == nil {
+			addedMCP++
+		}
+	}
+	for _, sk := range skills {
+		if haveSkill[sk.Name] {
+			continue
+		}
+		sk.ID, sk.AgentType = model.NewID("tskl"), agentType
+		sk.CreatedAt, sk.UpdatedAt = now, now
+		if err := s.Store.CreateAgentTypeSkill(ctx, sk); err == nil {
+			addedSkills++
+		}
+	}
+	// Re-materialize existing agents of this type so defaults take effect.
+	for _, a := range agents {
+		if a.Type == agentType {
+			_ = s.materializeConfig(ctx, a)
+		}
+	}
+	_ = actor
+	return addedMCP, addedSkills, nil
+}
+
+func validAgentType(t string) bool {
+	switch t {
+	case "opencode", "claude", "codex", "gemini", "antigravity", "custom":
+		return true
+	}
+	return false
 }
 
 // Start creates or reuses the container and starts it. Idempotent.

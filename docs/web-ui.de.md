@@ -115,6 +115,11 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   `mcpServers`-Client-Konfiguration oder eine `initialize`-/`tools/list`-
   Antwort und validiert die Tool-Input-Schemas. Das Default-Graph-Schema
   enthält ein Beispiel unter `contracts.mcpServer`.
+- **Agent Types** (oberes Menü): Default-MCP-Server und -Skills pro Agententyp,
+  mit **Standardwerte einlesen**, das bestehende Agenten-Homes und übliche
+  Host-Homes für OpenCode, Claude, Codex, Gemini und Antigravity scannt.
+  Defaults gelten für alle Agenten des Typs; Per-Agent-Einträge mit gleichem
+  Namen überschreiben sie. Die Ansicht erlaubt Anlegen/Enable/Disable/Löschen.
 - **MCP-/Skill-Speicherung**: MCP-Server und Skills werden pro Agent in SQLite
   persistiert (`agent_mcp`, `agent_skills`, Migration 8) und über
   `/api/v1/agents/{id}/mcp` bzw. `/skills` verwaltet. Vor dem Agentenstart

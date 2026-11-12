@@ -728,3 +728,51 @@ func (c *Client) UpdateSkill(ctx context.Context, agent, id string, sk *AgentSki
 func (c *Client) DeleteSkill(ctx context.Context, agent, id string) error {
 	return c.do(ctx, "DELETE", "/api/v1/agents/"+agent+"/skills/"+url.PathEscape(id), nil, nil)
 }
+
+// ---- agent-type defaults ----
+
+type AgentTypeMCP = model.AgentTypeMCP
+type AgentTypeSkill = model.AgentTypeSkill
+
+func (c *Client) ListTypeMCP(ctx context.Context, agentType string) ([]*AgentTypeMCP, error) {
+	var out []*AgentTypeMCP
+	return out, c.do(ctx, "GET", "/api/v1/agent-types/"+agentType+"/mcp", nil, &out)
+}
+
+func (c *Client) AddTypeMCP(ctx context.Context, agentType string, m *AgentTypeMCP) (*AgentTypeMCP, error) {
+	var out AgentTypeMCP
+	return &out, c.do(ctx, "POST", "/api/v1/agent-types/"+agentType+"/mcp", m, &out)
+}
+
+func (c *Client) UpdateTypeMCP(ctx context.Context, agentType, id string, m *AgentTypeMCP) (*AgentTypeMCP, error) {
+	var out AgentTypeMCP
+	return &out, c.do(ctx, "PATCH", "/api/v1/agent-types/"+agentType+"/mcp/"+url.PathEscape(id), m, &out)
+}
+
+func (c *Client) DeleteTypeMCP(ctx context.Context, agentType, id string) error {
+	return c.do(ctx, "DELETE", "/api/v1/agent-types/"+agentType+"/mcp/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) ListTypeSkills(ctx context.Context, agentType string) ([]*AgentTypeSkill, error) {
+	var out []*AgentTypeSkill
+	return out, c.do(ctx, "GET", "/api/v1/agent-types/"+agentType+"/skills", nil, &out)
+}
+
+func (c *Client) AddTypeSkill(ctx context.Context, agentType string, sk *AgentTypeSkill) (*AgentTypeSkill, error) {
+	var out AgentTypeSkill
+	return &out, c.do(ctx, "POST", "/api/v1/agent-types/"+agentType+"/skills", sk, &out)
+}
+
+func (c *Client) UpdateTypeSkill(ctx context.Context, agentType, id string, sk *AgentTypeSkill) (*AgentTypeSkill, error) {
+	var out AgentTypeSkill
+	return &out, c.do(ctx, "PATCH", "/api/v1/agent-types/"+agentType+"/skills/"+url.PathEscape(id), sk, &out)
+}
+
+func (c *Client) DeleteTypeSkill(ctx context.Context, agentType, id string) error {
+	return c.do(ctx, "DELETE", "/api/v1/agent-types/"+agentType+"/skills/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) ImportTypeDefaults(ctx context.Context, agentType string) (map[string]int, error) {
+	var out map[string]int
+	return out, c.do(ctx, "POST", "/api/v1/agent-types/"+agentType+"/import", map[string]string{}, &out)
+}

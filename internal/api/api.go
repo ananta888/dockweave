@@ -128,6 +128,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/skills", s.addSkill)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}/skills/{skill}", s.updateSkill)
 	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/skills/{skill}", s.deleteSkill)
+	s.mux.HandleFunc("GET /api/v1/agent-types/{type}/mcp", s.listTypeMCP)
+	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/mcp", s.addTypeMCP)
+	s.mux.HandleFunc("PATCH /api/v1/agent-types/{type}/mcp/{mcp}", s.updateTypeMCP)
+	s.mux.HandleFunc("DELETE /api/v1/agent-types/{type}/mcp/{mcp}", s.deleteTypeMCP)
+	s.mux.HandleFunc("GET /api/v1/agent-types/{type}/skills", s.listTypeSkills)
+	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/skills", s.addTypeSkill)
+	s.mux.HandleFunc("PATCH /api/v1/agent-types/{type}/skills/{skill}", s.updateTypeSkill)
+	s.mux.HandleFunc("DELETE /api/v1/agent-types/{type}/skills/{skill}", s.deleteTypeSkill)
+	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/import", s.importTypeDefaults)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/egress", s.egressStatus)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
@@ -1017,4 +1026,103 @@ func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listTypeMCP(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListTypeMCP(r.Context(), r.PathValue("type"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) addTypeMCP(w http.ResponseWriter, r *http.Request) {
+	var m model.AgentTypeMCP
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.AddTypeMCP(r.Context(), r.PathValue("type"), &m, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (s *Server) updateTypeMCP(w http.ResponseWriter, r *http.Request) {
+	var m model.AgentTypeMCP
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.UpdateTypeMCP(r.Context(), r.PathValue("type"), r.PathValue("mcp"), &m, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteTypeMCP(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agents.DeleteTypeMCP(r.Context(), r.PathValue("type"), r.PathValue("mcp"), actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listTypeSkills(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListTypeSkills(r.Context(), r.PathValue("type"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) addTypeSkill(w http.ResponseWriter, r *http.Request) {
+	var sk model.AgentTypeSkill
+	if err := json.NewDecoder(r.Body).Decode(&sk); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.AddTypeSkill(r.Context(), r.PathValue("type"), &sk, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (s *Server) updateTypeSkill(w http.ResponseWriter, r *http.Request) {
+	var sk model.AgentTypeSkill
+	if err := json.NewDecoder(r.Body).Decode(&sk); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.UpdateTypeSkill(r.Context(), r.PathValue("type"), r.PathValue("skill"), &sk, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteTypeSkill(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agents.DeleteTypeSkill(r.Context(), r.PathValue("type"), r.PathValue("skill"), actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) importTypeDefaults(w http.ResponseWriter, r *http.Request) {
+	mcp, skills, err := s.Agents.ImportTypeDefaults(r.Context(), r.PathValue("type"), actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"mcp_added": mcp, "skills_added": skills})
 }
