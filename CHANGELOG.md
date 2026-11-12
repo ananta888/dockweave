@@ -32,7 +32,8 @@ All notable changes to DockWeave are documented here. The format follows
 - Angular web UI (`ui/web`) served by `dockweave web`: agent list, browser
   PTY/chat (xterm.js), per-agent configuration, project access, memory,
   broker grant metadata, an analysis dashboard and a Foblex Flow agent graph
-  (agents, workspaces, memory, credential grants, knowledge). The gateway is
+  (organization units/roles with 2D agent figures and direct settings, plus
+  resources: workspaces, memory, credential grants, knowledge). The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

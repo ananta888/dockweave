@@ -58,6 +58,11 @@ export class ApiService {
   setEnvFile(id: string, path: string): Observable<Agent> {
     return this.req(this.http.put<Agent>(`${this.base}/agents/${id}/env-file`, { path }));
   }
+  setAgentOrganization(id: string, displayName: string, orgUnit: string, role: string): Observable<Agent> {
+    return this.req(this.http.put<Agent>(`${this.base}/agents/${id}/organization`, {
+      display_name: displayName, org_unit: orgUnit, role,
+    }));
+  }
   setNetworkProfile(id: string, profile: string): Observable<Agent> {
     return this.req(this.http.put<Agent>(`${this.base}/agents/${id}/network-profile`, { profile }));
   }

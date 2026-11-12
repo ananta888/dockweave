@@ -105,7 +105,8 @@
             [brokerGrants]="store.brokerGrants()"
             [paths]="store.paths()"
             [selectedAgentId]="store.selectedId()"
-            (agentSelected)="selectById($event)" />
+            (agentSelected)="selectById($event)"
+            (changed)="store.refresh()" />
         }
         @case ('analysis') {
           <dw-analysis

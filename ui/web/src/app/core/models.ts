@@ -1,6 +1,9 @@
 export interface Agent {
   id: string;
   name: string;
+  display_name?: string;
+  org_unit?: string;
+  role?: string;
   type: string;
   image: string;
   command?: string[];

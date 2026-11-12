@@ -819,6 +819,25 @@ func (s *Service) SetNetworkProfile(ctx context.Context, idOrName, profile, acto
 	return a, nil
 }
 
+// SetOrganization updates optional organization metadata used by the web
+// graph (display name, unit, role). It never affects container behavior.
+func (s *Service) SetOrganization(ctx context.Context, idOrName, displayName, unit, role, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	displayName = strings.TrimSpace(displayName)
+	unit = strings.TrimSpace(unit)
+	role = strings.TrimSpace(role)
+	if err := s.Store.UpdateAgentOrganization(ctx, a.ID, displayName, unit, role); err != nil {
+		return nil, err
+	}
+	a.DisplayName, a.OrgUnit, a.Role = displayName, unit, role
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID,
+		fmt.Sprintf("organization set: unit=%q role=%q display=%q", unit, role, displayName))
+	return a, nil
+}
+
 // EgressStatus reports the configured profile and whether it is enforced.
 func (s *Service) EgressStatus(ctx context.Context, idOrName string) (*EgressStatus, error) {
 	a, err := s.Store.GetAgent(ctx, idOrName)

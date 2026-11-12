@@ -119,6 +119,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/notes-dir", s.setNotesDir)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/env-file", s.setEnvFile)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/network-profile", s.setNetworkProfile)
+	s.mux.HandleFunc("PUT /api/v1/agents/{id}/organization", s.setOrganization)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/egress", s.egressStatus)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
@@ -184,6 +185,9 @@ type createAgentReq struct {
 	MemoryMB       int64    `json:"memory_mb"`
 	NetworkMode    string   `json:"network_mode"`
 	NetworkProfile string   `json:"network_profile"`
+	DisplayName    string   `json:"display_name"`
+	OrgUnit        string   `json:"org_unit"`
+	Role           string   `json:"role"`
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +205,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		EnvFile: req.EnvFile, AgentRO: ro, UID: req.UID, GID: req.GID,
 		CPULimit: req.CPULimit, MemoryMB: req.MemoryMB, NetworkMode: req.NetworkMode,
 		NetworkProfile: model.NetworkProfile(req.NetworkProfile),
+		DisplayName:    req.DisplayName, OrgUnit: req.OrgUnit, Role: req.Role,
 	}
 	created, err := s.Agents.Create(r.Context(), a, actor(r))
 	if err != nil {
@@ -534,6 +539,24 @@ func (s *Server) setEnvFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a, err := s.Agents.SetEnvFile(r.Context(), r.PathValue("id"), req.Path, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
+}
+
+func (s *Server) setOrganization(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DisplayName string `json:"display_name"`
+		OrgUnit     string `json:"org_unit"`
+		Role        string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("invalid body: %w", err))
+		return
+	}
+	a, err := s.Agents.SetOrganization(r.Context(), r.PathValue("id"), req.DisplayName, req.OrgUnit, req.Role, actor(r))
 	if err != nil {
 		s.fail(w, err)
 		return

@@ -159,6 +159,9 @@ func agentCmd() *cobra.Command {
 		upGID     int
 		upCmd     []string
 		upExecCmd string
+		upUnit    string
+		upRole    string
+		upDisplay string
 	)
 	update := &cobra.Command{
 		Use:   "update NAME|ID",
@@ -177,9 +180,15 @@ func agentCmd() *cobra.Command {
 			if err != nil {
 				fail(err)
 			}
+			if upUnit != "" || upRole != "" || upDisplay != "" {
+				a, err = client().SetAgentOrganization(ctx(), args[0], upDisplay, upUnit, upRole)
+				if err != nil {
+					fail(err)
+				}
+			}
 			out(a, func(w *tabwriter.Writer) {
-				fmt.Fprintf(w, "NAME\t%s\nTYPE\t%s\nIMAGE\t%s\nCOMMAND\t%s\n",
-					a.Name, a.Type, a.Image, strings.Join(a.Command, " "))
+				fmt.Fprintf(w, "NAME\t%s\nDISPLAY\t%s\nUNIT\t%s\nROLE\t%s\nTYPE\t%s\nIMAGE\t%s\nCOMMAND\t%s\n",
+					a.Name, a.DisplayName, a.OrgUnit, a.Role, a.Type, a.Image, strings.Join(a.Command, " "))
 			})
 		},
 	}
@@ -190,6 +199,9 @@ func agentCmd() *cobra.Command {
 	uf.IntVar(&upGID, "gid", -1, "run as gid (-1 = keep)")
 	uf.StringArrayVar(&upCmd, "cmd", nil, "override command (repeatable, verbatim argv elements)")
 	uf.StringVar(&upExecCmd, "exec", "", "shell command to run via sh -c (quote-safe alternative to --cmd)")
+	uf.StringVar(&upUnit, "unit", "", "organization unit for the web graph")
+	uf.StringVar(&upRole, "role", "", "organization role (e.g. CEO, CTO, Developer)")
+	uf.StringVar(&upDisplay, "display-name", "", "display name for the web graph")
 
 	var prune, forceUnmount bool
 	remove := &cobra.Command{

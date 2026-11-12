@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 6
+const schemaVersion = 7
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -116,6 +116,10 @@ var migrations = []string{
 	`ALTER TABLE agents ADD COLUMN notes_dir TEXT NOT NULL DEFAULT '';`,
 	// 6: enforced egress profile (empty = legacy bridge behaviour).
 	`ALTER TABLE agents ADD COLUMN network_profile TEXT NOT NULL DEFAULT '';`,
+	// 7: optional organization metadata for the web graph.
+	`ALTER TABLE agents ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+	ALTER TABLE agents ADD COLUMN org_unit TEXT NOT NULL DEFAULT '';
+	ALTER TABLE agents ADD COLUMN role TEXT NOT NULL DEFAULT '';`,
 }
 
 // Store is the DockWeave registry.
@@ -198,9 +202,9 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 	cmd, _ := json.Marshal(a.Command)
 	env, _ := json.Marshal(a.Env)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO agents
-		(id,name,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		a.ID, a.Name, a.Type, a.Image, string(cmd), string(env), a.EnvFile, a.AgentRO,
+		(id,name,display_name,org_unit,role,type,image,command,env,env_file,agent_ro,uid,gid,cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		a.ID, a.Name, a.DisplayName, a.OrgUnit, a.Role, a.Type, a.Image, string(cmd), string(env), a.EnvFile, a.AgentRO,
 		a.UID, a.GID, a.CPULimit, a.MemoryMB, a.NetworkMode, string(a.NetworkProfile), string(a.State), a.ContainerID,
 		a.AgentDir, a.NotesDir, ts(a.CreatedAt), ts(a.UpdatedAt))
 	if isUniqueErr(err) {
@@ -214,7 +218,7 @@ func (s *Store) CreateAgent(ctx context.Context, a *model.Agent) error {
 
 // GetAgent fetches an agent by ID or name (name lookup if no ID match).
 func (s *Store) GetAgent(ctx context.Context, idOrName string) (*model.Agent, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
+	row := s.db.QueryRowContext(ctx, `SELECT id,name,display_name,org_unit,role,type,image,command,env,env_file,agent_ro,uid,gid,
 		cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at
 		FROM agents WHERE id=? OR name=?`, idOrName, idOrName)
 	return scanAgent(row)
@@ -226,7 +230,7 @@ func scanAgent(row scanner) (*model.Agent, error) {
 	var a model.Agent
 	var cmd, env, ca, ua, state, profile string
 	var ro bool
-	if err := row.Scan(&a.ID, &a.Name, &a.Type, &a.Image, &cmd, &env, &a.EnvFile, &ro,
+	if err := row.Scan(&a.ID, &a.Name, &a.DisplayName, &a.OrgUnit, &a.Role, &a.Type, &a.Image, &cmd, &env, &a.EnvFile, &ro,
 		&a.UID, &a.GID, &a.CPULimit, &a.MemoryMB, &a.NetworkMode, &profile, &state, &a.ContainerID, &a.AgentDir, &a.NotesDir, &ca, &ua); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -305,6 +309,21 @@ func (s *Store) UpdateAgentEnvFile(ctx context.Context, id, envFile string) erro
 	return nil
 }
 
+// UpdateAgentOrganization sets optional organization metadata (display name,
+// unit, role). It does not touch container behavior.
+func (s *Store) UpdateAgentOrganization(ctx context.Context, id, displayName, unit, role string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET display_name=?, org_unit=?, role=?, updated_at=? WHERE id=?`,
+		displayName, unit, role, ts(time.Now()), id)
+	if err != nil {
+		return fmt.Errorf("update agent organization: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UpdateAgentNetworkProfile sets the enforced egress profile.
 func (s *Store) UpdateAgentNetworkProfile(ctx context.Context, id, profile string) error {
 	res, err := s.db.ExecContext(ctx,
@@ -321,7 +340,7 @@ func (s *Store) UpdateAgentNetworkProfile(ctx context.Context, id, profile strin
 
 // ListAgents returns all agents ordered by name.
 func (s *Store) ListAgents(ctx context.Context) ([]*model.Agent, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,name,type,image,command,env,env_file,agent_ro,uid,gid,
+	rows, err := s.db.QueryContext(ctx, `SELECT id,name,display_name,org_unit,role,type,image,command,env,env_file,agent_ro,uid,gid,
 		cpu_limit,memory_mb,network_mode,network_profile,state,container_id,agent_dir,notes_dir,created_at,updated_at FROM agents ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list agents: %w", err)

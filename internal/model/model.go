@@ -64,8 +64,13 @@ func ValidNetworkProfile(p NetworkProfile) bool {
 // Agent is the stable identity of an AI coding agent. It is independent of
 // container IDs, images, workspaces and memory assignments.
 type Agent struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// DisplayName, OrgUnit and Role are optional organization metadata used by
+	// the web graph. They never affect container behavior.
+	DisplayName string   `json:"display_name,omitempty"`
+	OrgUnit     string   `json:"org_unit,omitempty"`
+	Role        string   `json:"role,omitempty"`
 	Type        string   `json:"type"` // codex|opencode|claude|gemini|custom
 	Image       string   `json:"image"`
 	Command     []string `json:"command,omitempty"`

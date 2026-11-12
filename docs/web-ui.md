@@ -38,7 +38,7 @@ DOCKWEAVE_WEB_TOKEN=… dockweave web                        # fixed token
 | Memory | Attach/detach memory identity, create/restore/delete snapshots |
 | Credentials | View broker credential grants (metadata only) |
 | Analysis | Activity/CPU/memory, file conflicts, events, broker traffic, provider status |
-| Graph | Foblex Flow graph of agents, workspaces, memory stores, credential grants and the shared knowledge store; click an agent node to open it |
+| Graph | Foblex Flow graph in two modes: **Organization** (units → agents as 2D figures with role labels, editable in a side inspector) and **Resources** (workspaces, memory, credentials, knowledge) |
 | Workspaces | Register/unregister host directories |
 
 Secret values are never shown. Creating/rotating secrets and credential

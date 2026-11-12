@@ -368,6 +368,17 @@ func (c *Client) SetEnvFile(ctx context.Context, idOrName, path string) (*model.
 	return &out, nil
 }
 
+// SetAgentOrganization updates optional organization metadata (display name,
+// unit, role) used by the web graph.
+func (c *Client) SetAgentOrganization(ctx context.Context, idOrName, displayName, unit, role string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/organization",
+		map[string]string{"display_name": displayName, "org_unit": unit, "role": role}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // SetNetworkProfile changes the enforced egress profile (applied at restart).
 func (c *Client) SetNetworkProfile(ctx context.Context, idOrName, profile string) (*model.Agent, error) {
 	var out model.Agent
