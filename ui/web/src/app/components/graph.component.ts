@@ -2,7 +2,7 @@ import { Component, Input, ViewChild, computed, inject, output, signal } from '@
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
-import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, NodePorts, Side } from '../core/graph-schema';
+import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { Agent, AgentActivity, AgentPaths, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
@@ -432,6 +432,16 @@ interface GraphEdge {
                     </label>
                   }
                 </div>
+                @if (connKind === 'mcp') {
+                  <label class="wide">MCP import JSON <span class="muted">(mcpServers config, initialize response or tools/list result)</span>
+                    <textarea rows="5" [(ngModel)]="mcpImportJson" name="mcpImportJson" placeholder='{"mcpServers": {...}} or {"result": {"tools": [...]}}'></textarea>
+                  </label>
+                  <div class="settings-row">
+                    <button (click)="importMcpServers()">Import mcpServers</button>
+                    <button (click)="importMcpResponse()">Import initialize / tools/list</button>
+                    <button (click)="validateContract()">Validate contract</button>
+                  </div>
+                }
                 <div class="settings-row">
                   <button class="primary" (click)="addConnector()">Connector hinzufügen</button>
                 </div>
@@ -442,7 +452,7 @@ interface GraphEdge {
                 @for (c of connectorsFor(connectorAgent()?.id || ''); track c.id) {
                   <div class="custom-edge">
                     <span class="mono">{{ c.name }}</span>
-                    <span class="muted">{{ c.kind }} · {{ c.direction }}{{ c.targetAgentId ? ' · → ' + c.targetAgentId : '' }}</span>
+                    <span class="muted">{{ c.kind }} · {{ c.direction }}{{ c.targetAgentId ? ' · → ' + c.targetAgentId : '' }}{{ c.contract ? ' · ' + contractSummary(c.contract) : '' }}</span>
                     <span class="spacer"></span>
                     <button class="small" (click)="toggleConnector(c.id)">{{ c.enabled ? 'disable' : 'enable' }}</button>
                     <button class="small danger" (click)="deleteConnector(c.id)">delete</button>
@@ -644,6 +654,7 @@ export class GraphComponent {
   connTargetAgent = '';
   connURL = '';
   connContract = '';
+  mcpImportJson = '';
   connDirection: ConnectorConfig['direction'] = 'out';
   private manualPositions = this.loadPositions();
 
@@ -936,13 +947,22 @@ export class GraphComponent {
       this.schemaError.set('target agent is required for an agent chain');
       return;
     }
-    if (this.connContract.trim()) {
-      try { JSON.parse(this.connContract); } catch { this.schemaError.set('contract is not valid JSON'); return; }
+    let contractRaw = this.connContract.trim();
+    if (contractRaw) {
+      const parsed = this.parseJsonSafe(contractRaw);
+      if (parsed === null) { this.schemaError.set('contract is not valid JSON'); return; }
+      if (this.connKind === 'mcp') {
+        const contract = this.contractFromMcpResponse(parsed) ?? this.contractFromMcpServer(name, parsed);
+        if (!contract) { this.schemaError.set('not a recognizable MCP contract'); return; }
+        const errors = this.validateMcpContract(contract);
+        if (errors.length) { this.schemaError.set(errors.join('; ')); return; }
+        contractRaw = JSON.stringify(contract, null, 2);
+      }
     }
     const cfg: ConnectorConfig = {
       id: `conn-${Date.now()}`, agentId: a.id, kind: this.connKind, name,
       targetAgentId: this.connTargetAgent || undefined, url: this.connURL.trim() || undefined,
-      contract: this.connContract.trim() || undefined, direction: this.connDirection, enabled: true,
+      contract: contractRaw || undefined, direction: this.connDirection, enabled: true,
     };
     const next = [...this.connectors(), cfg];
     this.connectors.set(next);
@@ -969,6 +989,128 @@ export class GraphComponent {
     return this.connectors().filter(c => c.agentId === agentId);
   }
 
+
+  importMcpServers(): void {
+    const parsed = this.parseJsonSafe(this.mcpImportJson);
+    if (!parsed) { this.schemaError.set('invalid JSON'); return; }
+    const servers = (parsed as Record<string, unknown>)['mcpServers'];
+    if (!servers || typeof servers !== 'object') {
+      this.schemaError.set('expected {"mcpServers": {"name": {...}}}');
+      return;
+    }
+    let added = 0;
+    const next = [...this.connectors()];
+    for (const [name, value] of Object.entries(servers as Record<string, unknown>)) {
+      const c = this.contractFromMcpServer(name, value);
+      if (!c) continue;
+      next.push({
+        id: `conn-${Date.now()}-${added}`, agentId: this.connectorAgent()?.id || '', kind: 'mcp',
+        name: c.name, url: c.url, contract: JSON.stringify(c), direction: 'out', enabled: true,
+      });
+      added++;
+    }
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    this.schemaError.set(added ? `${added} MCP connector(s) imported` : 'no valid mcpServers entries');
+  }
+
+  importMcpResponse(): void {
+    const parsed = this.parseJsonSafe(this.mcpImportJson);
+    if (!parsed) { this.schemaError.set('invalid JSON'); return; }
+    const contract = this.contractFromMcpResponse(parsed);
+    if (!contract) { this.schemaError.set('could not derive an MCP contract (expected initialize/tools/list result)'); return; }
+    this.connKind = 'mcp';
+    this.connName = contract.name;
+    this.connURL = contract.url || '';
+    this.connContract = JSON.stringify(contract, null, 2);
+    this.schemaError.set('');
+  }
+
+  validateContract(): void {
+    const parsed = this.parseJsonSafe(this.connContract);
+    if (!parsed) { this.schemaError.set('contract is not valid JSON'); return; }
+    if (this.connKind === 'mcp') {
+      const contract = this.contractFromMcpResponse(parsed) ?? this.contractFromMcpServer(this.connName || 'mcp', parsed);
+      if (!contract) { this.schemaError.set('not a recognizable MCP contract'); return; }
+      const errors = this.validateMcpContract(contract);
+      this.schemaError.set(errors.length ? errors.join('; ') : '');
+      if (!errors.length) this.connContract = JSON.stringify(contract, null, 2);
+    } else {
+      this.schemaError.set('');
+    }
+  }
+
+  private parseJsonSafe(raw: string): unknown | null {
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  private contractFromMcpServer(name: string, value: unknown): McpServerContract | null {
+    if (!value || typeof value !== 'object') return null;
+    const v = value as Record<string, unknown>;
+    const url = typeof v['url'] === 'string' ? v['url'] : undefined;
+    const command = typeof v['command'] === 'string' ? v['command'] : undefined;
+    const args = Array.isArray(v['args']) ? v['args'].filter((a): a is string => typeof a === 'string') : [];
+    const env = v['env'] && typeof v['env'] === 'object' ? Object.keys(v['env'] as Record<string, unknown>) : [];
+    const transport: McpServerContract['transport'] = url ? 'http' : 'stdio';
+    return { name: name || command || 'mcp', transport, command, args, url, envKeys: env, tools: [] };
+  }
+
+  private contractFromMcpResponse(value: unknown): McpServerContract | null {
+    if (!value || typeof value !== 'object') return null;
+    const root = value as Record<string, unknown>;
+    if (typeof root['name'] === 'string' && typeof root['transport'] === 'string') {
+      return root as unknown as McpServerContract;
+    }
+    const result = (root['result'] && typeof root['result'] === 'object' ? root['result'] : root) as Record<string, unknown>;
+    const serverInfo = (result['serverInfo'] && typeof result['serverInfo'] === 'object' ? result['serverInfo'] : {}) as Record<string, unknown>;
+    const toolsRaw = Array.isArray(result['tools']) ? result['tools'] : Array.isArray(root['tools']) ? root['tools'] : [];
+    const tools: McpToolContract[] = [];
+    for (const t of toolsRaw) {
+      if (!t || typeof t !== 'object') continue;
+      const tool = t as Record<string, unknown>;
+      const name = typeof tool['name'] === 'string' ? tool['name'] : '';
+      if (!name) continue;
+      const schema = tool['inputSchema'];
+      tools.push({
+        name,
+        description: typeof tool['description'] === 'string' ? tool['description'] : undefined,
+        inputSchema: schema && typeof schema === 'object' ? schema as Record<string, unknown> : { type: 'object' },
+      });
+    }
+    const capabilities = result['capabilities'] && typeof result['capabilities'] === 'object' ? result['capabilities'] as Record<string, unknown> : undefined;
+    const protocolVersion = typeof result['protocolVersion'] === 'string' ? result['protocolVersion'] : undefined;
+    const name = typeof serverInfo['name'] === 'string' ? serverInfo['name'] : (this.connName || 'mcp');
+    if (!tools.length && !capabilities && !protocolVersion && !serverInfo['name']) return null;
+    return {
+      name, transport: this.connURL ? 'http' : 'stdio', url: this.connURL || undefined,
+      protocolVersion, capabilities, tools, args: [], envKeys: [],
+    };
+  }
+
+  private validateMcpContract(contract: McpServerContract): string[] {
+    const errors: string[] = [];
+    if (!contract.name) errors.push('name is required');
+    if (!['stdio', 'http', 'sse'].includes(contract.transport)) errors.push('transport must be stdio|http|sse');
+    if (contract.transport === 'stdio' && !contract.command) errors.push('stdio requires command');
+    if ((contract.transport === 'http' || contract.transport === 'sse') && !contract.url) errors.push(`${contract.transport} requires url`);
+    for (const tool of contract.tools ?? []) {
+      if (!tool.name) errors.push('tool.name is required');
+      if (!tool.inputSchema || typeof tool.inputSchema !== 'object') {
+        errors.push(`tool ${tool.name || '?'}: inputSchema must be an object`);
+        continue;
+      }
+      const t = tool.inputSchema['type'];
+      if (t !== undefined && typeof t !== 'string') errors.push(`tool ${tool.name}: inputSchema.type must be a string`);
+      const props = tool.inputSchema['properties'];
+      if (props !== undefined && (!props || typeof props !== 'object')) errors.push(`tool ${tool.name}: inputSchema.properties must be an object`);
+      const required = tool.inputSchema['required'];
+      if (required !== undefined && (!Array.isArray(required) || required.some(r => typeof r !== 'string'))) {
+        errors.push(`tool ${tool.name}: inputSchema.required must be a string array`);
+      }
+    }
+    return errors;
+  }
+
   private loadConnectors(): ConnectorConfig[] {
     try { return JSON.parse(localStorage.getItem('dockweave.agentConnectors') || '[]'); } catch { return []; }
   }
@@ -992,11 +1134,21 @@ export class GraphComponent {
         kind: c.kind === 'custom' ? 'custom' : c.kind,
         title: c.name,
         subtitle: c.kind,
-        detail: c.url || (c.contract ? 'JSON contract' : ''),
+        detail: c.url || (c.contract ? this.contractSummary(c.contract) : ''),
         position: { x: agent.position.x + 320, y: agent.position.y + idx * 130 },
       });
     }
     return out;
+  }
+
+  contractSummary(raw: string): string {
+    try {
+      const c = JSON.parse(raw) as McpServerContract;
+      const n = c.tools?.length ?? 0;
+      return `JSON contract · ${n} tool${n === 1 ? '' : 's'}`;
+    } catch {
+      return 'JSON contract';
+    }
   }
 
   private connectorEdges(): GraphEdge[] {

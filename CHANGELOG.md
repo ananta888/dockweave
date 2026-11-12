@@ -43,7 +43,9 @@ All notable changes to DockWeave are documented here. The format follows
   (MCP server with JSON contract, deterministic gate, HTTP API, agent chain,
   custom) are configurable per agent via right-click and rendered in the
   graph. Running nodes pulse green, inactive nodes are gray and error states
-  blink red. The gateway is
+  blink red. Add a normalized MCP server contract JSON schema, import from
+  `mcpServers` client config or `initialize`/`tools/list` responses, and tool
+  input-schema validation. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

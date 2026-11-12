@@ -26,12 +26,35 @@ export interface ConnectionTemplate {
   targetSide?: Side;
 }
 
+export interface McpToolContract {
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface McpServerContract {
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  envKeys?: string[];
+  protocolVersion?: string;
+  capabilities?: Record<string, unknown>;
+  tools?: McpToolContract[];
+  resources?: string[];
+  prompts?: string[];
+}
+
 export interface GraphSchema {
   $schema: string;
   version: number;
   nodePorts: Record<string, NodePorts>;
   connectionTypes: ConnectionType[];
   templates: ConnectionTemplate[];
+  contracts?: {
+    mcpServer?: McpServerContract;
+  };
 }
 
 const ports = (left: PortSpec, right: PortSpec, top: PortSpec, bottom: PortSpec): NodePorts => ({ left, right, top, bottom });
@@ -77,4 +100,28 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     { id: 'agent-http', name: 'Agent → HTTP API', sourceKind: 'agent', targetKind: 'http', type: 'http', label: 'http', sourceSide: 'right', targetSide: 'left' },
     { id: 'agent-chain', name: 'Agent → Agent (chain)', sourceKind: 'agent', targetKind: 'agent', type: 'chain', label: 'chain', sourceSide: 'right', targetSide: 'left' },
   ],
+  contracts: {
+    mcpServer: {
+      name: 'filesystem-mcp',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
+      envKeys: [],
+      protocolVersion: '2025-06-18',
+      capabilities: { tools: {} },
+      tools: [
+        {
+          name: 'read_file',
+          description: 'Read a file from the workspace',
+          inputSchema: {
+            type: 'object',
+            properties: { path: { type: 'string' } },
+            required: ['path'],
+          },
+        },
+      ],
+      resources: [],
+      prompts: [],
+    },
+  },
 };

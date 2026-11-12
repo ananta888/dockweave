@@ -108,6 +108,13 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   HTTP-API, Agentenkette und Custom. Pro Agent gespeichert und als verbundene
   Nodes/Kanten dargestellt; der Dialog validiert JSON-Contracts und erlaubt
   Enable/Disable pro Connector.
+- **MCP-Contract**: `docs/mcp-server-contract.schema.json` beschreibt den
+  normalisierten DockWeave-Server-Contract (`name`, `transport`,
+  `command`/`url`, `envKeys`, `capabilities`, `tools[].inputSchema`,
+  Resources, Prompts). Der Connector-Dialog importiert eine
+  `mcpServers`-Client-Konfiguration oder eine `initialize`-/`tools/list`-
+  Antwort und validiert die Tool-Input-Schemas. Das Default-Graph-Schema
+  enthält ein Beispiel unter `contracts.mcpServer`.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer
