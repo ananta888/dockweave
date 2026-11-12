@@ -45,7 +45,9 @@ All notable changes to DockWeave are documented here. The format follows
   graph. Running nodes pulse green, inactive nodes are gray and error states
   blink red. Add a normalized MCP server contract JSON schema, import from
   `mcpServers` client config or `initialize`/`tools/list` responses, and tool
-  input-schema validation. The gateway is
+  input-schema validation. Add SQLite-backed per-agent MCP server and skill
+  configuration (`agent_mcp`, `agent_skills`, migration 8), API/UI management,
+  and materialization into OpenCode/Claude/generic config files before start. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

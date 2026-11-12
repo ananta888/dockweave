@@ -182,3 +182,30 @@ export interface DirListing {
   roots: DirEntry[];
   entries: DirEntry[];
 }
+
+export interface AgentMCP {
+  id: string;
+  agent_id: string;
+  name: string;
+  transport: 'stdio' | 'http' | 'sse';
+  command?: string;
+  args?: string[];
+  url?: string;
+  env_keys?: string[];
+  contract?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentSkill {
+  id: string;
+  agent_id: string;
+  name: string;
+  description?: string;
+  source_path?: string;
+  config?: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}

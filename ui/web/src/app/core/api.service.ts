@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
-  BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
+  AgentMCP, AgentSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
   MountState, ProviderStatus, Workspace,
 } from './models';
 
@@ -103,6 +103,14 @@ export class ApiService {
   }
 
   memories(): Observable<MemoryInfo[]> { return this.req(this.http.get<MemoryInfo[]>(`${this.base}/memories`)); }
+  listMCP(agent: string): Observable<AgentMCP[]> { return this.req(this.http.get<AgentMCP[]>(`${this.base}/agents/${agent}/mcp`)); }
+  addMCP(agent: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.post<AgentMCP>(`${this.base}/agents/${agent}/mcp`, m)); }
+  updateMCP(agent: string, id: string, m: Partial<AgentMCP>): Observable<AgentMCP> { return this.req(this.http.patch<AgentMCP>(`${this.base}/agents/${agent}/mcp/${id}`, m)); }
+  deleteMCP(agent: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agents/${agent}/mcp/${id}`)); }
+  listSkills(agent: string): Observable<AgentSkill[]> { return this.req(this.http.get<AgentSkill[]>(`${this.base}/agents/${agent}/skills`)); }
+  addSkill(agent: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.post<AgentSkill>(`${this.base}/agents/${agent}/skills`, sk)); }
+  updateSkill(agent: string, id: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.patch<AgentSkill>(`${this.base}/agents/${agent}/skills/${id}`, sk)); }
+  deleteSkill(agent: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agents/${agent}/skills/${id}`)); }
   listDirs(path = ''): Observable<DirListing> {
     return this.req(this.http.get<DirListing>(`${this.base}/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`));
   }

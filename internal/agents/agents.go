@@ -14,6 +14,7 @@ import (
 	"time"
 
 	agentadapters "github.com/ananta888/dockweave/integrations/agents"
+	"github.com/ananta888/dockweave/internal/agentconfig"
 	"github.com/ananta888/dockweave/internal/dockerclient"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
@@ -671,6 +672,197 @@ func (s *Service) List(ctx context.Context) ([]*model.Agent, error) {
 	return s.Store.ListAgents(ctx)
 }
 
+// ---- per-agent MCP servers and skills ----
+
+// ListMCP returns the MCP servers configured for an agent.
+func (s *Service) ListMCP(ctx context.Context, idOrName string) ([]*model.AgentMCP, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.ListAgentMCP(ctx, a.ID)
+}
+
+// AddMCP creates an MCP server configuration and materializes it.
+func (s *Service) AddMCP(ctx context.Context, idOrName string, m *model.AgentMCP, actor string) (*model.AgentMCP, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMCP(m); err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	m.ID, m.AgentID = model.NewID("mcp"), a.ID
+	m.CreatedAt, m.UpdatedAt = now, now
+	if err := s.Store.CreateAgentMCP(ctx, m); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "MCP server added: "+m.Name)
+	_ = s.materializeConfig(ctx, a)
+	return m, nil
+}
+
+// UpdateMCP replaces an MCP server configuration.
+func (s *Service) UpdateMCP(ctx context.Context, idOrName, mcpID string, m *model.AgentMCP, actor string) (*model.AgentMCP, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMCP(m); err != nil {
+		return nil, err
+	}
+	list, err := s.Store.ListAgentMCP(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	var old *model.AgentMCP
+	for _, existing := range list {
+		if existing.ID == mcpID || existing.Name == mcpID {
+			old = existing
+			break
+		}
+	}
+	if old == nil {
+		return nil, persistence.ErrNotFound
+	}
+	m.ID, m.AgentID = old.ID, a.ID
+	m.CreatedAt, m.UpdatedAt = old.CreatedAt, time.Now()
+	if err := s.Store.UpdateAgentMCP(ctx, m); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "MCP server updated: "+m.Name)
+	_ = s.materializeConfig(ctx, a)
+	return m, nil
+}
+
+// DeleteMCP removes an MCP server configuration.
+func (s *Service) DeleteMCP(ctx context.Context, idOrName, mcpID, actor string) error {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.DeleteAgentMCP(ctx, a.ID, mcpID); err != nil {
+		return err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "MCP server removed: "+mcpID)
+	_ = s.materializeConfig(ctx, a)
+	return nil
+}
+
+// ListSkills returns the skills configured for an agent.
+func (s *Service) ListSkills(ctx context.Context, idOrName string) ([]*model.AgentSkill, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	return s.Store.ListAgentSkills(ctx, a.ID)
+}
+
+// AddSkill creates a skill entry and materializes it.
+func (s *Service) AddSkill(ctx context.Context, idOrName string, sk *model.AgentSkill, actor string) (*model.AgentSkill, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sk.Name) == "" {
+		return nil, errors.New("skill name is required")
+	}
+	now := time.Now()
+	sk.ID, sk.AgentID = model.NewID("skl"), a.ID
+	sk.CreatedAt, sk.UpdatedAt = now, now
+	if err := s.Store.CreateAgentSkill(ctx, sk); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "skill added: "+sk.Name)
+	_ = s.materializeConfig(ctx, a)
+	return sk, nil
+}
+
+// UpdateSkill replaces a skill entry.
+func (s *Service) UpdateSkill(ctx context.Context, idOrName, skillID string, sk *model.AgentSkill, actor string) (*model.AgentSkill, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(sk.Name) == "" {
+		return nil, errors.New("skill name is required")
+	}
+	list, err := s.Store.ListAgentSkills(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	var old *model.AgentSkill
+	for _, existing := range list {
+		if existing.ID == skillID || existing.Name == skillID {
+			old = existing
+			break
+		}
+	}
+	if old == nil {
+		return nil, persistence.ErrNotFound
+	}
+	sk.ID, sk.AgentID = old.ID, a.ID
+	sk.CreatedAt, sk.UpdatedAt = old.CreatedAt, time.Now()
+	if err := s.Store.UpdateAgentSkill(ctx, sk); err != nil {
+		return nil, err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "skill updated: "+sk.Name)
+	_ = s.materializeConfig(ctx, a)
+	return sk, nil
+}
+
+// DeleteSkill removes a skill entry.
+func (s *Service) DeleteSkill(ctx context.Context, idOrName, skillID, actor string) error {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	if err := s.Store.DeleteAgentSkill(ctx, a.ID, skillID); err != nil {
+		return err
+	}
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "skill removed: "+skillID)
+	_ = s.materializeConfig(ctx, a)
+	return nil
+}
+
+func validateMCP(m *model.AgentMCP) error {
+	if strings.TrimSpace(m.Name) == "" {
+		return errors.New("MCP server name is required")
+	}
+	switch m.Transport {
+	case model.MCPStdio:
+		if m.Command == "" {
+			return errors.New("stdio MCP server requires command")
+		}
+	case model.MCPHTTP, model.MCPSse:
+		if m.URL == "" {
+			return errors.New("http/sse MCP server requires url")
+		}
+	default:
+		return fmt.Errorf("unsupported MCP transport %q", m.Transport)
+	}
+	return nil
+}
+
+func (s *Service) materializeConfig(ctx context.Context, a *model.Agent) error {
+	memPath := s.Mounts.MemoryDir(a.ID)
+	if s.Memory != nil {
+		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
+			memPath = s.memDir(mem)
+		}
+	}
+	mcps, err := s.Store.ListAgentMCP(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	skills, err := s.Store.ListAgentSkills(ctx, a.ID)
+	if err != nil {
+		return err
+	}
+	return agentconfig.Write(memPath, a.Type, a.UID, a.GID, mcps, skills)
+}
+
 // Start creates or reuses the container and starts it. Idempotent.
 func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Agent, error) {
 	a, err := s.Store.GetAgent(ctx, idOrName)
@@ -726,6 +918,9 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 		if mem, err := s.Store.GetMemoryByAgent(ctx, a.ID); err == nil {
 			memPath = s.memDir(mem)
 		}
+	}
+	if err := s.materializeConfig(ctx, a); err != nil {
+		return nil, fmt.Errorf("materialize agent config: %w", err)
 	}
 	// Boot inside the first active project so the agent finds its
 	// AGENTS.md/skills and project files without manual navigation.

@@ -682,3 +682,49 @@ func (c *Client) ListDirs(ctx context.Context, path string) (*DirListing, error)
 	}
 	return &out, c.do(ctx, "GET", p, nil, &out)
 }
+
+// ---- per-agent MCP servers and skills ----
+
+// AgentMCP is a per-agent MCP server configuration.
+type AgentMCP = model.AgentMCP
+
+// AgentSkill is a per-agent skill entry.
+type AgentSkill = model.AgentSkill
+
+func (c *Client) ListMCP(ctx context.Context, agent string) ([]*AgentMCP, error) {
+	var out []*AgentMCP
+	return out, c.do(ctx, "GET", "/api/v1/agents/"+agent+"/mcp", nil, &out)
+}
+
+func (c *Client) AddMCP(ctx context.Context, agent string, m *AgentMCP) (*AgentMCP, error) {
+	var out AgentMCP
+	return &out, c.do(ctx, "POST", "/api/v1/agents/"+agent+"/mcp", m, &out)
+}
+
+func (c *Client) UpdateMCP(ctx context.Context, agent, id string, m *AgentMCP) (*AgentMCP, error) {
+	var out AgentMCP
+	return &out, c.do(ctx, "PATCH", "/api/v1/agents/"+agent+"/mcp/"+url.PathEscape(id), m, &out)
+}
+
+func (c *Client) DeleteMCP(ctx context.Context, agent, id string) error {
+	return c.do(ctx, "DELETE", "/api/v1/agents/"+agent+"/mcp/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) ListSkills(ctx context.Context, agent string) ([]*AgentSkill, error) {
+	var out []*AgentSkill
+	return out, c.do(ctx, "GET", "/api/v1/agents/"+agent+"/skills", nil, &out)
+}
+
+func (c *Client) AddSkill(ctx context.Context, agent string, sk *AgentSkill) (*AgentSkill, error) {
+	var out AgentSkill
+	return &out, c.do(ctx, "POST", "/api/v1/agents/"+agent+"/skills", sk, &out)
+}
+
+func (c *Client) UpdateSkill(ctx context.Context, agent, id string, sk *AgentSkill) (*AgentSkill, error) {
+	var out AgentSkill
+	return &out, c.do(ctx, "PATCH", "/api/v1/agents/"+agent+"/skills/"+url.PathEscape(id), sk, &out)
+}
+
+func (c *Client) DeleteSkill(ctx context.Context, agent, id string) error {
+	return c.do(ctx, "DELETE", "/api/v1/agents/"+agent+"/skills/"+url.PathEscape(id), nil, nil)
+}

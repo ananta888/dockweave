@@ -115,6 +115,13 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   `mcpServers`-Client-Konfiguration oder eine `initialize`-/`tools/list`-
   Antwort und validiert die Tool-Input-Schemas. Das Default-Graph-Schema
   enthält ein Beispiel unter `contracts.mcpServer`.
+- **MCP-/Skill-Speicherung**: MCP-Server und Skills werden pro Agent in SQLite
+  persistiert (`agent_mcp`, `agent_skills`, Migration 8) und über
+  `/api/v1/agents/{id}/mcp` bzw. `/skills` verwaltet. Vor dem Agentenstart
+  materialisiert dockweaved sie im Memory-Home: OpenCode
+  `~/.config/opencode/opencode.json`, Claude `~/.claude.json`, zusätzlich
+  generisch `~/.dockweave/config.json` und Skill-`SKILL.md`-Dateien. Es werden
+  nur Environment-Variablennamen gespeichert; Werte bleiben im Credential-Vault.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer

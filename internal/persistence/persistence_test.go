@@ -226,3 +226,55 @@ func TestMemorySingleWriter(t *testing.T) {
 		t.Fatalf("GetMemoryByAgent: %+v %v", byAgent, err)
 	}
 }
+
+func TestAgentMCPAndSkillsCRUD(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	a := testAgent("mcp-agent")
+	if err := s.CreateAgent(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	m := &model.AgentMCP{ID: model.NewID("mcp"), AgentID: a.ID, Name: "fs", Transport: model.MCPStdio,
+		Command: "npx", Args: []string{"-y", "pkg"}, Enabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := s.CreateAgentMCP(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.ListAgentMCP(ctx, a.ID)
+	if err != nil || len(list) != 1 || list[0].Name != "fs" || len(list[0].Args) != 2 {
+		t.Fatalf("list MCP: %+v %v", list, err)
+	}
+	m.Enabled = false
+	m.Name = "fs2"
+	if err := s.UpdateAgentMCP(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.ListAgentMCP(ctx, a.ID)
+	if list[0].Enabled || list[0].Name != "fs2" {
+		t.Fatalf("MCP not updated: %+v", list[0])
+	}
+	if err := s.DeleteAgentMCP(ctx, a.ID, "fs2"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.ListAgentMCP(ctx, a.ID); len(list) != 0 {
+		t.Fatalf("MCP not deleted: %d", len(list))
+	}
+
+	sk := &model.AgentSkill{ID: model.NewID("skl"), AgentID: a.ID, Name: "review", Enabled: true,
+		CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := s.CreateAgentSkill(ctx, sk); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := s.ListAgentSkills(ctx, a.ID); err != nil || len(list) != 1 {
+		t.Fatalf("list skills: %+v %v", list, err)
+	}
+	sk.Description = "review code"
+	if err := s.UpdateAgentSkill(ctx, sk); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteAgentSkill(ctx, a.ID, sk.ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.ListAgentSkills(ctx, a.ID); len(list) != 0 {
+		t.Fatalf("skill not deleted")
+	}
+}

@@ -120,6 +120,14 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/env-file", s.setEnvFile)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/network-profile", s.setNetworkProfile)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/organization", s.setOrganization)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/mcp", s.listMCP)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/mcp", s.addMCP)
+	s.mux.HandleFunc("PATCH /api/v1/agents/{id}/mcp/{mcp}", s.updateMCP)
+	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/mcp/{mcp}", s.deleteMCP)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/skills", s.listSkills)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/skills", s.addSkill)
+	s.mux.HandleFunc("PATCH /api/v1/agents/{id}/skills/{skill}", s.updateSkill)
+	s.mux.HandleFunc("DELETE /api/v1/agents/{id}/skills/{skill}", s.deleteSkill)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/egress", s.egressStatus)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}", s.updateAgent)
 	s.mux.HandleFunc("POST /api/v1/memories", s.registerMemory)
@@ -919,4 +927,94 @@ func (s *Server) underBrowsableRoot(p string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) listMCP(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListMCP(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) addMCP(w http.ResponseWriter, r *http.Request) {
+	var m model.AgentMCP
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.AddMCP(r.Context(), r.PathValue("id"), &m, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (s *Server) updateMCP(w http.ResponseWriter, r *http.Request) {
+	var m model.AgentMCP
+	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.UpdateMCP(r.Context(), r.PathValue("id"), r.PathValue("mcp"), &m, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteMCP(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agents.DeleteMCP(r.Context(), r.PathValue("id"), r.PathValue("mcp"), actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listSkills(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Agents.ListSkills(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) addSkill(w http.ResponseWriter, r *http.Request) {
+	var sk model.AgentSkill
+	if err := json.NewDecoder(r.Body).Decode(&sk); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.AddSkill(r.Context(), r.PathValue("id"), &sk, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+func (s *Server) updateSkill(w http.ResponseWriter, r *http.Request) {
+	var sk model.AgentSkill
+	if err := json.NewDecoder(r.Body).Decode(&sk); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	out, err := s.Agents.UpdateSkill(r.Context(), r.PathValue("id"), r.PathValue("skill"), &sk, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) deleteSkill(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agents.DeleteSkill(r.Context(), r.PathValue("id"), r.PathValue("skill"), actor(r)); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

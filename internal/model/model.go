@@ -308,3 +308,43 @@ type FileConflict struct {
 	Writers  []string  `json:"writers"`
 	Detected time.Time `json:"detected_at"`
 }
+
+// MCPTransport is the transport of an MCP server.
+type MCPTransport string
+
+const (
+	MCPStdio MCPTransport = "stdio"
+	MCPHTTP  MCPTransport = "http"
+	MCPSse   MCPTransport = "sse"
+)
+
+// AgentMCP is a per-agent MCP server configuration. Secrets are never stored
+// in EnvKeys (only names); actual values belong in the credential vault.
+type AgentMCP struct {
+	ID        string       `json:"id"`
+	AgentID   string       `json:"agent_id"`
+	Name      string       `json:"name"`
+	Transport MCPTransport `json:"transport"`
+	Command   string       `json:"command,omitempty"`
+	Args      []string     `json:"args,omitempty"`
+	URL       string       `json:"url,omitempty"`
+	EnvKeys   []string     `json:"env_keys,omitempty"`
+	Contract  string       `json:"contract,omitempty"`
+	Enabled   bool         `json:"enabled"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+}
+
+// AgentSkill is a per-agent skill entry. SourcePath points at an operator-
+// provided skill folder; Config carries optional non-secret metadata.
+type AgentSkill struct {
+	ID          string    `json:"id"`
+	AgentID     string    `json:"agent_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SourcePath  string    `json:"source_path,omitempty"`
+	Config      string    `json:"config,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

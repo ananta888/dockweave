@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
-import { Agent, AgentActivity, AgentPaths, BrokerGrant, Grant, Workspace } from '../core/models';
+import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
 type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'free' | 'mixed';
@@ -62,7 +62,7 @@ interface CustomEdge {
   sourceSide: Side;
   targetSide: Side;
 }
-type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge' | 'ghost' | 'mcp' | 'gate' | 'http' | 'custom';
+type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge' | 'ghost' | 'mcp' | 'skill' | 'gate' | 'http' | 'custom';
 
 interface GraphNode {
   id: string;
@@ -392,20 +392,84 @@ interface GraphEdge {
             </header>
             <div class="settings-body">
               <section>
-                <h4>Neuer Connector</h4>
+                <h4>MCP Server (Datenbank)</h4>
+                @for (m of mcpServers(); track m.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ m.name }}</span>
+                    <span class="muted">{{ m.transport }}{{ m.url ? ' · ' + m.url : '' }}{{ m.contract ? ' · ' + contractSummary(m.contract) : '' }}</span>
+                    <span class="spacer"></span>
+                    <button class="small" (click)="toggleMcp(m)">{{ m.enabled ? 'disable' : 'enable' }}</button>
+                    <button class="small danger" (click)="deleteMcp(m)">delete</button>
+                  </div>
+                }
+                @if (!mcpServers().length) { <p class="muted">Noch keine MCP-Server für diesen Agenten.</p> }
+                <div class="settings-grid" style="margin-top:.5rem">
+                  <label>Name <input [(ngModel)]="mcpName" name="mcpName" placeholder="filesystem" /></label>
+                  <label>Transport
+                    <select [(ngModel)]="mcpTransport" name="mcpTransport">
+                      <option value="stdio">stdio</option>
+                      <option value="http">http</option>
+                      <option value="sse">sse</option>
+                    </select>
+                  </label>
+                  @if (mcpTransport === 'stdio') {
+                    <label>Command <input [(ngModel)]="mcpCommand" name="mcpCommand" placeholder="npx" /></label>
+                    <label class="wide">Args (one per line) <textarea rows="3" [(ngModel)]="mcpArgs" name="mcpArgs"></textarea></label>
+                  } @else {
+                    <label class="wide">URL <input [(ngModel)]="mcpURL" name="mcpURL" placeholder="http://127.0.0.1:3001/mcp" /></label>
+                  }
+                  <label class="wide">JSON contract
+                    <textarea rows="5" [(ngModel)]="mcpContract" name="mcpContract" placeholder='{"name":"filesystem","transport":"stdio","tools":[...]}'></textarea>
+                  </label>
+                </div>
+                <div class="settings-row">
+                  <button class="primary" (click)="addMcpServer()" [disabled]="configBusy()">MCP Server hinzufügen</button>
+                  <button (click)="validateContract()">Validate contract</button>
+                </div>
+                <label class="wide">MCP import JSON <span class="muted">(mcpServers, initialize or tools/list)</span>
+                  <textarea rows="4" [(ngModel)]="mcpImportJson" name="mcpImportJson" placeholder='{"mcpServers": {...}} or {"result": {"tools": [...]}}'></textarea>
+                </label>
+                <div class="settings-row">
+                  <button (click)="importMcpServers()">Import mcpServers</button>
+                  <button (click)="importMcpResponse()">Import initialize / tools/list</button>
+                </div>
+              </section>
+
+              <section>
+                <h4>Skills (Datenbank)</h4>
+                @for (sk of skills(); track sk.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ sk.name }}</span>
+                    <span class="muted">{{ sk.description || sk.source_path }}</span>
+                    <span class="spacer"></span>
+                    <button class="small" (click)="toggleSkill(sk)">{{ sk.enabled ? 'disable' : 'enable' }}</button>
+                    <button class="small danger" (click)="deleteSkill(sk)">delete</button>
+                  </div>
+                }
+                @if (!skills().length) { <p class="muted">Noch keine Skills für diesen Agenten.</p> }
+                <div class="settings-grid" style="margin-top:.5rem">
+                  <label>Name <input [(ngModel)]="skillName" name="skillName" placeholder="code-review" /></label>
+                  <label>Quelle <input [(ngModel)]="skillSource" name="skillSource" placeholder="/pfad/zum/skill" /></label>
+                  <label class="wide">Beschreibung <input [(ngModel)]="skillDescription" name="skillDescription" /></label>
+                  <label class="wide">Config JSON (optional) <textarea rows="3" [(ngModel)]="skillConfig" name="skillConfig"></textarea></label>
+                </div>
+                <div class="settings-row">
+                  <button class="primary" (click)="addSkill()" [disabled]="configBusy()">Skill hinzufügen</button>
+                </div>
+              </section>
+
+              <section>
+                <h4>Weitere Connectoren (lokal)</h4>
                 <div class="settings-grid">
                   <label>Art
                     <select [(ngModel)]="connKind" name="connKind">
-                      <option value="mcp">MCP Server (JSON contract)</option>
                       <option value="gate">Deterministisches Gate</option>
                       <option value="http">HTTP API</option>
                       <option value="agent-chain">Agenten-Kette</option>
                       <option value="custom">Custom</option>
                     </select>
                   </label>
-                  <label>Name
-                    <input [(ngModel)]="connName" name="connName" placeholder="z. B. filesystem-mcp" />
-                  </label>
+                  <label>Name <input [(ngModel)]="connName" name="connName" placeholder="z. B. review-gate" /></label>
                   <label>Richtung
                     <select [(ngModel)]="connDirection" name="connDirection">
                       <option value="out">Agent → Connector</option>
@@ -421,34 +485,20 @@ interface GraphEdge {
                       </select>
                     </label>
                   }
-                  @if (connKind === 'http' || connKind === 'mcp') {
-                    <label class="wide">URL / Endpoint
-                      <input [(ngModel)]="connURL" name="connURL" placeholder="https://… or stdio://…" />
-                    </label>
+                  @if (connKind === 'http') {
+                    <label class="wide">URL / Endpoint <input [(ngModel)]="connURL" name="connURL" placeholder="https://…" /></label>
                   }
-                  @if (connKind === 'mcp' || connKind === 'gate') {
-                    <label class="wide">JSON contract
-                      <textarea rows="5" [(ngModel)]="connContract" name="connContract" placeholder='{"type":"object","properties":{…}}'></textarea>
-                    </label>
+                  @if (connKind === 'gate' || connKind === 'custom') {
+                    <label class="wide">JSON contract <textarea rows="4" [(ngModel)]="connContract" name="connContract"></textarea></label>
                   }
                 </div>
-                @if (connKind === 'mcp') {
-                  <label class="wide">MCP import JSON <span class="muted">(mcpServers config, initialize response or tools/list result)</span>
-                    <textarea rows="5" [(ngModel)]="mcpImportJson" name="mcpImportJson" placeholder='{"mcpServers": {...}} or {"result": {"tools": [...]}}'></textarea>
-                  </label>
-                  <div class="settings-row">
-                    <button (click)="importMcpServers()">Import mcpServers</button>
-                    <button (click)="importMcpResponse()">Import initialize / tools/list</button>
-                    <button (click)="validateContract()">Validate contract</button>
-                  </div>
-                }
                 <div class="settings-row">
                   <button class="primary" (click)="addConnector()">Connector hinzufügen</button>
                 </div>
-                @if (schemaError()) { <div class="notice error">{{ schemaError() }}</div> }
               </section>
+
               <section>
-                <h4>Konfigurierte Connectoren</h4>
+                <h4>Lokale Connectoren</h4>
                 @for (c of connectorsFor(connectorAgent()?.id || ''); track c.id) {
                   <div class="custom-edge">
                     <span class="mono">{{ c.name }}</span>
@@ -458,7 +508,9 @@ interface GraphEdge {
                     <button class="small danger" (click)="deleteConnector(c.id)">delete</button>
                   </div>
                 }
-                @if (!connectorsFor(connectorAgent()?.id || '').length) { <p class="muted">Noch keine Connectoren.</p> }
+                @if (!connectorsFor(connectorAgent()?.id || '').length) { <p class="muted">Noch keine lokalen Connectoren.</p> }
+                @if (configError()) { <div class="notice error">{{ configError() }}</div> }
+                @if (schemaError()) { <div class="notice error">{{ schemaError() }}</div> }
               </section>
             </div>
           </div>
@@ -647,6 +699,20 @@ export class GraphComponent {
   contextMenu = signal<{ x: number; y: number; node?: GraphNode } | null>(null);
   newTemplateName = '';
   connectors = signal<ConnectorConfig[]>(this.loadConnectors());
+  mcpServers = signal<AgentMCP[]>([]);
+  skills = signal<AgentSkill[]>([]);
+  configError = signal('');
+  configBusy = signal(false);
+  mcpName = '';
+  mcpTransport: AgentMCP['transport'] = 'stdio';
+  mcpCommand = '';
+  mcpArgs = '';
+  mcpURL = '';
+  mcpContract = '';
+  skillName = '';
+  skillDescription = '';
+  skillSource = '';
+  skillConfig = '';
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -672,7 +738,7 @@ export class GraphComponent {
         id: g.id, kind: 'ghost' as const, title: g.title, subtitle: g.active ? 'active placeholder' : 'template placeholder',
         detail: g.active ? 'enabled' : 'disabled', position: g.position, ghost: true, active: g.active, templateId: g.templateId,
       }));
-    return [...nodes, ...this.connectorNodes(nodes), ...ghosts];
+    return [...nodes, ...this.connectorNodes(nodes), ...this.mcpNodes(nodes), ...this.skillNodes(nodes), ...ghosts];
   });
   readonly edges = computed(() => { this.schema(); this.customEdges(); return this.buildEdges(); });
   readonly unitSuggestions = computed(() => {
@@ -935,7 +1001,18 @@ export class GraphComponent {
     this.connURL = '';
     this.connContract = '';
     this.connDirection = 'out';
+    this.mcpName = '';
+    this.mcpCommand = '';
+    this.mcpArgs = '';
+    this.mcpURL = '';
+    this.mcpContract = '';
+    this.mcpImportJson = '';
+    this.skillName = '';
+    this.skillDescription = '';
+    this.skillSource = '';
+    this.skillConfig = '';
     this.connectorsOpen.set(true);
+    this.loadAgentConfig(a.id);
   }
 
   addConnector(): void {
@@ -998,20 +1075,21 @@ export class GraphComponent {
       this.schemaError.set('expected {"mcpServers": {"name": {...}}}');
       return;
     }
+    const a = this.connectorAgent();
+    if (!a) { this.configError.set('select an agent first'); return; }
     let added = 0;
-    const next = [...this.connectors()];
     for (const [name, value] of Object.entries(servers as Record<string, unknown>)) {
       const c = this.contractFromMcpServer(name, value);
       if (!c) continue;
-      next.push({
-        id: `conn-${Date.now()}-${added}`, agentId: this.connectorAgent()?.id || '', kind: 'mcp',
-        name: c.name, url: c.url, contract: JSON.stringify(c), direction: 'out', enabled: true,
+      this.api.addMCP(a.id, {
+        name: c.name, transport: c.transport, command: c.command, args: c.args, url: c.url,
+        env_keys: c.envKeys || [], contract: JSON.stringify(c), enabled: true,
+      }).subscribe({
+        next: () => { added++; this.loadAgentConfig(a.id); },
+        error: e => this.configError.set(e.message ?? String(e)),
       });
-      added++;
     }
-    this.connectors.set(next);
-    this.persistConnectors(next);
-    this.schemaError.set(added ? `${added} MCP connector(s) imported` : 'no valid mcpServers entries');
+    this.configError.set(added || true ? 'MCP import gestartet' : 'no valid mcpServers entries');
   }
 
   importMcpResponse(): void {
@@ -1019,25 +1097,23 @@ export class GraphComponent {
     if (!parsed) { this.schemaError.set('invalid JSON'); return; }
     const contract = this.contractFromMcpResponse(parsed);
     if (!contract) { this.schemaError.set('could not derive an MCP contract (expected initialize/tools/list result)'); return; }
-    this.connKind = 'mcp';
-    this.connName = contract.name;
-    this.connURL = contract.url || '';
-    this.connContract = JSON.stringify(contract, null, 2);
-    this.schemaError.set('');
+    this.mcpName = contract.name;
+    this.mcpTransport = contract.transport;
+    this.mcpURL = contract.url || '';
+    this.mcpCommand = contract.command || '';
+    this.mcpArgs = (contract.args || []).join('\n');
+    this.mcpContract = JSON.stringify(contract, null, 2);
+    this.configError.set('');
   }
 
   validateContract(): void {
-    const parsed = this.parseJsonSafe(this.connContract);
-    if (!parsed) { this.schemaError.set('contract is not valid JSON'); return; }
-    if (this.connKind === 'mcp') {
-      const contract = this.contractFromMcpResponse(parsed) ?? this.contractFromMcpServer(this.connName || 'mcp', parsed);
-      if (!contract) { this.schemaError.set('not a recognizable MCP contract'); return; }
-      const errors = this.validateMcpContract(contract);
-      this.schemaError.set(errors.length ? errors.join('; ') : '');
-      if (!errors.length) this.connContract = JSON.stringify(contract, null, 2);
-    } else {
-      this.schemaError.set('');
-    }
+    const parsed = this.parseJsonSafe(this.mcpContract || this.connContract);
+    if (!parsed) { this.configError.set('contract is not valid JSON'); return; }
+    const contract = this.contractFromMcpResponse(parsed) ?? this.contractFromMcpServer(this.mcpName || 'mcp', parsed);
+    if (!contract) { this.configError.set('not a recognizable MCP contract'); return; }
+    const errors = this.validateMcpContract(contract);
+    this.configError.set(errors.length ? errors.join('; ') : '');
+    if (!errors.length) this.mcpContract = JSON.stringify(contract, null, 2);
   }
 
   private parseJsonSafe(raw: string): unknown | null {
@@ -1111,6 +1187,159 @@ export class GraphComponent {
     return errors;
   }
 
+
+  private loadAgentConfig(agentId: string): void {
+    this.configError.set('');
+    this.mcpServers.set([]);
+    this.skills.set([]);
+    this.api.listMCP(agentId).subscribe({
+      next: list => this.mcpServers.set(list ?? []),
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+    this.api.listSkills(agentId).subscribe({
+      next: list => this.skills.set(list ?? []),
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+  }
+
+  addMcpServer(): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    if (!this.mcpName.trim()) { this.configError.set('MCP name is required'); return; }
+    let contract = this.mcpContract.trim();
+    if (contract) {
+      const parsed = this.parseJsonSafe(contract);
+      if (parsed === null) { this.configError.set('contract is not valid JSON'); return; }
+      const normal = this.contractFromMcpResponse(parsed) ?? this.contractFromMcpServer(this.mcpName, parsed);
+      if (!normal) { this.configError.set('not a recognizable MCP contract'); return; }
+      const errors = this.validateMcpContract(normal);
+      if (errors.length) { this.configError.set(errors.join('; ')); return; }
+      contract = JSON.stringify(normal, null, 2);
+    }
+    this.configBusy.set(true);
+    this.api.addMCP(a.id, {
+      name: this.mcpName.trim(), transport: this.mcpTransport,
+      command: this.mcpCommand.trim(), args: this.mcpArgs.split('\n').map(s => s.trim()).filter(Boolean),
+      url: this.mcpURL.trim(), contract, env_keys: [], enabled: true,
+    }).subscribe({
+      next: () => {
+        this.configBusy.set(false);
+        this.mcpName = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpURL = ''; this.mcpContract = '';
+        this.loadAgentConfig(a.id);
+      },
+      error: e => { this.configBusy.set(false); this.configError.set(e.message ?? String(e)); },
+    });
+  }
+
+  toggleMcp(m: AgentMCP): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    this.api.updateMCP(a.id, m.id, { ...m, enabled: !m.enabled }).subscribe({
+      next: () => this.loadAgentConfig(a.id),
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+  }
+
+  deleteMcp(m: AgentMCP): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    this.api.deleteMCP(a.id, m.id).subscribe({
+      next: () => { this.loadAgentConfig(a.id); this.changed.emit(); },
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+  }
+
+  addSkill(): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    if (!this.skillName.trim()) { this.configError.set('skill name is required'); return; }
+    if (this.skillConfig.trim()) {
+      const parsed = this.parseJsonSafe(this.skillConfig);
+      if (parsed === null) { this.configError.set('skill config is not valid JSON'); return; }
+    }
+    this.configBusy.set(true);
+    this.api.addSkill(a.id, {
+      name: this.skillName.trim(), description: this.skillDescription.trim(),
+      source_path: this.skillSource.trim(), config: this.skillConfig.trim(), enabled: true,
+    }).subscribe({
+      next: () => {
+        this.configBusy.set(false);
+        this.skillName = ''; this.skillDescription = ''; this.skillSource = ''; this.skillConfig = '';
+        this.loadAgentConfig(a.id);
+      },
+      error: e => { this.configBusy.set(false); this.configError.set(e.message ?? String(e)); },
+    });
+  }
+
+  toggleSkill(s: AgentSkill): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    this.api.updateSkill(a.id, s.id, { ...s, enabled: !s.enabled }).subscribe({
+      next: () => this.loadAgentConfig(a.id),
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+  }
+
+  deleteSkill(s: AgentSkill): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    this.api.deleteSkill(a.id, s.id).subscribe({
+      next: () => { this.loadAgentConfig(a.id); this.changed.emit(); },
+      error: e => this.configError.set(e.message ?? String(e)),
+    });
+  }
+
+  private mcpNodes(base: GraphNode[]): GraphNode[] {
+    const byId = new Map(base.map(n => [n.id, n]));
+    const out: GraphNode[] = [];
+    const count = new Map<string, number>();
+    for (const m of this.mcpServers()) {
+      const agent = byId.get(`agent-${m.agent_id}`);
+      if (!agent) continue;
+      const i = count.get(m.agent_id) ?? 0;
+      count.set(m.agent_id, i + 1);
+      out.push({
+        id: `mcp-${m.id}`, kind: 'mcp', title: m.name, subtitle: `MCP · ${m.transport}`,
+        detail: m.url || (m.contract ? this.contractSummary(m.contract) : (m.command || '')),
+        position: { x: agent.position.x + 320, y: agent.position.y + 200 + i * 130 },
+      });
+    }
+    return out;
+  }
+
+  private skillNodes(base: GraphNode[]): GraphNode[] {
+    const byId = new Map(base.map(n => [n.id, n]));
+    const out: GraphNode[] = [];
+    const count = new Map<string, number>();
+    for (const sk of this.skills()) {
+      const agent = byId.get(`agent-${sk.agent_id}`);
+      if (!agent) continue;
+      const i = count.get(sk.agent_id) ?? 0;
+      count.set(sk.agent_id, i + 1);
+      out.push({
+        id: `skill-${sk.id}`, kind: 'skill', title: sk.name, subtitle: 'skill',
+        detail: sk.description || sk.source_path || '',
+        position: { x: agent.position.x - 320, y: agent.position.y + 200 + i * 130 },
+      });
+    }
+    return out;
+  }
+
+  private dbEdges(): GraphEdge[] {
+    const edges: GraphEdge[] = [];
+    for (const m of this.mcpServers()) {
+      const src = this.pickPort(`agent-${m.agent_id}`, 'out', 'right');
+      const tgt = this.pickPort(`mcp-${m.id}`, 'in', 'left');
+      if (src && tgt) edges.push({ id: `mcp-edge-${m.id}`, source: `agent-${m.agent_id}`, target: `mcp-${m.id}`, sourcePort: src.id, targetPort: tgt.id, label: m.name, kind: 'mcp', sourceSide: src.side, targetSide: tgt.side, type: 'bezier' });
+    }
+    for (const sk of this.skills()) {
+      const src = this.pickPort(`agent-${sk.agent_id}`, 'out', 'left');
+      const tgt = this.pickPort(`skill-${sk.id}`, 'in', 'right');
+      if (src && tgt) edges.push({ id: `skill-edge-${sk.id}`, source: `agent-${sk.agent_id}`, target: `skill-${sk.id}`, sourcePort: src.id, targetPort: tgt.id, label: 'skill', kind: 'custom', sourceSide: src.side, targetSide: tgt.side, type: 'bezier' });
+    }
+    return edges;
+  }
+
   private loadConnectors(): ConnectorConfig[] {
     try { return JSON.parse(localStorage.getItem('dockweave.agentConnectors') || '[]'); } catch { return []; }
   }
@@ -1124,7 +1353,7 @@ export class GraphComponent {
     const out: GraphNode[] = [];
     const used = new Map<string, number>();
     for (const c of this.connectors()) {
-      if (!c.enabled || c.kind === 'agent-chain') continue;
+      if (!c.enabled || c.kind === 'agent-chain' || c.kind === 'mcp') continue;
       const agent = byId.get(`agent-${c.agentId}`);
       if (!agent) continue;
       const idx = used.get(c.agentId) ?? 0;
@@ -1154,7 +1383,7 @@ export class GraphComponent {
   private connectorEdges(): GraphEdge[] {
     const edges: GraphEdge[] = [];
     for (const c of this.connectors()) {
-      if (!c.enabled) continue;
+      if (!c.enabled || c.kind === 'mcp') continue;
       if (c.kind === 'agent-chain') {
         if (!c.targetAgentId) continue;
         const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');
@@ -1491,7 +1720,7 @@ export class GraphComponent {
 
   private buildEdges(): GraphEdge[] {
     const base = this.mode() === 'organization' ? this.buildOrgEdges() : this.buildResourceEdges();
-    const connectors = this.connectorEdges();
+    const connectors = [...this.connectorEdges(), ...this.dbEdges()];
     const custom = this.customEdges().map(e => ({
       id: e.id, source: e.source, target: e.target, sourcePort: e.sourcePort, targetPort: e.targetPort,
       label: e.label, kind: e.kind, sourceSide: e.sourceSide, targetSide: e.targetSide,
