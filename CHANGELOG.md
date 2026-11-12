@@ -56,7 +56,9 @@ All notable changes to DockWeave are documented here. The format follows
   placed at the drop position; a click also places them without opening a
   dialog. Double-click opens the node-specific configuration. New nodes are
   unconnected; a `＋` button or right-click starts connection mode (choose
-  type, then click the target). Edges are selectable with a delete toolbar. The gateway is
+  type, then click the target). Edges are selectable with a delete toolbar. Add a selectable main agent
+  with a floating bottom-right chat panel showing its chosen avatar and
+  display name. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

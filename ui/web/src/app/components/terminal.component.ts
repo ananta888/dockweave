@@ -11,7 +11,7 @@ import { FormsModule } from '@angular/forms';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div class="term-shell">
+    <div class="term-shell" [class.compact]="compact">
       <div class="term-bar">
         <span class="dot" [class.on]="running"></span>
         <strong>{{ agentName }}</strong>
@@ -44,6 +44,9 @@ import { FormsModule } from '@angular/forms';
     .term-bar .muted { color:#8b949e; }
     .term-bar .spacer { flex:1; }
     .term-host { flex:1; min-height:320px; padding:.35rem .5rem; overflow:hidden; }
+    .term-shell.compact .term-host { min-height:150px; }
+    .term-shell.compact .term-bar { padding:.25rem .6rem; }
+    .term-shell.compact .prompt { padding:.35rem .6rem; }
     .term-overlay { position:absolute; inset:3rem 0 4rem 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem; background:rgba(11,14,20,.72); }
     .prompt { display:flex; gap:.5rem; padding:.5rem .8rem; border-top:1px solid #30363d; background:#0f141b; }
     .prompt input { flex:1; }
@@ -54,6 +57,7 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input({ required: true }) agentId = '';
   @Input({ required: true }) agentName = '';
   @Input() running = false;
+  @Input() compact = false;
   @ViewChild('host', { static: true }) host!: ElementRef<HTMLDivElement>;
 
   status = signal('');

@@ -119,6 +119,7 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   `mcpServers`-Client-Konfiguration oder eine `initialize`-/`tools/list`-
   Antwort und validiert die Tool-Input-Schemas. Das Default-Graph-Schema
   enthält ein Beispiel unter `contracts.mcpServer`.
+- **Hauptagent**: über `☆ Hauptagent` im Agent-Header oder per Rechtsklick im Graph festlegen. Ein schwebendes Chat-Fenster rechts unten zeigt das gewählte SVG, den Anzeigenamen und ein Live-Terminal/Chat mit diesem Agenten (minimierbar/schließbar).
 - **Agent Types** (oberes Menü): Default-MCP-Server und -Skills pro Agententyp,
   mit **Standardwerte einlesen**, das bestehende Agenten-Homes und übliche
   Host-Homes für OpenCode, Claude, Codex, Gemini und Antigravity scannt.

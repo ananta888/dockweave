@@ -67,6 +67,7 @@
                 <button class="small" (click)="stopSelected()" [disabled]="agent.state !== 'running' || actionBusy()">{{ action() === 'stop' ? 'Stopping…' : 'Stop' }}</button>
                 <button class="small" (click)="restartSelected()" [disabled]="actionBusy()">{{ action() === 'restart' ? 'Restarting…' : 'Restart' }}</button>
                 <button class="small danger" (click)="removeSelected()" [disabled]="actionBusy()">{{ action() === 'remove' ? 'Deleting…' : 'Delete' }}</button>
+                <button class="small" (click)="setMainAgent(agent)" [class.main-agent-btn]="mainAgentId() === agent.id">{{ mainAgentId() === agent.id ? '★ Hauptagent' : '☆ Hauptagent' }}</button>
               </div>
               @if (actionBusy()) {
                 <div class="action-status"><span class="spinner"></span>{{ actionLabel() }}</div>
@@ -107,6 +108,7 @@
             [paths]="store.paths()"
             [selectedAgentId]="store.selectedId()"
             (agentSelected)="selectById($event)"
+            (mainAgentSelected)="setMainAgentById($event)"
             (changed)="store.refresh()" />
         }
         @case ('analysis') {
@@ -166,6 +168,31 @@
       }
     </div>
   </main>
+
+  @if (mainAgent(); as main) {
+    @if (chatVisible()) {
+      <section class="main-chat" [class.minimized]="chatMinimized()">
+        <header>
+          <div class="main-avatar" [innerHTML]="mainAvatar(main)"></div>
+          <div class="main-id">
+            <strong>{{ main.display_name || main.name }}</strong>
+            <span>{{ main.type }} · {{ main.state }}</span>
+          </div>
+          <span class="spacer"></span>
+          <button class="icon" title="Minimieren" (click)="chatMinimized.set(!chatMinimized())">{{ chatMinimized() ? '▢' : '—' }}</button>
+          <button class="icon" title="Schließen" (click)="chatVisible.set(false)">✕</button>
+        </header>
+        @if (!chatMinimized()) {
+          <dw-terminal
+            [agentId]="main.id"
+            [agentName]="main.display_name || main.name"
+            [running]="main.state === 'running'"
+            [compact]="true"
+            (start)="startMainAgent(main)" />
+        }
+      </section>
+    }
+  }
 
   <dw-dir-picker
     [open]="wsBrowserOpen()"

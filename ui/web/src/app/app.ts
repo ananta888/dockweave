@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { KeyValuePipe, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from './core/api.service';
@@ -9,6 +10,7 @@ import { AnalysisComponent } from './components/analysis.component';
 import { DirPickerComponent } from './components/dir-picker.component';
 import { GraphComponent } from './components/graph.component';
 import { AgentTypesComponent } from './components/agent-types.component';
+import { figureSvg } from './core/figures';
 import { Agent } from './core/models';
 
 type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types';
@@ -22,6 +24,7 @@ type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types';
 export class App implements OnInit, OnDestroy {
   readonly store = inject(Store);
   private readonly api = inject(ApiService);
+  private readonly sanitizer = inject(DomSanitizer);
   private timer?: ReturnType<typeof setInterval>;
 
   view = signal<View>('agent');
@@ -29,11 +32,15 @@ export class App implements OnInit, OnDestroy {
   action = signal<'start' | 'stop' | 'restart' | 'remove' | ''>('');
   agentTab = signal<'chat' | 'config'>('chat');
   newOpen = signal(false);
+  mainAgentId = signal<string | null>(localStorage.getItem('dockweave.mainAgent'));
+  chatMinimized = signal(false);
+  chatVisible = signal(true);
   creating = signal(false);
   createError = signal('');
   workspaceName = '';
   workspacePath = '';
   workspaceError = signal('');
+  readonly mainAgent = computed(() => this.store.agents().find(a => a.id === this.mainAgentId()) ?? null);
   wsBrowserOpen = signal(false);
 
   newAgent = {
@@ -97,6 +104,29 @@ export class App implements OnInit, OnDestroy {
   stopSelected(): void { this.agentAction('stop'); }
   restartSelected(): void { this.agentAction('restart'); }
   removeSelected(): void { this.agentAction('remove'); }
+
+  setMainAgent(a: Agent): void {
+    this.mainAgentId.set(a.id);
+    localStorage.setItem('dockweave.mainAgent', a.id);
+    this.chatVisible.set(true);
+    this.chatMinimized.set(false);
+  }
+
+  setMainAgentById(id: string): void {
+    const a = this.store.agents().find(x => x.id === id);
+    if (a) this.setMainAgent(a);
+  }
+
+  mainAvatar(a: Agent): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(figureSvg(a.avatar, a.avatar_svg));
+  }
+
+  startMainAgent(a: Agent): void {
+    this.api.startAgent(a.id).subscribe({
+      next: () => void this.store.refresh(),
+      error: e => this.store.error.set(e.message),
+    });
+  }
 
   create(): void {
     const f = this.newAgent;

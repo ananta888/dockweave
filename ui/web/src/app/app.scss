@@ -120,3 +120,29 @@ td { padding: .35rem .4rem; border-bottom: 1px solid #21262d; }
 .modal .two { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .4rem; }
 label { display: flex; flex-direction: column; gap: .25rem; font-size: .78rem; color: #8b949e; }
+
+.main-chat {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(480px, calc(100vw - 32px));
+  height: 470px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  background: #0e1117;
+  border: 1px solid #58a6ff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 14px 40px #000a;
+}
+.main-chat.minimized { height: auto; }
+.main-chat header { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; background: #161b22; border-bottom: 1px solid #30363d; }
+.main-chat header button.icon { width: 1.6rem; height: 1.6rem; border-radius: 5px; background: transparent; border: 1px solid #30363d; color: #c9d1d9; cursor: pointer; }
+.main-avatar { width: 36px; height: 42px; flex: none; }
+.main-avatar svg { width: 36px; height: 42px; }
+.main-id { display: flex; flex-direction: column; min-width: 0; }
+.main-id strong { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.main-id span { font-size: .66rem; color: #8b949e; }
+.main-chat dw-terminal { flex: 1; min-height: 0; }
+.main-agent-btn { border-color: #d29922 !important; color: #d29922 !important; }

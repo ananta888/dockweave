@@ -663,6 +663,7 @@ interface GraphEdge {
               @if (n.kind === 'agent') {
                 <button (click)="openAgentById(n.id)">Agent öffnen</button>
                 <button (click)="openConnectorDialogByNode(n.id)">Connectoren konfigurieren…</button>
+                <button (click)="mainAgentSelected.emit(agentIdOf(n)); closeContext()">Als Hauptagent festlegen</button>
               }
               <button (click)="beginConnect(n)">Neue Verbindung…</button>
               <button class="danger" (click)="deleteCustomEdgesFor(n.id)">Eigene Kanten löschen</button>
@@ -824,6 +825,7 @@ export class GraphComponent implements OnChanges {
   @Input() selectedAgentId: string | null = null;
 
   readonly agentSelected = output<string>();
+  readonly mainAgentSelected = output<string>();
   readonly changed = output<void>();
 
   mode = signal<GraphMode>('organization');
