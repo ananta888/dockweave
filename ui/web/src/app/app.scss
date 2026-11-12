@@ -146,3 +146,21 @@ label { display: flex; flex-direction: column; gap: .25rem; font-size: .78rem; c
 .main-id span { font-size: .66rem; color: #8b949e; }
 .main-chat dw-terminal { flex: 1; min-height: 0; }
 .main-agent-btn { border-color: #d29922 !important; color: #d29922 !important; }
+
+.ui-hint {
+  position: fixed;
+  z-index: 150;
+  max-width: 320px;
+  padding: .6rem .75rem;
+  background: #11263b;
+  border: 1px solid #58a6ff;
+  border-left: 4px solid #58a6ff;
+  border-radius: 8px;
+  color: #c9d1d9;
+  font-size: .8rem;
+  box-shadow: 0 10px 28px #000a;
+}
+.ui-hint.warn { background: #2d210b; border-color: #d29922; border-left-color: #d29922; }
+.ui-hint.error { background: #3d1114; border-color: #f85149; border-left-color: #f85149; }
+.ui-hint .hint-text { padding-right: 1rem; white-space: pre-wrap; }
+.ui-hint .hint-close { position: absolute; top: .25rem; right: .35rem; background: transparent; border: none; color: #8b949e; cursor: pointer; }

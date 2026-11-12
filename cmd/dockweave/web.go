@@ -31,6 +31,8 @@ func webCmd() *cobra.Command {
 		termSocket  string
 		open        bool
 		browseRoots string
+		mcpListen   string
+		mcpToken    string
 	)
 	c := &cobra.Command{
 		Use:   "web",
@@ -60,6 +62,13 @@ func webCmd() *cobra.Command {
 					"web",
 				)
 			}
+			if mcpListen != "" && mcpToken == "" {
+				var err error
+				mcpToken, err = webui.NewMCPToken()
+				if err != nil {
+					fail(err)
+				}
+			}
 			var roots []string
 			for _, r := range strings.Split(browseRoots, ":") {
 				if r = strings.TrimSpace(r); r != "" {
@@ -72,6 +81,7 @@ func webCmd() *cobra.Command {
 				WebDir:       dir,
 				Token:        token,
 				BrowseRoots:  roots,
+				MCPToken:     mcpToken,
 			})
 			if err != nil {
 				fail(err)
@@ -86,6 +96,16 @@ func webCmd() *cobra.Command {
 			}
 			url := fmt.Sprintf("http://%s/?token=%s", ln.Addr(), token)
 			fmt.Printf("DockWeave web UI: %s\n", url)
+			var mcpSrv *http.Server
+			if mcpListen != "" {
+				mcpLn, err := net.Listen("tcp", mcpListen)
+				if err != nil {
+					fail(err)
+				}
+				mcpSrv = &http.Server{Handler: srv.MCPHandler(), ReadHeaderTimeout: 15 * time.Second}
+				go func() { _ = mcpSrv.Serve(mcpLn) }()
+				fmt.Printf("DockWeave UI MCP: http://%s/mcp/ui?token=%s\n", mcpLn.Addr(), mcpToken)
+			}
 			if open {
 				openBrowser(url)
 			}
@@ -105,6 +125,9 @@ func webCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_ = httpSrv.Shutdown(ctx)
+			if mcpSrv != nil {
+				_ = mcpSrv.Shutdown(ctx)
+			}
 		},
 	}
 	f := c.Flags()
@@ -115,6 +138,10 @@ func webCmd() *cobra.Command {
 	f.StringVar(&browseRoots, "browse-roots", envOr("DOCKWEAVE_WEB_BROWSE_ROOTS",
 		"/home:/srv:/opt/projects:/var/lib/dockweave"),
 		"colon-separated roots for the directory browser")
+	f.StringVar(&mcpListen, "mcp-listen", envOr("DOCKWEAVE_UI_MCP_LISTEN", ""),
+		"optional TCP listen address for the UI MCP server, e.g. 0.0.0.0:8791")
+	f.StringVar(&mcpToken, "mcp-token", envOr("DOCKWEAVE_UI_MCP_TOKEN", ""),
+		"UI MCP bearer token (default: random when --mcp-listen is set)")
 	return c
 }
 

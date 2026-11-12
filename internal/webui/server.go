@@ -43,6 +43,8 @@ type Config struct {
 	AllowedOrigins []string
 	// BrowseRoots limits the admin directory browser. Empty uses defaults.
 	BrowseRoots []string
+	// MCPToken enables the UI MCP endpoint when non-empty.
+	MCPToken string
 }
 
 // Server is the browser-facing HTTP handler.
@@ -52,6 +54,8 @@ type Server struct {
 	assets      fs.FS
 	handler     http.Handler
 	browseRoots []string
+	uiHub       *UIHub
+	mcp         *MCPHandler
 }
 
 // New creates the web gateway.
@@ -79,10 +83,21 @@ func New(cfg Config) (*Server, error) {
 	if len(roots) == 0 {
 		roots = defaultBrowseRoots()
 	}
-	s := &Server{cfg: cfg, assets: assets, browseRoots: roots}
+	s := &Server{cfg: cfg, assets: assets, browseRoots: roots, uiHub: NewUIHub()}
+	if cfg.MCPToken != "" {
+		s.mcp = NewMCPHandler(cfg.MCPToken, s.uiHub)
+	}
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
 	s.handler = s.auth(s.routes())
 	return s, nil
+}
+
+// MCPHandler returns the UI MCP endpoint (nil when no token is configured).
+func (s *Server) MCPHandler() http.Handler {
+	if s.mcp == nil {
+		return nil
+	}
+	return s.mcp
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +107,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
+	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
 	mux.Handle("/api/", s.proxy)
 	mux.HandleFunc("/ws/term", s.term)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {

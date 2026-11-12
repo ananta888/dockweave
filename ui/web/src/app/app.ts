@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { KeyValuePipe, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -11,6 +12,7 @@ import { DirPickerComponent } from './components/dir-picker.component';
 import { GraphComponent } from './components/graph.component';
 import { AgentTypesComponent } from './components/agent-types.component';
 import { figureSvg } from './core/figures';
+import { UiBridgeService } from './core/ui-bridge.service';
 import { Agent } from './core/models';
 
 type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types';
@@ -25,6 +27,10 @@ export class App implements OnInit, OnDestroy {
   readonly store = inject(Store);
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly uiBridge = inject(UiBridgeService);
+  private uiSub?: Subscription;
+  uiHint = signal<{ text: string; severity: string; x: number; y: number } | null>(null);
+  private hintTimer?: ReturnType<typeof setTimeout>;
   private timer?: ReturnType<typeof setInterval>;
 
   view = signal<View>('agent');
@@ -49,13 +55,63 @@ export class App implements OnInit, OnDestroy {
     env_file: '', profile: '', uid: 1000, gid: 1000,
   };
 
+  constructor() {
+    effect(() => {
+      this.uiBridge.sendState({
+        view: this.view(),
+        selectedAgentId: this.store.selectedId(),
+        mainAgentId: this.mainAgentId(),
+        chatVisible: this.chatVisible(),
+        agents: this.store.agents().map(a => ({ id: a.id, name: a.display_name || a.name, type: a.type, state: a.state, avatar: a.avatar })),
+      });
+    });
+  }
+
   ngOnInit(): void {
     void this.store.refresh();
     this.timer = setInterval(() => void this.store.refresh(), 5000);
+    this.uiBridge.connect();
+    this.uiSub = this.uiBridge.commands.subscribe(cmd => this.handleUiCommand(cmd));
   }
 
   ngOnDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+    clearTimeout(this.hintTimer);
+    this.uiSub?.unsubscribe();
+  }
+
+  private handleUiCommand(cmd: Record<string, unknown>): void {
+    const action = String(cmd['action'] || '');
+    const agentId = String(cmd['agent_id'] || '');
+    if (action === 'select_agent' && agentId) this.selectById(agentId);
+    else if (action === 'select_view') {
+      const v = String(cmd['view'] || '');
+      if (['agent', 'graph', 'analysis', 'workspaces', 'types'].includes(v)) this.view.set(v as View);
+    } else if (action === 'set_main_agent' && agentId) this.setMainAgentById(agentId);
+    else if (action === 'show_hint') this.showUiHint(cmd);
+  }
+
+  private showUiHint(cmd: Record<string, unknown>): void {
+    const text = String(cmd['text'] || '');
+    if (!text) return;
+    const severity = String(cmd['severity'] || 'info');
+    let selector = String(cmd['selector'] || '');
+    if (!selector && cmd['agent_id']) selector = `[data-agent-id="${String(cmd['agent_id'])}"]`;
+    if (!selector && cmd['node_id']) selector = `[data-node-id="${String(cmd['node_id'])}"]`;
+    let x = window.innerWidth - 340;
+    let y = 80;
+    if (selector) {
+      const el = document.querySelector(selector);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        x = Math.min(window.innerWidth - 320, Math.max(8, r.right + 10));
+        y = Math.max(8, r.top);
+      }
+    }
+    this.uiHint.set({ text, severity, x, y });
+    clearTimeout(this.hintTimer);
+    const ms = Number(cmd['duration_ms'] || 10000);
+    this.hintTimer = setTimeout(() => this.uiHint.set(null), Math.max(2000, Math.min(ms, 60000)));
   }
 
   select(a: Agent): void {

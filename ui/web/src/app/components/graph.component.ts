@@ -176,6 +176,7 @@ interface GraphEdge {
                 fGroup
                 fDragHandle
                 [fGroupId]="node.id"
+                [attr.data-node-id]="node.id"
                 [fGroupPosition]="node.position"
                 (fGroupPositionChange)="moveNode(node.id, $event)"
                 class="gw-node"

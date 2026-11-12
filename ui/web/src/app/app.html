@@ -201,6 +201,13 @@
     (picked)="onWorkspacePicked($event)"
     (closed)="wsBrowserOpen.set(false)" />
 
+  @if (uiHint(); as h) {
+    <div class="ui-hint" [class.warn]="h.severity === 'warn'" [class.error]="h.severity === 'error'" [style.left.px]="h.x" [style.top.px]="h.y">
+      <button class="hint-close" (click)="uiHint.set(null)">✕</button>
+      <div class="hint-text">{{ h.text }}</div>
+    </div>
+  }
+
   @if (newOpen()) {
     <div class="modal-backdrop" (click)="newOpen.set(false)">
       <div class="modal" (click)="$event.stopPropagation()">

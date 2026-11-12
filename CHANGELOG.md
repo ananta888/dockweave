@@ -58,7 +58,9 @@ All notable changes to DockWeave are documented here. The format follows
   unconnected; a `＋` button or right-click starts connection mode (choose
   type, then click the target). Edges are selectable with a delete toolbar. Add a selectable main agent
   with a floating bottom-right chat panel showing its chosen avatar and
-  display name. The gateway is
+  display name. Add a UI MCP server (`/mcp/ui`) with tools to read the
+  operator UI state, select views/agents/main agent and place hints at exact
+  UI locations; the Angular app bridges state via `/ws/ui`. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 
