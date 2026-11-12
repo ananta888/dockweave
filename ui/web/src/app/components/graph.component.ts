@@ -35,13 +35,14 @@ interface LayoutTemplate {
 interface ConnectorConfig {
   id: string;
   agentId: string;
-  kind: 'mcp' | 'gate' | 'http' | 'agent-chain' | 'custom';
+  kind: 'mcp' | 'skill' | 'gate' | 'http' | 'agent-chain' | 'custom';
   name: string;
   targetAgentId?: string;
   url?: string;
   contract?: string;
   direction: 'out' | 'in' | 'both';
   enabled: boolean;
+  draft?: boolean;
 }
 
 interface GhostNode {
@@ -167,6 +168,7 @@ interface GraphEdge {
                 [class.inactive]="node.kind === 'agent' && node.state !== 'running' && node.state !== 'error'"
                 [class.error]="node.kind === 'agent' && node.state === 'error'"
                 (click)="nodeClicked(node)"
+                (dblclick)="nodeDoubleClicked(node)"
                 (contextmenu)="openContext($event, node)">
                 @if (node.kind === 'ghost') {
                   <div class="ghost-card" [class.active]="node.active">
@@ -546,6 +548,63 @@ interface GraphEdge {
         </div>
       }
 
+      @if (editConnectorId()) {
+        <div class="settings-backdrop" (click)="editConnectorId.set(null)">
+          <div class="settings-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Node konfigurieren</h3>
+              <button class="ghost small" (click)="editConnectorId.set(null)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <div class="settings-grid">
+                  <label>Name <input [(ngModel)]="ecName" name="ecName" /></label>
+                  <label>Art
+                    <select [(ngModel)]="ecKind" name="ecKind">
+                      <option value="gate">Deterministisches Gate</option>
+                      <option value="http">HTTP API</option>
+                      <option value="agent-chain">Agenten-Kette</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  <label>Richtung
+                    <select [(ngModel)]="ecDirection" name="ecDirection">
+                      <option value="out">Agent → Node</option>
+                      <option value="in">Node → Agent</option>
+                      <option value="both">beide</option>
+                    </select>
+                  </label>
+                  @if (ecKind === 'agent-chain') {
+                    <label>Ziel-Agent
+                      <select [(ngModel)]="ecTarget" name="ecTarget">
+                        <option value="">— select —</option>
+                        @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> }
+                      </select>
+                    </label>
+                  }
+                  @if (ecKind === 'http') {
+                    <label class="wide">URL <input [(ngModel)]="ecURL" name="ecURL" /></label>
+                  }
+                  @if (ecKind === 'gate') {
+                    <label class="wide">Condition <input [(ngModel)]="ecExpression" name="ecExpression" placeholder="tests == green" /></label>
+                    <label>On true <input [(ngModel)]="ecTrue" name="ecTrue" /></label>
+                    <label>On false <input [(ngModel)]="ecFalse" name="ecFalse" /></label>
+                  }
+                  @if (ecKind === 'custom') {
+                    <label class="wide">JSON contract <textarea rows="5" [(ngModel)]="ecContract" name="ecContract"></textarea></label>
+                  }
+                </div>
+                <div class="settings-row">
+                  <button class="primary" (click)="saveLocalEditor()">Save</button>
+                  <button class="danger" (click)="deleteLocalEdited()">Delete</button>
+                  <button (click)="editConnectorId.set(null)">Cancel</button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      }
+
       @if (contextMenu(); as menu) {
         <div class="context-menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (contextmenu)="$event.preventDefault()">
           @if (menu.node; as n) {
@@ -769,6 +828,17 @@ export class GraphComponent implements OnChanges {
   draggingPalette = signal<string | null>(null);
   private pendingDropPosition: { x: number; y: number } | null = null;
   private pendingDropKind: string | null = null;
+  private draftConnectorId: string | null = null;
+  editConnectorId = signal<string | null>(null);
+  ecName = '';
+  ecKind: ConnectorConfig['kind'] = 'gate';
+  ecDirection: ConnectorConfig['direction'] = 'out';
+  ecTarget = '';
+  ecURL = '';
+  ecExpression = '';
+  ecTrue = '';
+  ecFalse = '';
+  ecContract = '';
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -892,12 +962,7 @@ export class GraphComponent implements OnChanges {
     const a = this.agents.find(x => x.id === this.selectedAgentId);
     if (!a) { this.configError.set('select an agent first'); return; }
     const pos = this.flowPoint(ev.clientX, ev.clientY);
-    this.openConnectorDialog(a);
-    this.pendingDropPosition = pos;
-    this.pendingDropKind = kind;
-    if (kind === 'mcp' || kind === 'skill') return;
-    this.connKind = kind as ConnectorConfig['kind'];
-    this.connName = kind === 'agent-chain' ? 'New chain' : kind === 'gate' ? 'New gate' : kind === 'http' ? 'New HTTP' : 'New node';
+    this.createPaletteNode(a, kind, pos);
   }
 
   private flowPoint(clientX: number, clientY: number): { x: number; y: number } {
@@ -918,12 +983,124 @@ export class GraphComponent implements OnChanges {
   palette(kind: 'mcp' | 'skill' | 'gate' | 'http' | 'agent-chain' | 'custom'): void {
     const a = this.agents.find(x => x.id === this.selectedAgentId);
     if (!a) { this.configError.set('select an agent first'); return; }
-    if (kind === 'mcp' || kind === 'skill') {
-      this.openConnectorDialog(a);
+    const flow = document.querySelector('f-flow') as HTMLElement | null;
+    let pos = { x: 0, y: 120 };
+    if (flow) {
+      const r = flow.getBoundingClientRect();
+      pos = this.flowPoint(r.left + r.width / 2, r.top + r.height / 2);
+    }
+    this.createPaletteNode(a, kind, pos);
+  }
+
+  private createPaletteNode(a: Agent, kind: string, pos: { x: number; y: number }): void {
+    const mapped = kind === 'agent-chain' ? 'custom' : kind;
+    const id = 'conn-' + Date.now();
+    const name = kind === 'gate' ? 'New gate' : kind === 'http' ? 'New HTTP' : kind === 'mcp' ? 'New MCP server' : kind === 'skill' ? 'New skill' : kind === 'agent-chain' ? 'New chain' : 'New node';
+    const cfg: ConnectorConfig = {
+      id, agentId: a.id, kind: mapped as ConnectorConfig['kind'], name,
+      direction: 'out', enabled: true, draft: kind === 'mcp' || kind === 'skill',
+      contract: kind === 'gate' ? JSON.stringify({ expression: 'true', on_true: 'allow', on_false: 'deny' }) : undefined,
+    };
+    const next = [...this.connectors(), cfg];
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    this.manualPositions['connector-' + id] = pos;
+    this.persistPositions(this.manualPositions);
+    this.layoutNonce.update(v => v + 1);
+    this.configError.set('');
+  }
+
+  private finishDraft(prefix: 'mcp' | 'skill', createdId: string): void {
+    const draft = this.draftConnectorId;
+    const pos = this.pendingDropPosition || (draft ? this.manualPositions['connector-' + draft] : null);
+    if (pos) this.manualPositions[prefix + '-' + createdId] = pos;
+    if (draft) {
+      delete this.manualPositions['connector-' + draft];
+      const next = this.connectors().filter(c => c.id !== draft);
+      this.connectors.set(next);
+      this.persistConnectors(next);
+      this.draftConnectorId = null;
+    }
+    this.persistPositions(this.manualPositions);
+    this.pendingDropPosition = null;
+    this.pendingDropKind = null;
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  nodeDoubleClicked(node: GraphNode): void {
+    if (!node.id.startsWith('connector-')) {
+      if (node.kind === 'agent') {
+        const a = this.agents.find(x => x.id === this.agentIdOf(node));
+        if (a) this.openConnectorDialog(a);
+        return;
+      }
+      const a = this.agents.find(x => x.id === this.selectedAgentId);
+      if (a && (node.kind === 'mcp' || node.kind === 'skill')) this.openConnectorDialog(a);
       return;
     }
-    this.openConnectorDialog(a);
-    this.connKind = kind;
+    const cfg = this.connectors().find(c => 'connector-' + c.id === node.id);
+    if (!cfg) return;
+    if (cfg.draft && (cfg.kind === 'mcp' || cfg.kind === 'skill')) {
+      const a = this.agents.find(x => x.id === cfg.agentId);
+      if (!a) return;
+      this.draftConnectorId = cfg.id;
+      this.pendingDropPosition = this.manualPositions['connector-' + cfg.id] ?? null;
+      this.openConnectorDialog(a);
+      if (cfg.kind === 'mcp') this.mcpName = cfg.name; else this.skillName = cfg.name;
+      return;
+    }
+    this.openLocalEditor(cfg);
+  }
+
+  openLocalEditor(c: ConnectorConfig): void {
+    this.editConnectorId.set(c.id);
+    this.ecName = c.name;
+    this.ecKind = c.kind;
+    this.ecDirection = c.direction;
+    this.ecTarget = c.targetAgentId || '';
+    this.ecURL = c.url || '';
+    this.ecContract = c.contract || '';
+    this.ecExpression = '';
+    this.ecTrue = '';
+    this.ecFalse = '';
+    if (c.kind === 'gate' && c.contract) {
+      try {
+        const g = JSON.parse(c.contract) as { expression?: string; on_true?: string; on_false?: string };
+        this.ecExpression = g.expression || '';
+        this.ecTrue = g.on_true || '';
+        this.ecFalse = g.on_false || '';
+      } catch { /* ignore */ }
+    }
+  }
+
+  saveLocalEditor(): void {
+    const id = this.editConnectorId();
+    if (!id) return;
+    const next = this.connectors().map(c => {
+      if (c.id !== id) return c;
+      let contract = this.ecContract;
+      if (this.ecKind === 'gate') {
+        contract = JSON.stringify({ expression: this.ecExpression.trim(), on_true: this.ecTrue.trim() || 'allow', on_false: this.ecFalse.trim() || 'deny' }, null, 2);
+      }
+      return { ...c, name: this.ecName.trim() || c.name, kind: this.ecKind, direction: this.ecDirection,
+        targetAgentId: this.ecTarget || undefined, url: this.ecURL.trim() || undefined, contract };
+    });
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    this.editConnectorId.set(null);
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  deleteLocalEdited(): void {
+    const id = this.editConnectorId();
+    if (!id) return;
+    const next = this.connectors().filter(c => c.id !== id);
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    delete this.manualPositions['connector-' + id];
+    this.persistPositions(this.manualPositions);
+    this.editConnectorId.set(null);
+    this.layoutNonce.update(v => v + 1);
   }
 
   gateSummary(raw: string): string {
@@ -1420,13 +1597,7 @@ export class GraphComponent implements OnChanges {
     }).subscribe({
       next: created => {
         this.configBusy.set(false);
-        if (this.pendingDropPosition) {
-          this.manualPositions[`mcp-${created.id}`] = this.pendingDropPosition;
-          this.persistPositions(this.manualPositions);
-          this.pendingDropPosition = null;
-          this.pendingDropKind = null;
-          this.layoutNonce.update(v => v + 1);
-        }
+        this.finishDraft('mcp', created.id);
         this.mcpName = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpURL = ''; this.mcpContract = '';
         this.loadAgentConfig(a.id);
       },
@@ -1467,13 +1638,7 @@ export class GraphComponent implements OnChanges {
     }).subscribe({
       next: created => {
         this.configBusy.set(false);
-        if (this.pendingDropPosition) {
-          this.manualPositions[`skill-${created.id}`] = this.pendingDropPosition;
-          this.persistPositions(this.manualPositions);
-          this.pendingDropPosition = null;
-          this.pendingDropKind = null;
-          this.layoutNonce.update(v => v + 1);
-        }
+        this.finishDraft('skill', created.id);
         this.skillName = ''; this.skillDescription = ''; this.skillSource = ''; this.skillConfig = '';
         this.loadAgentConfig(a.id);
       },
@@ -1563,7 +1728,8 @@ export class GraphComponent implements OnChanges {
     const out: GraphNode[] = [];
     const used = new Map<string, number>();
     for (const c of this.connectors()) {
-      if (!c.enabled || c.kind === 'agent-chain' || c.kind === 'mcp') continue;
+      if (!c.enabled || c.kind === 'agent-chain') continue;
+      if ((c.kind === 'mcp' || c.kind === 'skill') && !c.draft) continue;
       const agent = byId.get(`agent-${c.agentId}`);
       if (!agent) continue;
       const idx = used.get(c.agentId) ?? 0;
@@ -1593,7 +1759,7 @@ export class GraphComponent implements OnChanges {
   private connectorEdges(): GraphEdge[] {
     const edges: GraphEdge[] = [];
     for (const c of this.connectors()) {
-      if (!c.enabled || c.kind === 'mcp') continue;
+      if (!c.enabled || c.kind === 'mcp' || c.kind === 'skill') continue;
       if (c.kind === 'agent-chain') {
         if (!c.targetAgentId) continue;
         const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');

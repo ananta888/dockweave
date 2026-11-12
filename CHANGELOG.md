@@ -53,7 +53,8 @@ All notable changes to DockWeave are documented here. The format follows
   web UI. Add a visible node palette, deterministic gate configuration with
   condition/true/false, 10 built-in 2D role figures and sanitized custom SVG
   import per agent. Palette nodes can be dragged onto the canvas and are
-  placed at the drop position. The gateway is
+  placed at the drop position; a click also places them without opening a
+  dialog. Double-click opens the node-specific configuration. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 
