@@ -61,6 +61,33 @@ func ValidNetworkProfile(p NetworkProfile) bool {
 	return false
 }
 
+// RuntimeType selects which runtime owns the agent's launch/session inside
+// the DockWeave sandbox. The container stays the security boundary in every
+// case; the runtime only changes who drives the terminal/process inside it.
+type RuntimeType string
+
+const (
+	// RuntimeDocker runs the harness CLI directly (default).
+	RuntimeDocker RuntimeType = "docker"
+	// RuntimeHerdr runs herdr as the container entrypoint so the agent's
+	// terminal/session is herdr-managed (detach/reattach, panes).
+	RuntimeHerdr RuntimeType = "herdr"
+	// RuntimePaperclip marks the agent as paperclip-orchestrated: it runs in
+	// heartbeat mode and is driven by a paperclip adapter instead of a
+	// persistent foreground harness.
+	RuntimePaperclip RuntimeType = "paperclip"
+)
+
+// ValidRuntime reports whether r is a known runtime (empty allowed and
+// treated as docker).
+func ValidRuntime(r RuntimeType) bool {
+	switch r {
+	case "", RuntimeDocker, RuntimeHerdr, RuntimePaperclip:
+		return true
+	}
+	return false
+}
+
 // Agent is the stable identity of an AI coding agent. It is independent of
 // container IDs, images, workspaces and memory assignments.
 type Agent struct {
@@ -88,10 +115,13 @@ type Agent struct {
 	NetworkMode string   `json:"network_mode"`        // bridge|none|host(never default)
 	// NetworkProfile controls enforced egress (see docs/egress-security.md).
 	NetworkProfile NetworkProfile `json:"network_profile,omitempty"`
-	State          AgentState     `json:"state"`
-	ContainerID    string         `json:"container_id,omitempty"` // current container, may change
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
+	// Runtime selects the in-container runtime adapter (docker|herdr|paperclip).
+	// Empty means docker. See RuntimeType.
+	Runtime     RuntimeType `json:"runtime,omitempty"`
+	State       AgentState  `json:"state"`
+	ContainerID string      `json:"container_id,omitempty"` // current container, may change
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 // Validate performs structural validation of an Agent definition.
@@ -112,6 +142,9 @@ func (a *Agent) Validate() error {
 	}
 	if !ValidNetworkProfile(a.NetworkProfile) {
 		return fmt.Errorf("unsupported network profile %q", a.NetworkProfile)
+	}
+	if !ValidRuntime(a.Runtime) {
+		return fmt.Errorf("unsupported runtime %q (allowed: docker, herdr, paperclip)", a.Runtime)
 	}
 	return nil
 }

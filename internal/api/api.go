@@ -204,6 +204,7 @@ type createAgentReq struct {
 	MemoryMB       int64    `json:"memory_mb"`
 	NetworkMode    string   `json:"network_mode"`
 	NetworkProfile string   `json:"network_profile"`
+	Runtime        string   `json:"runtime"`
 	DisplayName    string   `json:"display_name"`
 	OrgUnit        string   `json:"org_unit"`
 	Role           string   `json:"role"`
@@ -224,6 +225,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request) {
 		EnvFile: req.EnvFile, AgentRO: ro, UID: req.UID, GID: req.GID,
 		CPULimit: req.CPULimit, MemoryMB: req.MemoryMB, NetworkMode: req.NetworkMode,
 		NetworkProfile: model.NetworkProfile(req.NetworkProfile),
+		Runtime:        model.RuntimeType(req.Runtime),
 		DisplayName:    req.DisplayName, OrgUnit: req.OrgUnit, Role: req.Role,
 	}
 	created, err := s.Agents.Create(r.Context(), a, actor(r))
@@ -496,6 +498,7 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request) {
 		Command []string `json:"command"`
 		UID     *int     `json:"uid"`
 		GID     *int     `json:"gid"`
+		Runtime string   `json:"runtime"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", err)
@@ -509,7 +512,7 @@ func (s *Server) updateAgent(w http.ResponseWriter, r *http.Request) {
 		gid = *req.GID
 	}
 	a, err := s.Agents.UpdateAgentConfig(r.Context(), r.PathValue("id"),
-		req.Type, req.Image, req.Command, uid, gid, actor(r))
+		req.Type, req.Image, req.Command, uid, gid, req.Runtime, actor(r))
 	if err != nil {
 		s.fail(w, err)
 		return

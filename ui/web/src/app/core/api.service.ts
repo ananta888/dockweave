@@ -20,6 +20,7 @@ export interface AgentSpec {
   memory_mb?: number;
   network_mode?: string;
   network_profile?: string;
+  runtime?: string;
 }
 
 @Injectable({ providedIn: 'root' })

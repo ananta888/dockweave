@@ -710,3 +710,72 @@ func TestSetNetworkProfileRejectsUnknown(t *testing.T) {
 		t.Fatalf("egress status = %+v", st)
 	}
 }
+
+func TestRuntimeCommand(t *testing.T) {
+	base := func(rt model.RuntimeType, cmd []string) *model.Agent {
+		return &model.Agent{Type: "codex", Runtime: rt, Command: cmd}
+	}
+	// docker: command unchanged
+	if got := runtimeCommand(base(model.RuntimeDocker, []string{"codex", "run"})); len(got) != 2 || got[0] != "codex" {
+		t.Fatalf("docker runtime must keep the command verbatim, got %v", got)
+	}
+	// empty runtime = docker = unchanged
+	if got := runtimeCommand(base("", []string{"codex"})); len(got) != 1 || got[0] != "codex" {
+		t.Fatalf("empty runtime must keep the command verbatim, got %v", got)
+	}
+	// herdr: wraps the harness in a herdr pane
+	got := runtimeCommand(base(model.RuntimeHerdr, []string{"codex", "run"}))
+	want := []string{"herdr", "agent", "start", "--kind", "codex", "codex", "run"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("herdr runtime = %v, want %v", got, want)
+	}
+	// paperclip: command unchanged (heartbeat mode), marked via applyRuntime
+	if got := runtimeCommand(base(model.RuntimePaperclip, []string{"codex", "run"})); len(got) != 2 || got[0] != "codex" {
+		t.Fatalf("paperclip runtime must keep the command verbatim, got %v", got)
+	}
+}
+
+func TestApplyRuntimeMarksPaperclip(t *testing.T) {
+	a := &model.Agent{Type: "codex", Runtime: model.RuntimePaperclip, Command: []string{"codex", "run"}}
+	(&Service{}).applyRuntime(a)
+	found := false
+	for _, e := range a.Env {
+		if e == "DOCKWEAVE_RUNTIME=paperclip" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("paperclip runtime must set DOCKWEAVE_RUNTIME=paperclip, env=%v", a.Env)
+	}
+}
+
+func TestRuntimeRoundTrip(t *testing.T) {
+	_, _, _, st := setup(t)
+	ctx := context.Background()
+	a := &model.Agent{
+		ID: model.NewID("ag"), Name: "rt", Type: "codex", Image: "img",
+		AgentRO: true, NetworkMode: "bridge", State: model.AgentCreated,
+		Runtime: model.RuntimeHerdr, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	if err := st.CreateAgent(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Runtime != model.RuntimeHerdr {
+		t.Fatalf("runtime = %q, want herdr", got.Runtime)
+	}
+	got.Runtime = model.RuntimePaperclip
+	if err := st.UpdateAgentConfig(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := st.GetAgent(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.Runtime != model.RuntimePaperclip {
+		t.Fatalf("runtime = %q, want paperclip", got2.Runtime)
+	}
+}

@@ -19,6 +19,7 @@ export interface Agent {
   memory_mb?: number;
   network_mode: string;
   network_profile?: string;
+  runtime?: string;
   state: string;
   container_id?: string;
   created_at: string;

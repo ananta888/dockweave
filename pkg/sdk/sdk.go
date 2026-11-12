@@ -118,6 +118,7 @@ type AgentSpec struct {
 	MemoryMB       int64    `json:"memory_mb,omitempty"`
 	NetworkMode    string   `json:"network_mode,omitempty"`
 	NetworkProfile string   `json:"network_profile,omitempty"`
+	Runtime        string   `json:"runtime,omitempty"`
 }
 
 // CreateAgent creates an agent identity.
@@ -319,14 +320,17 @@ func (c *Client) AgentPaths(ctx context.Context, idOrName string) (*AgentPathsIn
 }
 
 // UpdateAgent changes the mutable agent configuration (type, image,
-// command, uid/gid). Takes effect at the next start.
-func (c *Client) UpdateAgent(ctx context.Context, idOrName, type_, image string, cmd []string, uid, gid int) (*model.Agent, error) {
+// command, uid/gid, runtime). Takes effect at the next start.
+func (c *Client) UpdateAgent(ctx context.Context, idOrName, type_, image string, cmd []string, uid, gid int, runtime string) (*model.Agent, error) {
 	body := map[string]any{"type": type_, "image": image, "command": cmd}
 	if uid >= 0 {
 		body["uid"] = uid
 	}
 	if gid >= 0 {
 		body["gid"] = gid
+	}
+	if runtime != "" {
+		body["runtime"] = runtime
 	}
 	var out model.Agent
 	if err := c.do(ctx, "PATCH", "/api/v1/agents/"+idOrName, body, &out); err != nil {

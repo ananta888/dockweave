@@ -46,6 +46,7 @@ type AgentSpec struct {
 	CPULimit    float64  `json:"cpu_limit,omitempty"`
 	MemoryMB    int64    `json:"memory_mb,omitempty"`
 	NetworkMode string   `json:"network_mode,omitempty"`
+	Runtime     string   `json:"runtime,omitempty"`
 	AgentDir    string   `json:"agent_dir,omitempty"`
 	NotesDir    string   `json:"notes_dir,omitempty"`
 }
@@ -109,7 +110,8 @@ func (s *Service) Export(ctx context.Context) (*Bundle, error) {
 			Command: a.Command, Env: a.Env, EnvFile: a.EnvFile,
 			AgentRO: a.AgentRO, UID: a.UID, GID: a.GID,
 			CPULimit: a.CPULimit, MemoryMB: a.MemoryMB,
-			NetworkMode: a.NetworkMode, AgentDir: a.AgentDir, NotesDir: a.NotesDir,
+			NetworkMode: a.NetworkMode, Runtime: string(a.Runtime),
+			AgentDir: a.AgentDir, NotesDir: a.NotesDir,
 		})
 	}
 	ws, err := s.Store.ListWorkspaces(ctx)
@@ -201,7 +203,8 @@ func (s *Service) Import(ctx context.Context, b *Bundle) (*ImportResult, error) 
 			Command: as.Command, Env: as.Env, EnvFile: as.EnvFile,
 			AgentRO: as.AgentRO, UID: as.UID, GID: as.GID,
 			CPULimit: as.CPULimit, MemoryMB: as.MemoryMB,
-			NetworkMode: as.NetworkMode, AgentDir: as.AgentDir, NotesDir: as.NotesDir,
+			NetworkMode: as.NetworkMode, Runtime: model.RuntimeType(as.Runtime),
+			AgentDir: as.AgentDir, NotesDir: as.NotesDir,
 		}
 		created, err := s.Agents.Create(ctx, a, "config-import")
 		if err != nil {

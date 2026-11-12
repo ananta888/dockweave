@@ -910,7 +910,7 @@ func (m *modelTUI) submitAgentUpdate() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_, err := client.UpdateAgent(ctx, id, agentTypes[f.agentType], strings.TrimSpace(f.image.Value()), specCmd, uid, uid)
+		_, err := client.UpdateAgent(ctx, id, agentTypes[f.agentType], strings.TrimSpace(f.image.Value()), specCmd, uid, uid, "")
 		return setupDoneMsg{err: err}
 	}
 }

@@ -96,6 +96,13 @@ import { Agent, AgentPaths, BrokerGrant, EgressStatus, Grant, MemoryInfo, Memory
               @for (t of types; track t) { <option [value]="t">{{ t }}</option> }
             </select>
           </label>
+          <label>Runtime adapter
+            <select [(ngModel)]="runtime">
+              <option value="docker">docker (direct)</option>
+              <option value="herdr">herdr (terminal multiplexer)</option>
+              <option value="paperclip">paperclip (heartbeat orchestration)</option>
+            </select>
+          </label>
           <label>Image <input [(ngModel)]="image" /></label>
           <label>UID <input type="number" [(ngModel)]="uid" /></label>
           <label>GID <input type="number" [(ngModel)]="gid" /></label>
@@ -247,6 +254,7 @@ export class ConfigComponent implements OnChanges {
   gid = 0;
   command = '';
   profile = '';
+  runtime = 'docker';
   envFile = '';
   agentDirInput = '';
   notesDirInput = '';
@@ -266,6 +274,7 @@ export class ConfigComponent implements OnChanges {
       this.gid = this.agent.gid;
       this.command = (this.agent.command ?? []).join('\n');
       this.profile = this.agent.network_profile ?? '';
+      this.runtime = this.agent.runtime ?? 'docker';
       this.envFile = this.agent.env_file ?? '';
       this.loadSnapshots();
       this.loadMemories();
@@ -304,7 +313,7 @@ export class ConfigComponent implements OnChanges {
     const cmd = this.command.split('\n').map(s => s.trim()).filter(Boolean);
     void this.run(() => new Promise<void>((resolve, reject) => {
       this.api.updateAgent(this.agent.id, {
-        type: this.type, image: this.image, command: cmd, uid: this.uid, gid: this.gid,
+        type: this.type, image: this.image, command: cmd, uid: this.uid, gid: this.gid, runtime: this.runtime,
       }).subscribe({
         next: () => {
           this.api.setNetworkProfile(this.agent.id, this.profile).subscribe({

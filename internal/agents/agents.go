@@ -382,6 +382,9 @@ func (s *Service) Create(ctx context.Context, a *model.Agent, actor string) (*mo
 	if a.Type == "" {
 		a.Type = "custom"
 	}
+	if a.Runtime == "" {
+		a.Runtime = model.RuntimeDocker
+	}
 	s.applyContainerIdentity(ctx, a, actor)
 	if err := s.Store.CreateAgent(ctx, a); err != nil {
 		return nil, err
@@ -526,8 +529,8 @@ func (s *Service) AgentPaths(ctx context.Context, idOrName string) (*AgentPaths,
 }
 
 // UpdateAgentConfig changes the mutable configuration of an agent (type,
-// image, command, uid/gid). It takes effect at the next agent start.
-func (s *Service) UpdateAgentConfig(ctx context.Context, idOrName string, type_, image string, cmd []string, uid, gid int, actor string) (*model.Agent, error) {
+// image, command, uid/gid, runtime). It takes effect at the next agent start.
+func (s *Service) UpdateAgentConfig(ctx context.Context, idOrName string, type_, image string, cmd []string, uid, gid int, runtime, actor string) (*model.Agent, error) {
 	a, err := s.Store.GetAgent(ctx, idOrName)
 	if err != nil {
 		return nil, err
@@ -547,12 +550,18 @@ func (s *Service) UpdateAgentConfig(ctx context.Context, idOrName string, type_,
 	if gid >= 0 {
 		a.GID = gid
 	}
+	if runtime != "" {
+		if !model.ValidRuntime(model.RuntimeType(runtime)) {
+			return nil, fmt.Errorf("unsupported runtime %q (allowed: docker, herdr, paperclip)", runtime)
+		}
+		a.Runtime = model.RuntimeType(runtime)
+	}
 	a.UpdatedAt = time.Now()
 	if err := s.Store.UpdateAgentConfig(ctx, a); err != nil {
 		return nil, err
 	}
 	s.event(ctx, model.EventAgentIdentity, actor, a.ID,
-		fmt.Sprintf("config updated: type=%s image=%s uid=%d:%d (restart to apply)", a.Type, a.Image, a.UID, a.GID))
+		fmt.Sprintf("config updated: type=%s image=%s uid=%d:%d runtime=%s (restart to apply)", a.Type, a.Image, a.UID, a.GID, a.Runtime))
 	return a, nil
 }
 
@@ -1173,6 +1182,35 @@ func validAgentType(t string) bool {
 	return false
 }
 
+// runtimeCommand returns the container entrypoint for the agent's runtime
+// adapter. The container stays the security boundary in every case; the
+// runtime only decides who drives the terminal/process inside it.
+func runtimeCommand(a *model.Agent) []string {
+	switch a.Runtime {
+	case model.RuntimeHerdr:
+		// herdr owns the terminal inside the container: the harness runs as a
+		// herdr pane so sessions can detach/reattach and persist. The image
+		// must provide the `herdr` binary. Without an explicit command, herdr
+		// starts with its defaults.
+		return append([]string{"herdr", "agent", "start", "--kind", a.Type}, a.Command...)
+	case model.RuntimePaperclip:
+		// paperclip drives the agent in heartbeats; the harness CLI runs
+		// normally, marked via env (see applyRuntime) so a paperclip adapter
+		// can attach and wake it.
+		return a.Command
+	default: // docker (or empty)
+		return a.Command
+	}
+}
+
+// applyRuntime adjusts the runtime spec for the agent's runtime adapter.
+func (s *Service) applyRuntime(a *model.Agent) {
+	a.Command = runtimeCommand(a)
+	if a.Runtime == model.RuntimePaperclip {
+		a.Env = append(a.Env, "DOCKWEAVE_RUNTIME=paperclip")
+	}
+}
+
 // Start creates or reuses the container and starts it. Idempotent.
 func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Agent, error) {
 	a, err := s.Store.GetAgent(ctx, idOrName)
@@ -1197,6 +1235,7 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 	if err := s.applyNetworkProfile(ctx, &runtimeAgent); err != nil {
 		return nil, err
 	}
+	s.applyRuntime(&runtimeAgent)
 
 	if err := s.Docker.EnsureImage(ctx, a.Image, nil); err != nil {
 		return nil, err

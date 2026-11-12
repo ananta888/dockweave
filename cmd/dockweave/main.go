@@ -101,6 +101,7 @@ func agentCmd() *cobra.Command {
 	f := create.Flags()
 	f.StringVar(&spec.Type, "type", "custom", "agent type (codex|opencode|claude|antigravity|gemini|custom)")
 	f.StringVar(&spec.Image, "image", "", "container image (required)")
+	f.StringVar(&spec.Runtime, "runtime", "docker", "runtime adapter (docker|herdr|paperclip)")
 	f.StringVar(&spec.EnvFile, "env-file", "", "file with KEY=VALUE env (secrets)")
 	f.StringVar(&spec.NetworkMode, "network", "bridge", "network mode (bridge|none)")
 	f.StringVar(&spec.NetworkProfile, "profile", "", "egress profile (offline|broker-only|restricted-development|unrestricted-legacy)")
@@ -159,6 +160,7 @@ func agentCmd() *cobra.Command {
 		upGID     int
 		upCmd     []string
 		upExecCmd string
+		upRuntime string
 		upUnit    string
 		upRole    string
 		upDisplay string
@@ -176,7 +178,7 @@ func agentCmd() *cobra.Command {
 				}
 				upCmd = []string{"sh", "-c", upExecCmd}
 			}
-			a, err := client().UpdateAgent(ctx(), args[0], upType, upImage, upCmd, upUID, upGID)
+			a, err := client().UpdateAgent(ctx(), args[0], upType, upImage, upCmd, upUID, upGID, upRuntime)
 			if err != nil {
 				fail(err)
 			}
@@ -187,8 +189,8 @@ func agentCmd() *cobra.Command {
 				}
 			}
 			out(a, func(w *tabwriter.Writer) {
-				fmt.Fprintf(w, "NAME\t%s\nDISPLAY\t%s\nUNIT\t%s\nROLE\t%s\nTYPE\t%s\nIMAGE\t%s\nCOMMAND\t%s\n",
-					a.Name, a.DisplayName, a.OrgUnit, a.Role, a.Type, a.Image, strings.Join(a.Command, " "))
+				fmt.Fprintf(w, "NAME\t%s\nDISPLAY\t%s\nUNIT\t%s\nROLE\t%s\nTYPE\t%s\nIMAGE\t%s\nRUNTIME\t%s\nCOMMAND\t%s\n",
+					a.Name, a.DisplayName, a.OrgUnit, a.Role, a.Type, a.Image, a.Runtime, strings.Join(a.Command, " "))
 			})
 		},
 	}
@@ -199,6 +201,7 @@ func agentCmd() *cobra.Command {
 	uf.IntVar(&upGID, "gid", -1, "run as gid (-1 = keep)")
 	uf.StringArrayVar(&upCmd, "cmd", nil, "override command (repeatable, verbatim argv elements)")
 	uf.StringVar(&upExecCmd, "exec", "", "shell command to run via sh -c (quote-safe alternative to --cmd)")
+	uf.StringVar(&upRuntime, "runtime", "", "runtime adapter (docker|herdr|paperclip)")
 	uf.StringVar(&upUnit, "unit", "", "organization unit for the web graph")
 	uf.StringVar(&upRole, "role", "", "organization role (e.g. CEO, CTO, Developer)")
 	uf.StringVar(&upDisplay, "display-name", "", "display name for the web graph")
