@@ -30,6 +30,18 @@ interface LayoutTemplate {
   nodes: LayoutTemplateNode[];
 }
 
+interface ConnectorConfig {
+  id: string;
+  agentId: string;
+  kind: 'mcp' | 'gate' | 'http' | 'agent-chain' | 'custom';
+  name: string;
+  targetAgentId?: string;
+  url?: string;
+  contract?: string;
+  direction: 'out' | 'in' | 'both';
+  enabled: boolean;
+}
+
 interface GhostNode {
   id: string;
   kind: NodeKind;
@@ -50,7 +62,7 @@ interface CustomEdge {
   sourceSide: Side;
   targetSide: Side;
 }
-type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge' | 'ghost';
+type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge' | 'ghost' | 'mcp' | 'gate' | 'http' | 'custom';
 
 interface GraphNode {
   id: string;
@@ -137,6 +149,9 @@ interface GraphEdge {
                 class="gw-node"
                 [class]="'kind-' + node.kind"
                 [class.selected]="selectedAgentId === agentIdOf(node)"
+                [class.active]="node.kind === 'agent' && node.state === 'running'"
+                [class.inactive]="node.kind === 'agent' && node.state !== 'running' && node.state !== 'error'"
+                [class.error]="node.kind === 'agent' && node.state === 'error'"
                 (click)="nodeClicked(node)"
                 (contextmenu)="openContext($event, node)">
                 @if (node.kind === 'ghost') {
@@ -146,7 +161,7 @@ interface GraphEdge {
                     <div class="ghost-sub">{{ node.active ? 'active · right-click to disable' : 'disabled · right-click to activate' }}</div>
                   </div>
                 } @else if (node.kind === 'agent' && mode() === 'organization') {
-                  <div class="figure" [class.on]="node.state === 'running'">
+                  <div class="figure" [class.on]="node.state === 'running'" [class.error]="node.state === 'error'">
                     <svg viewBox="0 0 80 108" class="avatar" aria-hidden="true">
                       <circle cx="40" cy="22" r="16" [attr.fill]="avatarColor(node)"></circle>
                       <path d="M12 104 C12 69 25 51 40 51 C55 51 68 69 68 104 Z" [attr.fill]="avatarColor(node)"></path>
@@ -368,6 +383,78 @@ interface GraphEdge {
         </div>
       }
 
+      @if (connectorsOpen()) {
+        <div class="settings-backdrop" (click)="connectorsOpen.set(false)">
+          <div class="settings-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Connectoren · {{ connectorAgent()?.display_name || connectorAgent()?.name }}</h3>
+              <button class="ghost small" (click)="connectorsOpen.set(false)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <h4>Neuer Connector</h4>
+                <div class="settings-grid">
+                  <label>Art
+                    <select [(ngModel)]="connKind" name="connKind">
+                      <option value="mcp">MCP Server (JSON contract)</option>
+                      <option value="gate">Deterministisches Gate</option>
+                      <option value="http">HTTP API</option>
+                      <option value="agent-chain">Agenten-Kette</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  <label>Name
+                    <input [(ngModel)]="connName" name="connName" placeholder="z. B. filesystem-mcp" />
+                  </label>
+                  <label>Richtung
+                    <select [(ngModel)]="connDirection" name="connDirection">
+                      <option value="out">Agent → Connector</option>
+                      <option value="in">Connector → Agent</option>
+                      <option value="both">beide</option>
+                    </select>
+                  </label>
+                  @if (connKind === 'agent-chain') {
+                    <label>Ziel-Agent
+                      <select [(ngModel)]="connTargetAgent" name="connTargetAgent">
+                        <option value="">— select —</option>
+                        @for (a of agents; track a.id) { @if (a.id !== connectorAgent()?.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> } }
+                      </select>
+                    </label>
+                  }
+                  @if (connKind === 'http' || connKind === 'mcp') {
+                    <label class="wide">URL / Endpoint
+                      <input [(ngModel)]="connURL" name="connURL" placeholder="https://… or stdio://…" />
+                    </label>
+                  }
+                  @if (connKind === 'mcp' || connKind === 'gate') {
+                    <label class="wide">JSON contract
+                      <textarea rows="5" [(ngModel)]="connContract" name="connContract" placeholder='{"type":"object","properties":{…}}'></textarea>
+                    </label>
+                  }
+                </div>
+                <div class="settings-row">
+                  <button class="primary" (click)="addConnector()">Connector hinzufügen</button>
+                </div>
+                @if (schemaError()) { <div class="notice error">{{ schemaError() }}</div> }
+              </section>
+              <section>
+                <h4>Konfigurierte Connectoren</h4>
+                @for (c of connectorsFor(connectorAgent()?.id || ''); track c.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ c.name }}</span>
+                    <span class="muted">{{ c.kind }} · {{ c.direction }}{{ c.targetAgentId ? ' · → ' + c.targetAgentId : '' }}</span>
+                    <span class="spacer"></span>
+                    <button class="small" (click)="toggleConnector(c.id)">{{ c.enabled ? 'disable' : 'enable' }}</button>
+                    <button class="small danger" (click)="deleteConnector(c.id)">delete</button>
+                  </div>
+                }
+                @if (!connectorsFor(connectorAgent()?.id || '').length) { <p class="muted">Noch keine Connectoren.</p> }
+              </section>
+            </div>
+          </div>
+        </div>
+      }
+
       @if (contextMenu(); as menu) {
         <div class="context-menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (contextmenu)="$event.preventDefault()">
           @if (menu.node; as n) {
@@ -377,7 +464,10 @@ interface GraphEdge {
             } @else {
               <button (click)="saveTemplate()">Layout als Template speichern…</button>
               <button (click)="resetNodePosition(n.id)">Position zurücksetzen</button>
-              @if (n.kind === 'agent') { <button (click)="openAgentById(n.id)">Agent öffnen</button> }
+              @if (n.kind === 'agent') {
+                <button (click)="openAgentById(n.id)">Agent öffnen</button>
+                <button (click)="openConnectorDialogByNode(n.id)">Connectoren konfigurieren…</button>
+              }
               <button class="danger" (click)="deleteCustomEdgesFor(n.id)">Eigene Kanten löschen</button>
             }
           } @else {
@@ -416,6 +506,10 @@ interface GraphEdge {
     .gw-node.kind-memory { border-left:4px solid #bc8cff; }
     .gw-node.kind-credential { border-left:4px solid #d29922; }
     .gw-node.kind-knowledge { border-left:4px solid #39c5cf; }
+    .gw-node.kind-mcp { border-left:4px solid #bc8cff; }
+    .gw-node.kind-gate { border-left:4px solid #d29922; }
+    .gw-node.kind-http { border-left:4px solid #39c5cf; }
+    .gw-node.kind-custom { border-left:4px solid #8b949e; }
     .gw-node.kind-ghost { width:190px; background:#1a0f12; border:1px dashed #f85149; opacity:.72; }
     .gw-node.kind-ghost.active { opacity:1; border-style:solid; box-shadow:0 0 0 2px #f8514933; }
     .ghost-card { padding:.5rem .6rem; }
@@ -433,8 +527,15 @@ interface GraphEdge {
     .role-badge { display:inline-block; font-size:.62rem; color:#58a6ff; background:#1f6feb22; border:1px solid #1f6feb66; border-radius:999px; padding:.05rem .4rem; margin-top:.25rem; }
     .role-badge.inline { margin-top:.2rem; }
     .figure { display:flex; flex-direction:column; align-items:center; padding:.4rem; border-radius:12px; border:1px solid #30363d; background:#161b22; transition:border-color .15s, box-shadow .15s; }
-    .figure.on { border-color:#3fb950; box-shadow:0 0 0 2px #3fb95033; }
+    .figure { border:2px solid #484f58; }
+    .figure.on { border-color:#3fb950; animation:pulse-green 1.6s ease-out infinite; }
+    .figure.error { border-color:#f85149; animation:blink-red 1s steps(2, jump-none) infinite; }
     .figure.selected { border-color:#58a6ff; }
+    .gw-node.kind-agent.active { border-color:#3fb950; animation:pulse-green 1.6s ease-out infinite; }
+    .gw-node.kind-agent.inactive { border-color:#484f58; }
+    .gw-node.kind-agent.error { border-color:#f85149; animation:blink-red 1s steps(2, jump-none) infinite; }
+    @keyframes pulse-green { 0% { box-shadow:0 0 0 0 #3fb95088; } 70% { box-shadow:0 0 0 9px #3fb95000; } 100% { box-shadow:0 0 0 0 #3fb95000; } }
+    @keyframes blink-red { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
     .avatar { width:70px; height:94px; }
     .figure-name { font-weight:700; font-size:.8rem; margin-top:.1rem; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .figure-sub { font-size:.62rem; color:#8b949e; text-transform:uppercase; }
@@ -535,6 +636,15 @@ export class GraphComponent {
   ghosts = signal<GhostNode[]>(this.loadGhosts());
   contextMenu = signal<{ x: number; y: number; node?: GraphNode } | null>(null);
   newTemplateName = '';
+  connectors = signal<ConnectorConfig[]>(this.loadConnectors());
+  connectorsOpen = signal(false);
+  connectorAgent = signal<Agent | null>(null);
+  connKind: ConnectorConfig['kind'] = 'mcp';
+  connName = '';
+  connTargetAgent = '';
+  connURL = '';
+  connContract = '';
+  connDirection: ConnectorConfig['direction'] = 'out';
   private manualPositions = this.loadPositions();
 
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
@@ -551,7 +661,7 @@ export class GraphComponent {
         id: g.id, kind: 'ghost' as const, title: g.title, subtitle: g.active ? 'active placeholder' : 'template placeholder',
         detail: g.active ? 'enabled' : 'disabled', position: g.position, ghost: true, active: g.active, templateId: g.templateId,
       }));
-    return [...nodes, ...ghosts];
+    return [...nodes, ...this.connectorNodes(nodes), ...ghosts];
   });
   readonly edges = computed(() => { this.schema(); this.customEdges(); return this.buildEdges(); });
   readonly unitSuggestions = computed(() => {
@@ -797,6 +907,125 @@ export class GraphComponent {
     this.customEdges.set(next);
     this.persistCustomEdges(next);
     this.closeContext();
+  }
+
+
+  openConnectorDialogByNode(nodeId: string): void {
+    const a = this.agents.find(x => x.id === nodeId.replace(/^agent-/, ''));
+    if (a) this.openConnectorDialog(a);
+  }
+
+  openConnectorDialog(a: Agent): void {
+    this.closeContext();
+    this.connectorAgent.set(a);
+    this.connKind = 'mcp';
+    this.connName = '';
+    this.connTargetAgent = '';
+    this.connURL = '';
+    this.connContract = '';
+    this.connDirection = 'out';
+    this.connectorsOpen.set(true);
+  }
+
+  addConnector(): void {
+    const a = this.connectorAgent();
+    if (!a) return;
+    const name = this.connName.trim();
+    if (!name) { this.schemaError.set('connector name is required'); return; }
+    if (this.connKind === 'agent-chain' && !this.connTargetAgent) {
+      this.schemaError.set('target agent is required for an agent chain');
+      return;
+    }
+    if (this.connContract.trim()) {
+      try { JSON.parse(this.connContract); } catch { this.schemaError.set('contract is not valid JSON'); return; }
+    }
+    const cfg: ConnectorConfig = {
+      id: `conn-${Date.now()}`, agentId: a.id, kind: this.connKind, name,
+      targetAgentId: this.connTargetAgent || undefined, url: this.connURL.trim() || undefined,
+      contract: this.connContract.trim() || undefined, direction: this.connDirection, enabled: true,
+    };
+    const next = [...this.connectors(), cfg];
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    this.connName = '';
+    this.connContract = '';
+    this.connURL = '';
+    this.schemaError.set('');
+  }
+
+  deleteConnector(id: string): void {
+    const next = this.connectors().filter(c => c.id !== id);
+    this.connectors.set(next);
+    this.persistConnectors(next);
+  }
+
+  toggleConnector(id: string): void {
+    const next = this.connectors().map(c => c.id === id ? { ...c, enabled: !c.enabled } : c);
+    this.connectors.set(next);
+    this.persistConnectors(next);
+  }
+
+  connectorsFor(agentId: string): ConnectorConfig[] {
+    return this.connectors().filter(c => c.agentId === agentId);
+  }
+
+  private loadConnectors(): ConnectorConfig[] {
+    try { return JSON.parse(localStorage.getItem('dockweave.agentConnectors') || '[]'); } catch { return []; }
+  }
+
+  private persistConnectors(v: ConnectorConfig[]): void {
+    try { localStorage.setItem('dockweave.agentConnectors', JSON.stringify(v)); } catch { /* ignore */ }
+  }
+
+  private connectorNodes(base: GraphNode[]): GraphNode[] {
+    const byId = new Map(base.map(n => [n.id, n]));
+    const out: GraphNode[] = [];
+    const used = new Map<string, number>();
+    for (const c of this.connectors()) {
+      if (!c.enabled || c.kind === 'agent-chain') continue;
+      const agent = byId.get(`agent-${c.agentId}`);
+      if (!agent) continue;
+      const idx = used.get(c.agentId) ?? 0;
+      used.set(c.agentId, idx + 1);
+      out.push({
+        id: `connector-${c.id}`,
+        kind: c.kind === 'custom' ? 'custom' : c.kind,
+        title: c.name,
+        subtitle: c.kind,
+        detail: c.url || (c.contract ? 'JSON contract' : ''),
+        position: { x: agent.position.x + 320, y: agent.position.y + idx * 130 },
+      });
+    }
+    return out;
+  }
+
+  private connectorEdges(): GraphEdge[] {
+    const edges: GraphEdge[] = [];
+    for (const c of this.connectors()) {
+      if (!c.enabled) continue;
+      if (c.kind === 'agent-chain') {
+        if (!c.targetAgentId) continue;
+        const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');
+        const tgt = this.pickPort(`agent-${c.targetAgentId}`, 'in', 'left');
+        if (src && tgt) edges.push({
+          id: `chain-${c.id}`, source: `agent-${c.agentId}`, target: `agent-${c.targetAgentId}`,
+          sourcePort: src.id, targetPort: tgt.id, label: c.name || 'chain', kind: 'chain',
+          sourceSide: src.side, targetSide: tgt.side, type: 'bezier',
+        });
+        continue;
+      }
+      const connId = `connector-${c.id}`;
+      if (c.direction === 'in') {
+        const src = this.pickPort(connId, 'out', 'right');
+        const tgt = this.pickPort(`agent-${c.agentId}`, 'in', 'left');
+        if (src && tgt) edges.push({ id: `conn-${c.id}`, source: connId, target: `agent-${c.agentId}`, sourcePort: src.id, targetPort: tgt.id, label: c.name, kind: c.kind, sourceSide: src.side, targetSide: tgt.side, type: 'bezier' });
+      } else {
+        const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');
+        const tgt = this.pickPort(connId, 'in', 'left');
+        if (src && tgt) edges.push({ id: `conn-${c.id}`, source: `agent-${c.agentId}`, target: connId, sourcePort: src.id, targetPort: tgt.id, label: c.name, kind: c.kind, sourceSide: src.side, targetSide: tgt.side, type: 'bezier' });
+      }
+    }
+    return edges;
   }
 
   private loadTemplates(): LayoutTemplate[] {
@@ -1110,12 +1339,13 @@ export class GraphComponent {
 
   private buildEdges(): GraphEdge[] {
     const base = this.mode() === 'organization' ? this.buildOrgEdges() : this.buildResourceEdges();
+    const connectors = this.connectorEdges();
     const custom = this.customEdges().map(e => ({
       id: e.id, source: e.source, target: e.target, sourcePort: e.sourcePort, targetPort: e.targetPort,
       label: e.label, kind: e.kind, sourceSide: e.sourceSide, targetSide: e.targetSide,
       type: 'bezier' as const,
     }));
-    return [...base, ...custom];
+    return [...base, ...connectors, ...custom];
   }
 
   private buildOrgEdges(): GraphEdge[] {

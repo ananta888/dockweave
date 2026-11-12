@@ -38,7 +38,7 @@ DOCKWEAVE_WEB_TOKEN=… dockweave web                        # festes Token
 | Memory | Memory-Identität anhängen/lösen, Snapshots anlegen/restoren/löschen |
 | Credentials | Broker-Credential-Grants ansehen (nur Metadaten) |
 | Analyse | Aktivität/CPU/Memory, Dateikonflikte, Events, Broker-Traffic, Provider-Status |
-| Graph | Foblex-Flow-Graph in zwei Modi: **Organisation** (Einheiten → Agenten als 2D-Figuren mit Rollenlabels, direkt im Seiten-Inspektor editierbar) und **Ressourcen** (Workspaces, Memory, Credentials, Knowledge). Ports pro Node-Art und Seite konfigurierbar; Layout-Bereinigung mit Hierarchie/Spalten/Grid/Radial/Frei/Gemischt; Connection-Builder und JSON-Schema-Contract |
+| Graph | Foblex-Flow-Graph in zwei Modi: **Organisation** (Einheiten → Agenten als 2D-Figuren mit Rollenlabels, direkt im Seiten-Inspektor editierbar) und **Ressourcen** (Workspaces, Memory, Credentials, Knowledge). Ports pro Node-Art und Seite konfigurierbar; Layout-Bereinigung mit Hierarchie/Spalten/Grid/Radial/Frei/Gemischt; Connection-Builder, JSON-Schema-Contract, Layout-Templates/Platzhalter und Agent-Connectoren (MCP/Gate/HTTP/Agentenkette). Laufende Nodes pulsieren grün, inaktive sind grau, Fehler blinken rot |
 | Workspaces | Host-Verzeichnisse registrieren/entfernen |
 
 Secret-Werte werden nie angezeigt. Anlegen/Rotieren von Secrets und
@@ -102,8 +102,12 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   Rechtsklick auf einen Platzhalter aktiviert/deaktiviert oder entfernt ihn.
 - **Rechtsklick-Menü** auf jedem Node und auf der Canvas: Layout als Template
   speichern, Template anwenden, Node-Position zurücksetzen, Agent öffnen,
-  eigene Kanten löschen, Platzhalter aktivieren/entfernen oder Layout
-  aufräumen.
+  Connectoren konfigurieren, eigene Kanten löschen, Platzhalter
+  aktivieren/entfernen oder Layout aufräumen.
+- **Agent-Connectoren**: MCP-Server (JSON-Contract), deterministisches Gate,
+  HTTP-API, Agentenkette und Custom. Pro Agent gespeichert und als verbundene
+  Nodes/Kanten dargestellt; der Dialog validiert JSON-Contracts und erlaubt
+  Enable/Disable pro Connector.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer

@@ -39,7 +39,11 @@ All notable changes to DockWeave are documented here. The format follows
   connection builder for custom edges. Layout templates capture current
   positions; applying a template auto-arranges new nodes and shows missing
   nodes as red dashed placeholders at their saved positions, managed by a
-  right-click context menu on every node and on the canvas. The gateway is
+  right-click context menu on every node and on the canvas. Agent connectors
+  (MCP server with JSON contract, deterministic gate, HTTP API, agent chain,
+  custom) are configurable per agent via right-click and rendered in the
+  graph. Running nodes pulse green, inactive nodes are gray and error states
+  blink red. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

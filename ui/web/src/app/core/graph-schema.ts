@@ -48,6 +48,9 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     memory: ports(port(1, 0), port(0, 0), port(0, 0), port(0, 0)),
     credential: ports(port(1, 0), port(0, 0), port(0, 0), port(0, 0)),
     knowledge: ports(port(0, 0), port(0, 0), port(4, 0), port(0, 0)),
+    mcp: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
+    gate: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
+    http: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
   },
   connectionTypes: [
     { id: 'rw', label: 'read-write', color: '#3fb950', strict: true },
@@ -58,6 +61,10 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     { id: 'unit', label: 'unit membership', color: '#3fb950' },
     { id: 'org', label: 'organization', color: '#58a6ff' },
     { id: 'custom', label: 'custom', color: '#8b949e', dashed: true },
+    { id: 'mcp', label: 'MCP server', color: '#bc8cff' },
+    { id: 'gate', label: 'deterministic gate', color: '#d29922' },
+    { id: 'http', label: 'HTTP API', color: '#39c5cf' },
+    { id: 'chain', label: 'agent chain', color: '#58a6ff', dashed: true },
   ],
   templates: [
     { id: 'agent-workspace', name: 'Agent → Workspace', sourceKind: 'agent', targetKind: 'workspace', type: 'rw', label: 'rw', sourceSide: 'left', targetSide: 'right' },
@@ -65,5 +72,9 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     { id: 'agent-credential', name: 'Agent → Credential', sourceKind: 'agent', targetKind: 'credential', type: 'credential', label: 'credential', sourceSide: 'right', targetSide: 'left' },
     { id: 'agent-knowledge', name: 'Agent → Knowledge', sourceKind: 'agent', targetKind: 'knowledge', type: 'knowledge', label: 'knowledge', sourceSide: 'bottom', targetSide: 'top' },
     { id: 'unit-agent', name: 'Unit → Agent', sourceKind: 'unit', targetKind: 'agent', type: 'unit', label: 'member', sourceSide: 'bottom', targetSide: 'top' },
+    { id: 'agent-mcp', name: 'Agent → MCP server', sourceKind: 'agent', targetKind: 'mcp', type: 'mcp', label: 'mcp', sourceSide: 'right', targetSide: 'left' },
+    { id: 'agent-gate', name: 'Agent → Gate', sourceKind: 'agent', targetKind: 'gate', type: 'gate', label: 'gate', sourceSide: 'right', targetSide: 'left' },
+    { id: 'agent-http', name: 'Agent → HTTP API', sourceKind: 'agent', targetKind: 'http', type: 'http', label: 'http', sourceSide: 'right', targetSide: 'left' },
+    { id: 'agent-chain', name: 'Agent → Agent (chain)', sourceKind: 'agent', targetKind: 'agent', type: 'chain', label: 'chain', sourceSide: 'right', targetSide: 'left' },
   ],
 };
