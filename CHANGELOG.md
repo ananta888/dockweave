@@ -36,7 +36,10 @@ All notable changes to DockWeave are documented here. The format follows
   resources: workspaces, memory, credential grants, knowledge). Graph
   settings add configurable ports per node kind/side, layout cleanup
   (hierarchy/columns/grid/radial/free/mixed), a JSON schema contract and a
-  connection builder for custom edges. The gateway is
+  connection builder for custom edges. Layout templates capture current
+  positions; applying a template auto-arranges new nodes and shows missing
+  nodes as red dashed placeholders at their saved positions, managed by a
+  right-click context menu on every node and on the canvas. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

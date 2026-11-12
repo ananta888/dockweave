@@ -95,6 +95,15 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
 - **Connection-Builder**: Template, Quell-Node/Port, Ziel-Node/Port, Typ und
   Label wählen; eigene Kanten werden lokal gespeichert und im Graph
   dargestellt.
+- **Layout-Templates**: aktuelle Node-Positionen als benanntes Template
+  speichern. Beim Anwenden werden passende Nodes positioniert, neue Nodes
+  automatisch aufgeräumt und fehlende Template-Nodes als rote, gestrichelte,
+  deaktivierte Platzhalter an ihrer gespeicherten Position dargestellt.
+  Rechtsklick auf einen Platzhalter aktiviert/deaktiviert oder entfernt ihn.
+- **Rechtsklick-Menü** auf jedem Node und auf der Canvas: Layout als Template
+  speichern, Template anwenden, Node-Position zurücksetzen, Agent öffnen,
+  eigene Kanten löschen, Platzhalter aktivieren/entfernen oder Layout
+  aufräumen.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer

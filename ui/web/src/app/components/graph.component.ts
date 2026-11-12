@@ -16,6 +16,29 @@ interface GraphPort {
   top: number;
 }
 
+interface LayoutTemplateNode {
+  id: string;
+  kind: NodeKind;
+  title: string;
+  position: { x: number; y: number };
+}
+
+interface LayoutTemplate {
+  id: string;
+  name: string;
+  createdAt: string;
+  nodes: LayoutTemplateNode[];
+}
+
+interface GhostNode {
+  id: string;
+  kind: NodeKind;
+  title: string;
+  position: { x: number; y: number };
+  templateId: string;
+  active: boolean;
+}
+
 interface CustomEdge {
   id: string;
   source: string;
@@ -27,7 +50,7 @@ interface CustomEdge {
   sourceSide: Side;
   targetSide: Side;
 }
-type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge';
+type NodeKind = 'org' | 'unit' | 'agent' | 'workspace' | 'memory' | 'credential' | 'knowledge' | 'ghost';
 
 interface GraphNode {
   id: string;
@@ -39,6 +62,9 @@ interface GraphNode {
   state?: string;
   role?: string;
   unit?: string;
+  ghost?: boolean;
+  active?: boolean;
+  templateId?: string;
 }
 
 interface GraphEdge {
@@ -59,7 +85,7 @@ interface GraphEdge {
   standalone: true,
   imports: [FFlowModule, FMinimapComponent, FormsModule],
   template: `
-    <div class="graph-view">
+    <div class="graph-view" (contextmenu)="openContext($event)" (click)="closeContext()">
       <div class="graph-toolbar">
         <div class="mode-switch">
           <button [class.active]="mode() === 'organization'" (click)="setMode('organization')">Organisation</button>
@@ -111,8 +137,15 @@ interface GraphEdge {
                 class="gw-node"
                 [class]="'kind-' + node.kind"
                 [class.selected]="selectedAgentId === agentIdOf(node)"
-                (click)="nodeClicked(node)">
-                @if (node.kind === 'agent' && mode() === 'organization') {
+                (click)="nodeClicked(node)"
+                (contextmenu)="openContext($event, node)">
+                @if (node.kind === 'ghost') {
+                  <div class="ghost-card" [class.active]="node.active">
+                    <div class="ghost-kind">PLACEHOLDER</div>
+                    <div class="ghost-title">{{ node.title }}</div>
+                    <div class="ghost-sub">{{ node.active ? 'active · right-click to disable' : 'disabled · right-click to activate' }}</div>
+                  </div>
+                } @else if (node.kind === 'agent' && mode() === 'organization') {
                   <div class="figure" [class.on]="node.state === 'running'">
                     <svg viewBox="0 0 80 108" class="avatar" aria-hidden="true">
                       <circle cx="40" cy="22" r="16" [attr.fill]="avatarColor(node)"></circle>
@@ -217,6 +250,24 @@ interface GraphEdge {
               </section>
 
               <section>
+                <h4>Layout templates</h4>
+                <div class="settings-row">
+                  <input [(ngModel)]="newTemplateName" name="newTemplateName" placeholder="Template name" />
+                  <button class="primary" (click)="saveTemplate(newTemplateName)">Save current layout</button>
+                  <span class="muted">{{ layoutTemplates().length }} template(s) · {{ ghosts().length }} placeholder(s)</span>
+                </div>
+                @for (t of layoutTemplates(); track t.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ t.name }}</span>
+                    <span class="muted">{{ t.nodes.length }} nodes</span>
+                    <span class="spacer"></span>
+                    <button class="small" (click)="applyTemplateById(t.id)">apply</button>
+                    <button class="small danger" (click)="deleteTemplate(t.id)">delete</button>
+                  </div>
+                }
+              </section>
+
+              <section>
                 <h4>Ports per node kind (in / out)</h4>
                 <table class="ports-table">
                   <thead>
@@ -260,7 +311,7 @@ interface GraphEdge {
                 <h4>Connection builder</h4>
                 <div class="settings-grid">
                   <label>Template
-                    <select [(ngModel)]="connTemplate" (ngModelChange)="applyTemplate()" name="connTemplate">
+                    <select [(ngModel)]="connTemplate" (ngModelChange)="applyConnectionTemplate()" name="connTemplate">
                       <option value="">— custom —</option>
                       @for (t of schema().templates; track t.id) { <option [value]="t.id">{{ t.name }}</option> }
                     </select>
@@ -316,6 +367,31 @@ interface GraphEdge {
           </div>
         </div>
       }
+
+      @if (contextMenu(); as menu) {
+        <div class="context-menu" [style.left.px]="menu.x" [style.top.px]="menu.y" (click)="$event.stopPropagation()" (contextmenu)="$event.preventDefault()">
+          @if (menu.node; as n) {
+            @if (n.kind === 'ghost') {
+              <button (click)="toggleGhost(n.id)">{{ n.active ? 'Platzhalter deaktivieren' : 'Platzhalter aktivieren' }}</button>
+              <button class="danger" (click)="removeGhost(n.id)">Platzhalter löschen</button>
+            } @else {
+              <button (click)="saveTemplate()">Layout als Template speichern…</button>
+              <button (click)="resetNodePosition(n.id)">Position zurücksetzen</button>
+              @if (n.kind === 'agent') { <button (click)="openAgentById(n.id)">Agent öffnen</button> }
+              <button class="danger" (click)="deleteCustomEdgesFor(n.id)">Eigene Kanten löschen</button>
+            }
+          } @else {
+            <button (click)="saveTemplate()">Layout als Template speichern…</button>
+            <button (click)="cleanup()">Aufräumen</button>
+          }
+          @if (layoutTemplates().length) {
+            <div class="menu-sep"></div>
+            @for (t of layoutTemplates(); track t.id) {
+              <button (click)="applyTemplateById(t.id)">Template: {{ t.name }}</button>
+            }
+          }
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -340,6 +416,12 @@ interface GraphEdge {
     .gw-node.kind-memory { border-left:4px solid #bc8cff; }
     .gw-node.kind-credential { border-left:4px solid #d29922; }
     .gw-node.kind-knowledge { border-left:4px solid #39c5cf; }
+    .gw-node.kind-ghost { width:190px; background:#1a0f12; border:1px dashed #f85149; opacity:.72; }
+    .gw-node.kind-ghost.active { opacity:1; border-style:solid; box-shadow:0 0 0 2px #f8514933; }
+    .ghost-card { padding:.5rem .6rem; }
+    .ghost-kind { font-size:.6rem; color:#f85149; letter-spacing:.08em; }
+    .ghost-title { font-weight:700; font-size:.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ghost-sub { font-size:.65rem; color:#8b949e; }
     .node-head { display:flex; align-items:center; justify-content:space-between; gap:.4rem; }
     .kind { font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; color:#8b949e; }
     .state { font-size:.62rem; border-radius:999px; padding:.05rem .4rem; background:#21262d; color:#8b949e; }
@@ -398,6 +480,11 @@ interface GraphEdge {
     .custom-edge { display:flex; align-items:center; gap:.5rem; padding:.3rem 0; border-bottom:1px solid #21262d; font-size:.75rem; }
     .small-select { padding:.2rem .35rem; font-size:.72rem; }
     .danger { background:#da3633; border-color:#f85149; color:#fff; }
+    .context-menu { position:fixed; z-index:120; min-width:230px; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:.25rem; box-shadow:0 12px 32px #000a; display:flex; flex-direction:column; }
+    .context-menu button { text-align:left; background:transparent; border:none; color:#c9d1d9; padding:.4rem .55rem; border-radius:5px; font-size:.78rem; }
+    .context-menu button:hover { background:#1f6feb26; }
+    .context-menu .danger { color:#ff7b72; }
+    .menu-sep { height:1px; background:#30363d; margin:.25rem 0; }
     .notice { padding:.45rem .6rem; background:#11263b; border:1px solid #1f6feb; border-radius:6px; font-size:.78rem; }
     .notice.error { background:#3d1114; border-color:#f85149; }
     .primary { background:#238636; border-color:#2ea043; color:#fff; }
@@ -444,12 +531,28 @@ export class GraphComponent {
   connType = 'rw';
   connLabel = '';
   connTemplate = '';
+  layoutTemplates = signal<LayoutTemplate[]>(this.loadTemplates());
+  ghosts = signal<GhostNode[]>(this.loadGhosts());
+  contextMenu = signal<{ x: number; y: number; node?: GraphNode } | null>(null);
+  newTemplateName = '';
   private manualPositions = this.loadPositions();
 
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
   private readonly api = inject(ApiService);
 
-  readonly nodes = computed(() => { this.layoutNonce(); this.schema(); return this.buildNodes(); });
+  readonly nodes = computed(() => {
+    this.layoutNonce();
+    this.schema();
+    const nodes = this.buildNodes();
+    const real = new Set(nodes.map(n => n.id));
+    const ghosts = this.ghosts()
+      .filter(g => !real.has(g.id))
+      .map(g => ({
+        id: g.id, kind: 'ghost' as const, title: g.title, subtitle: g.active ? 'active placeholder' : 'template placeholder',
+        detail: g.active ? 'enabled' : 'disabled', position: g.position, ghost: true, active: g.active, templateId: g.templateId,
+      }));
+    return [...nodes, ...ghosts];
+  });
   readonly edges = computed(() => { this.schema(); this.customEdges(); return this.buildEdges(); });
   readonly unitSuggestions = computed(() => {
     const units = new Set(this.agents.map(a => a.org_unit).filter(Boolean) as string[]);
@@ -551,6 +654,11 @@ export class GraphComponent {
     this.agentSelected.emit(a.id);
   }
 
+  openAgentById(nodeId: string): void {
+    this.closeContext();
+    this.agentSelected.emit(nodeId.replace(/^agent-/, ''));
+  }
+
 
   nodeKinds(): string[] {
     return Object.keys(this.schema().nodePorts).sort();
@@ -590,6 +698,121 @@ export class GraphComponent {
   moveNode(id: string, pos: { x: number; y: number }): void {
     this.manualPositions[id] = { x: pos.x, y: pos.y };
     this.persistPositions(this.manualPositions);
+  }
+
+  openContext(ev: MouseEvent, node?: GraphNode): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.contextMenu.set({ x: ev.clientX, y: ev.clientY, node });
+  }
+
+  closeContext(): void {
+    this.contextMenu.set(null);
+  }
+
+  saveTemplate(name?: string): void {
+    const chosen = (name ?? '').trim();
+    if (!chosen) {
+      this.newTemplateName = `Layout ${new Date().toLocaleString()}`;
+      this.settingsOpen.set(true);
+      this.closeContext();
+      return;
+    }
+    const nodes = this.nodes()
+      .filter(n => n.kind !== 'ghost')
+      .map(n => ({ id: n.id, kind: n.kind, title: n.title, position: { x: n.position.x, y: n.position.y } }));
+    if (!nodes.length) return;
+    const tpl: LayoutTemplate = { id: `tpl-${Date.now()}`, name: chosen, createdAt: new Date().toISOString(), nodes };
+    const next = [tpl, ...this.layoutTemplates()];
+    this.layoutTemplates.set(next);
+    this.persistTemplates(next);
+    this.newTemplateName = '';
+    this.message.set(`Template "${chosen}" saved`);
+  }
+
+  applyTemplateById(id: string): void {
+    const tpl = this.layoutTemplates().find(t => t.id === id);
+    if (tpl) this.applyTemplate(tpl);
+    this.closeContext();
+  }
+
+  applyTemplate(tpl: LayoutTemplate): void {
+    const real = this.nodes().filter(n => n.kind !== 'ghost');
+    const byId = new Map(real.map(n => [n.id, n]));
+    const tplById = new Map(tpl.nodes.map(n => [n.id, n]));
+    const maxY = tpl.nodes.reduce((m, n) => Math.max(m, n.position.y), 0);
+    let extra = 0;
+    const positions: Record<string, { x: number; y: number }> = {};
+    for (const n of real) {
+      const p = tplById.get(n.id);
+      if (p) {
+        positions[n.id] = { ...p.position };
+      } else {
+        positions[n.id] = { x: (extra % 4) * 320, y: maxY + 260 + Math.floor(extra / 4) * 210 };
+        extra++;
+      }
+    }
+    this.manualPositions = positions;
+    this.persistPositions(positions);
+    const missing = tpl.nodes.filter(n => !byId.has(n.id)).map(n => ({
+      id: n.id, kind: n.kind, title: n.title, position: n.position, templateId: tpl.id, active: false,
+    }));
+    this.ghosts.set(missing);
+    this.persistGhosts(missing);
+    this.layout.set('free');
+    this.layoutNonce.update(v => v + 1);
+    this.message.set(`Template "${tpl.name}" applied${missing.length ? ` · ${missing.length} placeholder(s)` : ''}`);
+    setTimeout(() => this.fit(), 120);
+  }
+
+  deleteTemplate(id: string): void {
+    const next = this.layoutTemplates().filter(t => t.id !== id);
+    this.layoutTemplates.set(next);
+    this.persistTemplates(next);
+  }
+
+  toggleGhost(id: string): void {
+    const next = this.ghosts().map(g => g.id === id ? { ...g, active: !g.active } : g);
+    this.ghosts.set(next);
+    this.persistGhosts(next);
+    this.closeContext();
+  }
+
+  removeGhost(id: string): void {
+    const next = this.ghosts().filter(g => g.id !== id);
+    this.ghosts.set(next);
+    this.persistGhosts(next);
+    this.closeContext();
+  }
+
+  resetNodePosition(id: string): void {
+    delete this.manualPositions[id];
+    this.persistPositions(this.manualPositions);
+    this.layoutNonce.update(v => v + 1);
+    this.closeContext();
+  }
+
+  deleteCustomEdgesFor(id: string): void {
+    const next = this.customEdges().filter(e => e.source !== id && e.target !== id);
+    this.customEdges.set(next);
+    this.persistCustomEdges(next);
+    this.closeContext();
+  }
+
+  private loadTemplates(): LayoutTemplate[] {
+    try { return JSON.parse(localStorage.getItem('dockweave.layoutTemplates') || '[]'); } catch { return []; }
+  }
+
+  private persistTemplates(v: LayoutTemplate[]): void {
+    try { localStorage.setItem('dockweave.layoutTemplates', JSON.stringify(v)); } catch { /* ignore */ }
+  }
+
+  private loadGhosts(): GhostNode[] {
+    try { return JSON.parse(localStorage.getItem('dockweave.graphGhosts') || '[]'); } catch { return []; }
+  }
+
+  private persistGhosts(v: GhostNode[]): void {
+    try { localStorage.setItem('dockweave.graphGhosts', JSON.stringify(v)); } catch { /* ignore */ }
   }
 
   openSettings(): void {
@@ -672,6 +895,7 @@ export class GraphComponent {
   }
 
   portsFor(node: GraphNode): GraphPort[] {
+    if (node.kind === 'ghost') return [];
     const spec = this.schema().nodePorts[node.kind] ?? DEFAULT_GRAPH_SCHEMA.nodePorts[node.kind];
     if (!spec) return [];
     const out: GraphPort[] = [];
@@ -713,7 +937,7 @@ export class GraphComponent {
     return { id: p.id, side: p.side };
   }
 
-  applyTemplate(): void {
+  applyConnectionTemplate(): void {
     const t = this.schema().templates.find(x => x.id === this.connTemplate);
     if (!t) return;
     this.connType = t.type;
