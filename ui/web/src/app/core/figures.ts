@@ -135,6 +135,36 @@ export const FIGURES: BuiltinFigure[] = [
     outfit: '#8b949e', outfitDark: '#4f5862',
     accessory: `<path d="M30 46 Q30 12 60 12 Q90 12 90 46" fill="none" stroke="#c9d1d9" stroke-width="4"/><rect x="24" y="42" width="11" height="18" rx="5" fill="#0b0e14"/><rect x="85" y="42" width="11" height="18" rx="5" fill="#0b0e14"/><path d="M87 55 Q96 64 90 71" fill="none" stroke="#c9d1d9" stroke-width="2"/><circle cx="89" cy="73" r="3" fill="#c9d1d9"/><rect x="42" y="86" width="36" height="20" rx="4" fill="#0b0e14"/><path d="M46 92 H74 M46 98 H68" stroke="#39c5cf" stroke-width="2"/>`,
   }),
+  makeFigure({
+    id: 'product-manager', label: 'Product', bg1: '#123a36', bg2: '#071c1a',
+    skin1: '#f6cda6', skin2: '#d99d70', hair: '#33241c', hairDark: '#180f0a',
+    outfit: '#2ec4b6', outfitDark: '#12766d',
+    accessory: `<rect x="76" y="70" width="28" height="34" rx="4" fill="#f2f6fa"/><path d="M82 78 H98 M82 85 H96 M82 92 H94" stroke="#8b949e" stroke-width="2"/><path d="M84 98 L88 102 L96 93" stroke="#238636" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  }),
+  makeFigure({
+    id: 'architect', label: 'Architect', bg1: '#152a44', bg2: '#08111e',
+    skin1: '#ecc39a', skin2: '#cf9468', hair: '#2a211c', hairDark: '#140f0c',
+    outfit: '#4c8dff', outfitDark: '#2350a8',
+    accessory: `<path d="M42 78 L60 72 L78 78 L78 108 L60 112 L42 108 Z" fill="#dbeafe" opacity=".9"/><path d="M48 88 H72 M48 94 H68 M48 100 H74" stroke="#1f6feb" stroke-width="2"/><circle cx="52" cy="84" r="3" fill="#1f6feb"/>`,
+  }),
+  makeFigure({
+    id: 'security', label: 'Security', bg1: '#3a1014', bg2: '#1a0709',
+    skin1: '#f0c7a0', skin2: '#d1986a', hair: '#2b1d18', hairDark: '#150d0a',
+    outfit: '#f85149', outfitDark: '#a51d1d',
+    accessory: `<path d="M60 12 L78 20 L75 40 Q72 55 60 62 Q48 55 45 40 L42 20 Z" fill="#f2f6fa" opacity=".95" stroke="#8b949e" stroke-width="2"/><path d="M54 34 L59 39 L68 28" stroke="#238636" stroke-width="4" fill="none" stroke-linecap="round"/>`,
+  }),
+  makeFigure({
+    id: 'data-engineer', label: 'Data', bg1: '#102f22', bg2: '#071a12',
+    skin1: '#eec49c', skin2: '#d09467', hair: '#3a2a1f', hairDark: '#1b120c',
+    outfit: '#2ea043', outfitDark: '#14632a',
+    accessory: `<ellipse cx="60" cy="84" rx="16" ry="6" fill="#dbeafe"/><path d="M44 84 V104 A16 6 0 0 0 76 104 V84" fill="none" stroke="#dbeafe" stroke-width="3"/><path d="M44 94 A16 6 0 0 0 76 94" fill="none" stroke="#dbeafe" stroke-width="2"/>`,
+  }),
+  makeFigure({
+    id: 'support', label: 'Support', bg1: '#3a1024', bg2: '#1a0710',
+    skin1: '#f6cca8', skin2: '#dba077', hair: '#3b2920', hairDark: '#1c130e',
+    outfit: '#db61a2', outfitDark: '#a12e6e',
+    accessory: `<path d="M30 46 Q30 12 60 12 Q90 12 90 46" fill="none" stroke="#c9d1d9" stroke-width="4"/><rect x="24" y="42" width="11" height="18" rx="5" fill="#0b0e14"/><rect x="85" y="42" width="11" height="18" rx="5" fill="#0b0e14"/><path d="M86 56 Q96 64 90 72" fill="none" stroke="#c9d1d9" stroke-width="2"/><circle cx="89" cy="74" r="3" fill="#c9d1d9"/><path d="M76 78 H102 V94 H88 L82 100 V94 H76 Z" fill="#dbeafe" opacity=".9"/>`,
+  }),
 ];
 
 export function builtinFigure(id: string | undefined): BuiltinFigure | undefined {

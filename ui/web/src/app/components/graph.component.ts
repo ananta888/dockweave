@@ -185,6 +185,7 @@ interface GraphEdge {
                 [class.active]="node.kind === 'agent' && node.state === 'running'"
                 [class.inactive]="node.kind === 'agent' && node.state !== 'running' && node.state !== 'error'"
                 [class.error]="node.kind === 'agent' && node.state === 'error'"
+                [class.main-agent]="node.kind === 'agent' && agentIdOf(node) === mainAgentId"
                 (click)="handleNodeClick(node)"
                 (dblclick)="nodeDoubleClicked(node)"
                 (contextmenu)="openContext($event, node)">
@@ -197,6 +198,7 @@ interface GraphEdge {
                 } @else if (node.kind === 'agent' && mode() === 'organization') {
                   <div class="figure" [class.on]="node.state === 'running'" [class.error]="node.state === 'error'">
                     <div class="avatar" [innerHTML]="figureHtml(node)"></div>
+                    @if (agentIdOf(node) === mainAgentId) { <div class="main-badge">★ HAUPTAGENT</div> }
                     <div class="figure-name">{{ node.title }}</div>
                     <div class="role-badge">{{ node.role || 'no role' }}</div>
                     <div class="figure-sub">{{ node.state }}</div>
@@ -208,6 +210,7 @@ interface GraphEdge {
                       <span class="state" [class.on]="node.state === 'running'" [class.err]="node.state === 'error'">{{ node.state }}</span>
                     }
                   </div>
+                  @if (node.kind === 'agent' && agentIdOf(node) === mainAgentId) { <div class="main-badge">★ HAUPTAGENT</div> }
                   <div class="node-title">{{ node.title }}</div>
                   <div class="node-sub">{{ node.subtitle }}</div>
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
@@ -761,6 +764,9 @@ interface GraphEdge {
     .avatar-choice.active { border-color:#58a6ff; color:#58a6ff; }
     .avatar-mini { width:24px; height:28px; display:block; }
     .avatar-mini svg { width:24px; height:28px; }
+    .main-badge { font-size:.55rem; font-weight:700; letter-spacing:.06em; color:#0b0e14; background:#d29922; border-radius:999px; padding:.05rem .35rem; margin-top:.15rem; }
+    .gw-node.main-agent .figure { border-color:#d29922; box-shadow:0 0 0 3px #d2992255, 0 0 18px #d2992266; }
+    .gw-node.main-agent:not(.kind-agent) { border-color:#d29922; box-shadow:0 0 0 2px #d2992255; }
     .figure-name { font-weight:700; font-size:.8rem; margin-top:.1rem; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .figure-sub { font-size:.62rem; color:#8b949e; text-transform:uppercase; }
     .edge-label { font-size:.65rem; padding:.1rem .35rem; border-radius:999px; background:#0d1117; border:1px solid #30363d; color:#8b949e; white-space:nowrap; }
@@ -824,6 +830,7 @@ export class GraphComponent implements OnChanges {
   @Input() brokerGrants: BrokerGrant[] = [];
   @Input() paths: Record<string, AgentPaths> = {};
   @Input() selectedAgentId: string | null = null;
+  @Input() mainAgentId: string | null = null;
 
   readonly agentSelected = output<string>();
   readonly mainAgentSelected = output<string>();

@@ -103,7 +103,7 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
 - **Node-Palette**: immer sichtbare Node-Typen für MCP, Skill, deterministisches Gate, HTTP, Agentenkette und Custom; Workspace/Memory/Credential/Knowledge kommen aus den Agentendaten. Die Palette ist drag-and-drop-fähig: Node auf die Canvas ziehen erzeugt sie an dieser Position; ein Klick platziert sie in der aktuellen Ansicht. Beim Erzeugen öffnet sich kein Dialog. Doppelklick auf einen Node öffnet die passende Konfiguration (Gate-Bedingung/true/false, HTTP-URL, Chain-Ziel, Custom-Contract oder MCP/Skill-Formular).
 - **Verbindungen**: Neue Nodes werden unverbunden platziert. Über den kleinen `＋`-Button am Node (oder Rechtsklick → *Neue Verbindung…*) wird zuerst der Verbindungstyp gewählt, danach nur noch die andere Node angeklickt. Klick auf eine Verbindung zeigt eine Toolbar mit Löschen; Rechtsklick bietet ebenfalls Löschen.
 - **Deterministische Gates** zeigen ihre Bedingung und `true→…` / `false→…`-Ergebnisse direkt im Node und werden im Connector-Dialog konfiguriert.
-- **2D-Agentenfiguren**: 10 eingebaute Rollenfiguren (CEO, CTO, Developer, Reviewer, QA, DevOps, Researcher, Designer, Analyst, Operator) plus eigener SVG-Import. Eigene SVGs werden bereinigt (keine Scripts/Event-Handler/foreignObject/JS-URLs, max. 64 KiB) und pro Agent gespeichert.
+- **2D-Agentenfiguren**: 15 eingebaute Rollenfiguren (CEO, CTO, Developer, Reviewer, QA, DevOps, Researcher, Designer, Analyst, Operator, Product, Architect, Security, Data, Support) plus eigener SVG-Import. Eigene SVGs werden bereinigt (keine Scripts/Event-Handler/foreignObject/JS-URLs, max. 64 KiB) und pro Agent gespeichert.
 - **Rechtsklick-Menü** auf jedem Node und auf der Canvas: Layout als Template
   speichern, Template anwenden, Node-Position zurücksetzen, Agent öffnen,
   Connectoren konfigurieren, eigene Kanten löschen, Platzhalter
@@ -133,6 +133,8 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   `~/.config/opencode/opencode.json`, Claude `~/.claude.json`, zusätzlich
   generisch `~/.dockweave/config.json` und Skill-`SKILL.md`-Dateien. Es werden
   nur Environment-Variablennamen gespeichert; Werte bleiben im Credential-Vault.
+
+Der Hauptagent ist im Graph mit goldener Umrandung und `★ HAUPTAGENT`-Badge markiert; sein gewähltes SVG wird normal angezeigt.
 
 Der Organisations-Modus speichert `display_name`, `org_unit` und `role` am
 Agenten (`PUT /api/v1/agents/{id}/organization`). Läuft noch ein älterer
