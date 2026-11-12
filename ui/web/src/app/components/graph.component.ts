@@ -1,4 +1,4 @@
-import { Component, Input, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { Component, Input, OnChanges, SimpleChanges, ViewChild, computed, inject, output, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
@@ -635,15 +635,15 @@ interface GraphEdge {
     .gw-node.kind-agent.error { border-color:#f85149; animation:blink-red 1s steps(2, jump-none) infinite; }
     @keyframes pulse-green { 0% { box-shadow:0 0 0 0 #3fb95088; } 70% { box-shadow:0 0 0 9px #3fb95000; } 100% { box-shadow:0 0 0 0 #3fb95000; } }
     @keyframes blink-red { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
-    .avatar { width:70px; height:94px; }
+    .avatar { width:76px; height:90px; }
     .avatar-picker { border:1px solid #21262d; border-radius:6px; padding:.45rem; display:flex; flex-direction:column; gap:.4rem; }
-    .avatar-preview { width:70px; height:94px; align-self:center; }
-    .avatar-preview svg { width:70px; height:94px; }
+    .avatar-preview { width:76px; height:90px; align-self:center; }
+    .avatar-preview svg { width:76px; height:90px; }
     .avatar-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:.25rem; }
     .avatar-choice { background:#0d1117; border:1px solid #30363d; border-radius:5px; padding:.15rem; color:#8b949e; font-size:.55rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; }
     .avatar-choice.active { border-color:#58a6ff; color:#58a6ff; }
-    .avatar-mini { width:26px; height:36px; display:block; }
-    .avatar-mini svg { width:26px; height:36px; }
+    .avatar-mini { width:24px; height:28px; display:block; }
+    .avatar-mini svg { width:24px; height:28px; }
     .figure-name { font-weight:700; font-size:.8rem; margin-top:.1rem; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .figure-sub { font-size:.62rem; color:#8b949e; text-transform:uppercase; }
     .edge-label { font-size:.65rem; padding:.1rem .35rem; border-radius:999px; background:#0d1117; border:1px solid #30363d; color:#8b949e; white-space:nowrap; }
@@ -699,7 +699,7 @@ interface GraphEdge {
     .ghost { background:transparent; border:1px solid #30363d; color:#c9d1d9; }
   `],
 })
-export class GraphComponent {
+export class GraphComponent implements OnChanges {
   @Input() agents: Agent[] = [];
   @Input() activity: AgentActivity[] = [];
   @Input() workspaces: Workspace[] = [];
@@ -780,7 +780,14 @@ export class GraphComponent {
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
 
+  dataVersion = signal(0);
+
+  ngOnChanges(_changes: SimpleChanges): void {
+    this.dataVersion.update(v => v + 1);
+  }
+
   readonly nodes = computed(() => {
+    this.dataVersion();
     this.layoutNonce();
     this.schema();
     const nodes = this.buildNodes();
@@ -793,7 +800,7 @@ export class GraphComponent {
       }));
     return [...nodes, ...this.connectorNodes(nodes), ...this.mcpNodes(nodes), ...this.skillNodes(nodes), ...ghosts];
   });
-  readonly edges = computed(() => { this.schema(); this.customEdges(); return this.buildEdges(); });
+  readonly edges = computed(() => { this.dataVersion(); this.schema(); this.customEdges(); return this.buildEdges(); });
   readonly unitSuggestions = computed(() => {
     const units = new Set(this.agents.map(a => a.org_unit).filter(Boolean) as string[]);
     ['Executive', 'Engineering', 'Quality', 'Operations', 'Research'].forEach(u => units.add(u));
