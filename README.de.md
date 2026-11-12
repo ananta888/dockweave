@@ -6,6 +6,12 @@ beliebige freigegebene Projektverzeichnisse bereit — ohne Container-Neustart.
 
 **Sprache:** Deutsch · [English](README.md)
 
+> **Lernprojekt:** DockWeave ist in erster Linie eine Lern- und
+> Experimentierplattform, um Agenten-Harnesses, Agenten-Systemarchitektur,
+> Technologien und Sicherheitsgrenzen zu verstehen — keine
+> produktionsreife Plattform. Einstieg:
+> [docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md).
+
 ## Kernkonzept
 
 Jeder Agent erhält drei Bereiche:

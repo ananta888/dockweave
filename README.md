@@ -17,6 +17,11 @@ project directories at runtime — without restarting containers.
 - Monitor which agents write which files, detect conflicts in real time
 - All privileged operations isolated in a hardened daemon
 
+> **Learning project:** DockWeave is primarily a teaching/experimentation
+> platform for understanding agent harnesses, agent-system architecture,
+> technologies and security boundaries — not a production-ready platform.
+> Start with [docs/learning/agent-harness.md](docs/learning/agent-harness.md).
+
 ## Three-Mount Architecture
 
 | Container Path | Purpose | Host Path (default) |
