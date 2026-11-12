@@ -16,6 +16,7 @@ project directories at runtime — without restarting containers.
 > **[docs/learning/build-your-own.md](docs/learning/build-your-own.md)**;
 > the concepts behind it are in
 > **[docs/learning/agent-harness.md](docs/learning/agent-harness.md)**.
+> Interactive in the browser: **[ananta888.github.io/dockweave](https://ananta888.github.io/dockweave/)**.
 
 ## Why DockWeave?
 

@@ -14,6 +14,7 @@ beliebige freigegebene Projektverzeichnisse bereit — ohne Container-Neustart.
 > **[docs/learning/build-your-own.de.md](docs/learning/build-your-own.de.md)**;
 > die Konzepte dahinter in
 > **[docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md)**.
+> Interaktiv im Browser: **[ananta888.github.io/dockweave](https://ananta888.github.io/dockweave/)**.
 
 ## Kernkonzept
 

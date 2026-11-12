@@ -233,6 +233,7 @@ of implicit.
 ## 9. Further Reading
 
 - `docs/learning/build-your-own.md` — step-by-step build guide
+- Interactive site: `docs/index.html` / https://ananta888.github.io/dockweave/
 
 - `docs/architecture.md` — components and data flow
 - `docs/security-decisions.md` — decisions made

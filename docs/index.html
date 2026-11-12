@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interaktiver Leitfaden: Baue dein eigenes Agenten-System wie DockWeave — Harness, Sandbox, Identität, Grants, Secrets, Egress, Audit, UI und MCP.">
+  <title>Baue dein eigenes Agenten-System · DockWeave</title>
+  <link rel="stylesheet" href="assets/learning.css">
+  <link rel="icon" href="https://github.com/ananta888/dockweave/raw/main/ui/web/public/favicon.ico">
+</head>
+<body>
+  <header class="hero">
+    <span class="kicker">◈ DockWeave · Lernprojekt</span>
+    <h1>Baue dein eigenes<br><span class="gradient">Agenten-System</span></h1>
+    <p class="lead">
+      Kein fertiges Produkt, sondern ein Verstehensweg: vom Agent-Loop über die
+      Sandbox bis zu Workspace-Grants, secretless Credentials, Egress,
+      Audit, UI und MCP. In 11 Stationen — mit Quiz, Simulation und Checkliste.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#phasen">▶ Learntrack starten</a>
+      <a class="btn" href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">📘 Vollständiger Leitfaden</a>
+      <a class="btn ghost" href="https://github.com/ananta888/dockweave">GitHub</a>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div class="progress-top">
+      <span>Dein Fortschritt</span>
+      <strong><span id="progress-count">0</span> / <span id="progress-total">11</span> Stationen</strong>
+    </div>
+    <div class="bar"><span id="progress-bar"></span></div>
+    <div class="badge-row" id="badges"></div>
+  </div>
+
+  <main>
+    <section>
+      <h2>Worum geht es?</h2>
+      <p class="section-lead">
+        Ein Agent ist nicht ein Programm, sondern ein System aus Schichten.
+        Klicke die Schichten an und sieh, warum jede ihre eigene Grenze braucht.
+      </p>
+      <div class="cards-3">
+        <div class="mini-card"><div class="icon">🧠</div><h3>Harness</h3><p>Macht aus Modell-Text echte Aktionen: Tools, Shell, Dateien, Schleife.</p></div>
+        <div class="mini-card"><div class="icon">📦</div><h3>Sandbox</h3><p>Begrenzt, was der Agent erreichen kann — Dateien, Prozesse, Netzwerk.</p></div>
+        <div class="mini-card"><div class="icon">🔐</div><h3>Policy &amp; Secrets</h3><p>Entscheidet, wer was darf — und hält echte Keys aus dem Agenten heraus.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Die Schichten</h2>
+      <p class="section-lead">Jede Schicht ist eine Vertrauensgrenze. Klicke für die Erklärung.</p>
+      <div class="layers" id="layers"></div>
+      <div class="layer-explanation" id="layer-explanation">
+        <h4>Los geht's</h4>
+        <p>Wähle eine Schicht, um zu sehen, welche Aufgabe und welches Risiko sie hat.</p>
+      </div>
+    </section>
+
+    <section id="phasen">
+      <h2>Der Learntrack</h2>
+      <p class="section-lead">
+        Öffne eine Station, lies die Kernpunkte, beantworte die Mini-Frage und
+        markiere sie als verstanden. Dein Fortschritt bleibt lokal im Browser.
+      </p>
+      <div class="phases" id="phases"></div>
+    </section>
+
+    <section>
+      <h2>Spielwiese: der Agent-Loop</h2>
+      <p class="section-lead">
+        Ein Harness ist im Kern eine Schleife: planen → handeln → beobachten.
+        Klicke dich durch einen simulierten Lauf.
+      </p>
+      <div class="simulator">
+        <div class="sim-log" id="sim-log">
+          <div class="sim-line plan">[bereit] Klicke „Nächster Schritt“.</div>
+        </div>
+        <div class="phase-actions">
+          <button class="btn primary small" id="sim-next">Nächster Schritt</button>
+          <button class="btn small" id="sim-reset">Zurücksetzen</button>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Sicherheits-Checkliste</h2>
+      <p class="section-lead">
+        Diese Punkte entscheiden, ob dein System wirklich Grenzen zieht — oder
+        nur so aussieht. Hake ab, was du in deinem eigenen Aufbau erfüllt hast.
+      </p>
+      <div class="checklist" id="checklist"></div>
+    </section>
+
+    <section>
+      <h2>Weiterlesen</h2>
+      <div class="cards-3">
+        <div class="mini-card"><h3>Bauanleitung</h3><p>Schritt für Schritt mit Code, Milestones und Checkliste.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.de.md">build-your-own.de.md →</a></p></div>
+        <div class="mini-card"><h3>Konzepte</h3><p>Harness, Agent, Sandbox, Grants, Broker und Egress erklärt.</p><p><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/agent-harness.de.md">agent-harness.de.md →</a></p></div>
+        <div class="mini-card"><h3>Sicherheit</h3><p>Threat Model, ADR und Security Decisions im Detail.</p><p><a href="https://github.com/ananta888/dockweave/tree/main/docs">docs/ →</a></p></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>DockWeave · Lernprojekt für Agenten-Harnesses und Systemarchitektur</span>
+      <span><a href="https://github.com/ananta888/dockweave/blob/main/docs/learning/build-your-own.md">English guide</a></span>
+    </div>
+  </footer>
+
+  <script src="assets/learning.js"></script>
+</body>
+</html>

@@ -240,6 +240,7 @@ Gates und Providern explizit statt implizit.
 ## 9. Weiterlesen
 
 - `docs/learning/build-your-own.de.md` — Schritt-für-Schritt-Bauanleitung
+- Interaktive Website: `docs/index.html` / https://ananta888.github.io/dockweave/
 
 - `docs/architecture.md` — Komponenten und Datenfluss
 - `docs/security-decisions.md` — getroffene Entscheidungen
