@@ -1188,15 +1188,15 @@ func validAgentType(t string) bool {
 func runtimeCommand(a *model.Agent) []string {
 	switch a.Runtime {
 	case model.RuntimeHerdr:
-		// herdr owns the terminal inside the container: the harness runs as a
-		// herdr pane so sessions can detach/reattach and persist. The image
-		// must provide the `herdr` binary. Without an explicit command, herdr
-		// starts with its defaults.
-		return append([]string{"herdr", "agent", "start", "--kind", a.Type}, a.Command...)
+		// herdr runs headless inside the container as the terminal owner. The
+		// entrypoint script (shipped in the herdr-agent image) starts the
+		// herdr server, creates a pane and launches the harness there. The
+		// harness kind/name/args travel via env (see applyRuntime).
+		return []string{"/usr/local/bin/dockweave-herdr"}
 	case model.RuntimePaperclip:
 		// paperclip drives the agent in heartbeats; the harness CLI runs
-		// normally, marked via env (see applyRuntime) so a paperclip adapter
-		// can attach and wake it.
+		// normally, marked via env so a paperclip adapter can attach and
+		// wake it.
 		return a.Command
 	default: // docker (or empty)
 		return a.Command
@@ -1205,8 +1205,16 @@ func runtimeCommand(a *model.Agent) []string {
 
 // applyRuntime adjusts the runtime spec for the agent's runtime adapter.
 func (s *Service) applyRuntime(a *model.Agent) {
+	harnessCmd := a.Command // original harness command (before wrapping)
 	a.Command = runtimeCommand(a)
-	if a.Runtime == model.RuntimePaperclip {
+	switch a.Runtime {
+	case model.RuntimeHerdr:
+		a.Env = append(a.Env,
+			"DOCKWEAVE_HARNESS_KIND="+a.Type,
+			"DOCKWEAVE_HARNESS_NAME="+a.Name,
+			"DOCKWEAVE_HARNESS_ARGS="+strings.Join(harnessCmd, " "),
+		)
+	case model.RuntimePaperclip:
 		a.Env = append(a.Env, "DOCKWEAVE_RUNTIME=paperclip")
 	}
 }

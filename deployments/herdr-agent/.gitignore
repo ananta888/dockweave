@@ -1,0 +1,3 @@
+# herdr binary is copied from the host at build time (see Dockerfile);
+# never commit the 29 MB binary.
+/herdr

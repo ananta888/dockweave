@@ -723,11 +723,10 @@ func TestRuntimeCommand(t *testing.T) {
 	if got := runtimeCommand(base("", []string{"codex"})); len(got) != 1 || got[0] != "codex" {
 		t.Fatalf("empty runtime must keep the command verbatim, got %v", got)
 	}
-	// herdr: wraps the harness in a herdr pane
+	// herdr: entrypoint script owns the terminal, harness travels via env
 	got := runtimeCommand(base(model.RuntimeHerdr, []string{"codex", "run"}))
-	want := []string{"herdr", "agent", "start", "--kind", "codex", "codex", "run"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("herdr runtime = %v, want %v", got, want)
+	if len(got) != 1 || got[0] != "/usr/local/bin/dockweave-herdr" {
+		t.Fatalf("herdr runtime = %v, want the herdr entrypoint", got)
 	}
 	// paperclip: command unchanged (heartbeat mode), marked via applyRuntime
 	if got := runtimeCommand(base(model.RuntimePaperclip, []string{"codex", "run"})); len(got) != 2 || got[0] != "codex" {
@@ -735,18 +734,36 @@ func TestRuntimeCommand(t *testing.T) {
 	}
 }
 
-func TestApplyRuntimeMarksPaperclip(t *testing.T) {
-	a := &model.Agent{Type: "codex", Runtime: model.RuntimePaperclip, Command: []string{"codex", "run"}}
+func TestApplyRuntime(t *testing.T) {
+	// herdr: entrypoint command + harness kind/name/args as env
+	a := &model.Agent{Name: "demo", Type: "codex", Runtime: model.RuntimeHerdr, Command: []string{"codex", "run"}}
 	(&Service{}).applyRuntime(a)
-	found := false
-	for _, e := range a.Env {
-		if e == "DOCKWEAVE_RUNTIME=paperclip" {
-			found = true
+	if len(a.Command) != 1 || a.Command[0] != "/usr/local/bin/dockweave-herdr" {
+		t.Fatalf("herdr command = %v", a.Command)
+	}
+	if !envHas(a.Env, "DOCKWEAVE_HARNESS_KIND=codex") || !envHas(a.Env, "DOCKWEAVE_HARNESS_NAME=demo") ||
+		!envHas(a.Env, "DOCKWEAVE_HARNESS_ARGS=codex run") {
+		t.Fatalf("herdr env missing harness markers: %v", a.Env)
+	}
+
+	// paperclip: command unchanged + runtime marker
+	b := &model.Agent{Type: "codex", Runtime: model.RuntimePaperclip, Command: []string{"codex", "run"}}
+	(&Service{}).applyRuntime(b)
+	if len(b.Command) != 2 || b.Command[0] != "codex" {
+		t.Fatalf("paperclip command = %v", b.Command)
+	}
+	if !envHas(b.Env, "DOCKWEAVE_RUNTIME=paperclip") {
+		t.Fatalf("paperclip env missing marker: %v", b.Env)
+	}
+}
+
+func envHas(env []string, want string) bool {
+	for _, e := range env {
+		if e == want {
+			return true
 		}
 	}
-	if !found {
-		t.Fatalf("paperclip runtime must set DOCKWEAVE_RUNTIME=paperclip, env=%v", a.Env)
-	}
+	return false
 }
 
 func TestRuntimeRoundTrip(t *testing.T) {
