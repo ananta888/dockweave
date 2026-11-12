@@ -43,6 +43,7 @@ interface ConnectorConfig {
   direction: 'out' | 'in' | 'both';
   enabled: boolean;
   draft?: boolean;
+  connected?: boolean;
 }
 
 interface GhostNode {
@@ -124,6 +125,19 @@ interface GraphEdge {
       </div>
 
       <div class="graph-body" [class.drop-target]="draggingPalette()" (dragover)="onDragOver($event)" (drop)="onPaletteDrop($event)">
+        @if (connectingSource(); as src) {
+          <div class="connect-banner">
+            Verbindungstyp <b>{{ connectingType() }}</b> · Ziel-Node anklicken (Quelle: {{ src.title }})
+            <button class="small" (click)="cancelConnect()">Abbrechen</button>
+          </div>
+        }
+        @if (selectedEdge(); as edge) {
+          <div class="edge-toolbar">
+            <span>Verbindung: <b>{{ edge.label }}</b> · {{ edge.kind }}</span>
+            <button class="small danger" (click)="deleteEdge(edge)">Löschen</button>
+            <button class="small" (click)="selectedEdge.set(null)">✕</button>
+          </div>
+        }
         <aside class="node-palette">
           <h4>Node types</h4>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'mcp')" (dragend)="draggingPalette.set(null)" (click)="palette('mcp')"><b>MCP</b><span>Server + contract</span></button>
@@ -147,7 +161,10 @@ interface GraphEdge {
                 [fRadius]="14"
                 [fSelectionDisabled]="true"
                 [fReassignDisabled]="true"
-                [attr.data-kind]="edge.kind">
+                [attr.data-kind]="edge.kind"
+                [class.selected-edge]="selectedEdge()?.id === edge.id"
+                (click)="$event.stopPropagation(); selectEdge(edge)"
+                (contextmenu)="openEdgeContext($event, edge)">
                 <svg fMarker type="end-all-states" [width]="10" [height]="10" [refX]="10" [refY]="5" markerUnits="userSpaceOnUse" viewBox="0 0 10 10">
                   <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"></path>
                 </svg>
@@ -167,7 +184,7 @@ interface GraphEdge {
                 [class.active]="node.kind === 'agent' && node.state === 'running'"
                 [class.inactive]="node.kind === 'agent' && node.state !== 'running' && node.state !== 'error'"
                 [class.error]="node.kind === 'agent' && node.state === 'error'"
-                (click)="nodeClicked(node)"
+                (click)="handleNodeClick(node)"
                 (dblclick)="nodeDoubleClicked(node)"
                 (contextmenu)="openContext($event, node)">
                 @if (node.kind === 'ghost') {
@@ -194,6 +211,9 @@ interface GraphEdge {
                   <div class="node-sub">{{ node.subtitle }}</div>
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
+                }
+                @if (node.kind !== 'ghost') {
+                  <button class="node-link-btn" fDragBlocker type="button" title="Neue Verbindung" (click)="$event.stopPropagation(); beginConnect(node)">＋</button>
                 }
                 @for (p of portsFor(node); track p.id) {
                   <span
@@ -548,6 +568,32 @@ interface GraphEdge {
         </div>
       }
 
+      @if (connectOpen()) {
+        <div class="settings-backdrop" (click)="connectOpen.set(false)">
+          <div class="settings-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Neue Verbindung · {{ connectSource()?.title }}</h3>
+              <button class="ghost small" (click)="connectOpen.set(false)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <label>Verbindungstyp
+                  <select [(ngModel)]="connectType" name="connectType">
+                    @for (t of schema().connectionTypes; track t.id) { <option [value]="t.id">{{ t.label }} ({{ t.id }})</option> }
+                  </select>
+                </label>
+                <p class="muted">Nach „Weiter“ nur noch die andere Node anklicken.</p>
+                <div class="settings-row">
+                  <button class="primary" (click)="continueConnect()">Weiter</button>
+                  <button (click)="connectOpen.set(false)">Abbrechen</button>
+                </div>
+                @if (connectError()) { <div class="notice error">{{ connectError() }}</div> }
+              </section>
+            </div>
+          </div>
+        </div>
+      }
+
       @if (editConnectorId()) {
         <div class="settings-backdrop" (click)="editConnectorId.set(null)">
           <div class="settings-modal" (click)="$event.stopPropagation()">
@@ -618,11 +664,16 @@ interface GraphEdge {
                 <button (click)="openAgentById(n.id)">Agent öffnen</button>
                 <button (click)="openConnectorDialogByNode(n.id)">Connectoren konfigurieren…</button>
               }
+              <button (click)="beginConnect(n)">Neue Verbindung…</button>
               <button class="danger" (click)="deleteCustomEdgesFor(n.id)">Eigene Kanten löschen</button>
             }
           } @else {
             <button (click)="saveTemplate()">Layout als Template speichern…</button>
             <button (click)="cleanup()">Aufräumen</button>
+          }
+          @if (menu.edge; as e) {
+            <div class="menu-sep"></div>
+            <button class="danger" (click)="deleteEdge(e)">Verbindung löschen</button>
           }
           @if (layoutTemplates().length) {
             <div class="menu-sep"></div>
@@ -653,6 +704,10 @@ interface GraphEdge {
     .node-palette b { font-size:.75rem; }
     .node-palette span { font-size:.63rem; color:#8b949e; }
     .node-palette p { font-size:.62rem; color:#8b949e; margin:.5rem 0 0; }
+    .connect-banner { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:20; background:#11263b; border:1px solid #1f6feb; border-radius:7px; padding:.4rem .7rem; font-size:.75rem; display:flex; align-items:center; gap:.5rem; }
+    .node-link-btn { position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; border:1px solid #58a6ff; background:#0d1117; color:#58a6ff; cursor:pointer; font-size:.85rem; line-height:1; z-index:6; padding:0; }
+    .node-link-btn:hover { background:#58a6ff; color:#0b0e14; }
+    .edge-toolbar { position:absolute; bottom:14px; left:50%; transform:translateX(-50%); z-index:20; background:#161b22; border:1px solid #58a6ff; border-radius:8px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; font-size:.75rem; box-shadow:0 6px 18px #000a; }
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
     f-canvas { background:#0b0e14; }
     .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
@@ -801,7 +856,7 @@ export class GraphComponent implements OnChanges {
   connTemplate = '';
   layoutTemplates = signal<LayoutTemplate[]>(this.loadTemplates());
   ghosts = signal<GhostNode[]>(this.loadGhosts());
-  contextMenu = signal<{ x: number; y: number; node?: GraphNode } | null>(null);
+  contextMenu = signal<{ x: number; y: number; node?: GraphNode; edge?: GraphEdge } | null>(null);
   newTemplateName = '';
   connectors = signal<ConnectorConfig[]>(this.loadConnectors());
   mcpServers = signal<AgentMCP[]>([]);
@@ -839,6 +894,13 @@ export class GraphComponent implements OnChanges {
   ecTrue = '';
   ecFalse = '';
   ecContract = '';
+  connectOpen = signal(false);
+  connectSource = signal<GraphNode | null>(null);
+  connectType = 'custom';
+  connectingSource = signal<GraphNode | null>(null);
+  connectingType = signal('custom');
+  connectError = signal('');
+  selectedEdge = signal<GraphEdge | null>(null);
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -1024,6 +1086,101 @@ export class GraphComponent implements OnChanges {
     this.persistPositions(this.manualPositions);
     this.pendingDropPosition = null;
     this.pendingDropKind = null;
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  handleNodeClick(node: GraphNode): void {
+    const src = this.connectingSource();
+    if (src) {
+      if (src.id === node.id) { this.connectError.set('target must be a different node'); return; }
+      this.createConnection(src, node, this.connectingType());
+      return;
+    }
+    this.nodeClicked(node);
+  }
+
+  beginConnect(node: GraphNode): void {
+    if (node.kind === 'ghost') return;
+    this.connectSource.set(node);
+    this.connectType = this.schema().connectionTypes[0]?.id || 'custom';
+    this.connectError.set('');
+    this.connectOpen.set(true);
+    this.closeContext();
+  }
+
+  continueConnect(): void {
+    const src = this.connectSource();
+    if (!src) return;
+    this.connectingSource.set(src);
+    this.connectingType.set(this.connectType);
+    this.connectOpen.set(false);
+    this.connectError.set('');
+  }
+
+  cancelConnect(): void {
+    this.connectingSource.set(null);
+    this.connectSource.set(null);
+    this.connectOpen.set(false);
+    this.connectError.set('');
+  }
+
+  private createConnection(source: GraphNode, target: GraphNode, kind: string): void {
+    const sides = this.bestSides(source, target);
+    const out = this.pickPort(source.id, 'out', sides.sourceSide);
+    const inn = this.pickPort(target.id, 'in', sides.targetSide);
+    if (!out || !inn) {
+      this.connectError.set('source or target has no compatible port');
+      this.cancelConnect();
+      return;
+    }
+    const ctype = this.schema().connectionTypes.find(t => t.id === kind);
+    const edge: CustomEdge = {
+      id: 'custom-' + Date.now(), source: source.id, target: target.id,
+      sourcePort: out.id, targetPort: inn.id, label: ctype?.label || kind,
+      kind, sourceSide: out.side, targetSide: inn.side,
+    };
+    const next = [...this.customEdges(), edge];
+    this.customEdges.set(next);
+    this.persistCustomEdges(next);
+    this.selectedEdge.set({ ...edge, type: 'bezier' });
+    this.cancelConnect();
+  }
+
+  private bestSides(source: GraphNode, target: GraphNode): { sourceSide: Side; targetSide: Side } {
+    const dx = target.position.x - source.position.x;
+    const dy = target.position.y - source.position.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return dx >= 0 ? { sourceSide: 'right', targetSide: 'left' } : { sourceSide: 'left', targetSide: 'right' };
+    }
+    return dy >= 0 ? { sourceSide: 'bottom', targetSide: 'top' } : { sourceSide: 'top', targetSide: 'bottom' };
+  }
+
+  selectEdge(edge: GraphEdge): void {
+    this.selectedEdge.set(edge);
+  }
+
+  openEdgeContext(ev: MouseEvent, edge: GraphEdge): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.selectedEdge.set(edge);
+    this.contextMenu.set({ x: ev.clientX, y: ev.clientY, edge });
+  }
+
+  deleteEdge(edge: GraphEdge): void {
+    const custom = this.customEdges().filter(e => e.id !== edge.id);
+    if (custom.length !== this.customEdges().length) {
+      this.customEdges.set(custom);
+      this.persistCustomEdges(custom);
+    } else if (edge.id.startsWith('conn-')) {
+      const cid = edge.id.slice('conn-'.length);
+      const next = this.connectors().map(c => c.id === cid ? { ...c, connected: false } : c);
+      this.connectors.set(next);
+      this.persistConnectors(next);
+    } else {
+      this.configError.set('diese Verbindung stammt aus den Agentendaten und kann hier nicht gelöscht werden');
+    }
+    if (this.selectedEdge()?.id === edge.id) this.selectedEdge.set(null);
+    this.closeContext();
     this.layoutNonce.update(v => v + 1);
   }
 
@@ -1729,6 +1886,7 @@ export class GraphComponent implements OnChanges {
     const used = new Map<string, number>();
     for (const c of this.connectors()) {
       if (!c.enabled || c.kind === 'agent-chain') continue;
+      if (c.connected === false) continue;
       if ((c.kind === 'mcp' || c.kind === 'skill') && !c.draft) continue;
       const agent = byId.get(`agent-${c.agentId}`);
       if (!agent) continue;
@@ -1759,7 +1917,7 @@ export class GraphComponent implements OnChanges {
   private connectorEdges(): GraphEdge[] {
     const edges: GraphEdge[] = [];
     for (const c of this.connectors()) {
-      if (!c.enabled || c.kind === 'mcp' || c.kind === 'skill') continue;
+      if (!c.enabled || c.kind === 'mcp' || c.kind === 'skill' || c.connected === false) continue;
       if (c.kind === 'agent-chain') {
         if (!c.targetAgentId) continue;
         const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');

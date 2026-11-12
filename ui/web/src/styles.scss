@@ -70,3 +70,9 @@ code { background: #21262d; padding: .1rem .3rem; border-radius: 4px; font-famil
 
 /* Foblex sets a light canvas background by default; keep the DockWeave dark shell. */
 .f-canvas { background: transparent !important; }
+
+.f-connection.selected-edge .f-connection-path {
+  stroke: #fff !important;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 5px #58a6ff);
+}
