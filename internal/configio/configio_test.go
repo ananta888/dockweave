@@ -68,7 +68,10 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	as := &agents.Service{Store: st, Mounts: fm, Memory: mm, DefaultUID: 1000, DefaultGID: 1000, KnowledgeDir: "/var/lib/dockweave/knowledge"}
+	// Use the effective identity so chown-to-self works unprivileged
+	// (CI runners do not run as uid 1000).
+	uid, gid := os.Getuid(), os.Getgid()
+	as := &agents.Service{Store: st, Mounts: fm, Memory: mm, DefaultUID: uid, DefaultGID: gid, KnowledgeDir: "/var/lib/dockweave/knowledge"}
 	ws := &workspaces.Service{Store: st, Mounts: fm}
 	return &env{svc: &Service{Store: st, Agents: as, Workspaces: ws, DaemonConfig: map[string]string{"KNOWLEDGE_DIR": "/w"}}, st: st}
 }
@@ -82,8 +85,9 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if _, err := src.svc.Workspaces.Register(ctx, "proj", proj, "test"); err != nil {
 		t.Fatal(err)
 	}
+	uid, gid := os.Getuid(), os.Getgid()
 	a := &model.Agent{Name: "agent-a", Type: "codex", Image: "node:22-bookworm",
-		Command: []string{"sh", "-c", "run"}, AgentRO: true, UID: 1000, GID: 1000, NetworkMode: "bridge"}
+		Command: []string{"sh", "-c", "run"}, AgentRO: true, UID: uid, GID: gid, NetworkMode: "bridge"}
 	if _, err := src.svc.Agents.Create(ctx, a, "test"); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +132,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("agent not recreated: %v", err)
 	}
-	if got.Image != "node:22-bookworm" || got.UID != 1000 || got.NotesDir != "/home/krusty/notes-a" {
+	if got.Image != "node:22-bookworm" || got.UID != uid || got.NotesDir != "/home/krusty/notes-a" {
 		t.Fatalf("agent config differs: %+v", got)
 	}
 	w, err := dst.st.GetWorkspace(ctx, "proj")
