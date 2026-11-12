@@ -10,7 +10,8 @@ beliebige freigegebene Projektverzeichnisse bereit — ohne Container-Neustart.
 > Experimentierplattform, um Agenten-Harnesses, Agenten-Systemarchitektur,
 > Technologien und Sicherheitsgrenzen zu verstehen — keine
 > produktionsreife Plattform. Einstieg:
-> [docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md).
+> [docs/learning/agent-harness.de.md](docs/learning/agent-harness.de.md)
+> und [docs/learning/build-your-own.de.md](docs/learning/build-your-own.de.md).
 
 ## Kernkonzept
 

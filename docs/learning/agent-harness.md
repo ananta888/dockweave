@@ -232,6 +232,8 @@ of implicit.
 
 ## 9. Further Reading
 
+- `docs/learning/build-your-own.md` — step-by-step build guide
+
 - `docs/architecture.md` — components and data flow
 - `docs/security-decisions.md` — decisions made
 - `docs/threat-model-credential-broker.md` — broker threat model

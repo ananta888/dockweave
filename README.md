@@ -20,7 +20,8 @@ project directories at runtime — without restarting containers.
 > **Learning project:** DockWeave is primarily a teaching/experimentation
 > platform for understanding agent harnesses, agent-system architecture,
 > technologies and security boundaries — not a production-ready platform.
-> Start with [docs/learning/agent-harness.md](docs/learning/agent-harness.md).
+> Start with [docs/learning/agent-harness.md](docs/learning/agent-harness.md)
+> and [docs/learning/build-your-own.md](docs/learning/build-your-own.md).
 
 ## Three-Mount Architecture
 
