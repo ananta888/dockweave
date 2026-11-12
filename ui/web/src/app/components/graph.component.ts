@@ -102,16 +102,16 @@ interface GraphEdge {
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
                 }
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:left'" fConnectorConnectableSide="left" class="gw-port"></span>
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:top'" fConnectorConnectableSide="top" class="gw-port"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:right'" fConnectorConnectableSide="right" class="gw-port"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:bottom'" fConnectorConnectableSide="bottom" class="gw-port"></span>
-                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:right'" fConnectorConnectableSide="right" class="gw-port"></span>
-                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:top'" fConnectorConnectableSide="top" class="gw-port"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:left'" fConnectorConnectableSide="left" class="gw-port" style="left:0%;top:50%"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:top'" fConnectorConnectableSide="top" class="gw-port" style="left:50%;top:0%"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:right'" fConnectorConnectableSide="right" class="gw-port" style="left:100%;top:50%"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:bottom'" fConnectorConnectableSide="bottom" class="gw-port" style="left:50%;top:100%"></span>
+                <span fConnector fConnectorType="target" [fConnectorId]="node.id + ':in:right'" fConnectorConnectableSide="right" class="gw-port" style="left:100%;top:50%"></span>
+                <span fConnector fConnectorType="source" [fConnectorId]="node.id + ':out:top'" fConnectorConnectableSide="top" class="gw-port" style="left:50%;top:0%"></span>
               </div>
             }
           </f-canvas>
-          <f-minimap />
+          <f-minimap class="graph-minimap" />
         </f-flow>
 
         @if (editor(); as a) {
@@ -165,7 +165,9 @@ interface GraphEdge {
     .muted { color:#8b949e; }
     .spacer { flex:1; }
     .graph-body { flex:1; min-height:0; display:flex; }
-    f-flow { flex:1; min-height:0; }
+    f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
+    f-canvas { background:#0b0e14; }
+    .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
     .gw-node { position:relative; width:250px; padding:.6rem .7rem; border-radius:9px; background:#161b22; border:1px solid #30363d; color:#c9d1d9; cursor:pointer; box-shadow:0 4px 16px #0008; box-sizing:border-box; }
     .gw-node.selected { border-color:#58a6ff; box-shadow:0 0 0 2px #58a6ff55, 0 4px 16px #0008; }
     .gw-node.kind-agent { padding:0; width:170px; background:transparent; border:none; box-shadow:none; }
@@ -199,7 +201,7 @@ interface GraphEdge {
     .edge-label.edge-knowledge { color:#39c5cf; border-color:#1f6feb; }
     .edge-label.edge-unit { color:#3fb950; border-color:#238636; }
     .edge-label.edge-org { color:#58a6ff; border-color:#1f6feb; }
-    .gw-port { width:7px; height:7px; border-radius:50%; background:#58a6ff88; border:1px solid #58a6ff; opacity:0; transition:opacity .15s; }
+    .gw-port { position:absolute; width:7px; height:7px; border-radius:50%; background:#58a6ff88; border:1px solid #58a6ff; opacity:0; transition:opacity .15s; transform:translate(-50%,-50%); z-index:5; }
     .gw-node:hover .gw-port, .gw-node.selected .gw-port { opacity:1; }
     .small { padding:.2rem .5rem; font-size:.75rem; }
     .inspector { width:300px; border-left:1px solid #30363d; background:#161b22; padding:.9rem; display:flex; flex-direction:column; gap:.65rem; overflow:auto; }

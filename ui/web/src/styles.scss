@@ -67,3 +67,6 @@ code { background: #21262d; padding: .1rem .3rem; border-radius: 4px; font-famil
   stroke-width: 3;
   filter: drop-shadow(0 0 4px currentColor);
 }
+
+/* Foblex sets a light canvas background by default; keep the DockWeave dark shell. */
+.f-canvas { background: transparent !important; }
