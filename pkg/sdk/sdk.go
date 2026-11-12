@@ -379,6 +379,16 @@ func (c *Client) SetAgentOrganization(ctx context.Context, idOrName, displayName
 	return &out, nil
 }
 
+// SetAgentAvatar sets the 2D figure (built-in role id or custom SVG).
+func (c *Client) SetAgentAvatar(ctx context.Context, idOrName, avatar, svg string) (*model.Agent, error) {
+	var out model.Agent
+	if err := c.do(ctx, "PUT", "/api/v1/agents/"+idOrName+"/avatar",
+		map[string]string{"avatar": avatar, "svg": svg}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // SetNetworkProfile changes the enforced egress profile (applied at restart).
 func (c *Client) SetNetworkProfile(ctx context.Context, idOrName, profile string) (*model.Agent, error) {
 	var out model.Agent

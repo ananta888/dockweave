@@ -120,6 +120,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/env-file", s.setEnvFile)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/network-profile", s.setNetworkProfile)
 	s.mux.HandleFunc("PUT /api/v1/agents/{id}/organization", s.setOrganization)
+	s.mux.HandleFunc("PUT /api/v1/agents/{id}/avatar", s.setAvatar)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}/mcp", s.listMCP)
 	s.mux.HandleFunc("POST /api/v1/agents/{id}/mcp", s.addMCP)
 	s.mux.HandleFunc("PATCH /api/v1/agents/{id}/mcp/{mcp}", s.updateMCP)
@@ -1125,4 +1126,21 @@ func (s *Server) importTypeDefaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"mcp_added": mcp, "skills_added": skills})
+}
+
+func (s *Server) setAvatar(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Avatar string `json:"avatar"`
+		SVG    string `json:"svg"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	a, err := s.Agents.SetAvatar(r.Context(), r.PathValue("id"), req.Avatar, req.SVG, actor(r))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, a)
 }

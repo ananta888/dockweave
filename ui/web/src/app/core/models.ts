@@ -4,6 +4,8 @@ export interface Agent {
   display_name?: string;
   org_unit?: string;
   role?: string;
+  avatar?: string;
+  avatar_svg?: string;
   type: string;
   image: string;
   command?: string[];

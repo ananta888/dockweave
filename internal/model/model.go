@@ -71,6 +71,8 @@ type Agent struct {
 	DisplayName string   `json:"display_name,omitempty"`
 	OrgUnit     string   `json:"org_unit,omitempty"`
 	Role        string   `json:"role,omitempty"`
+	Avatar      string   `json:"avatar,omitempty"`
+	AvatarSVG   string   `json:"avatar_svg,omitempty"`
 	Type        string   `json:"type"` // codex|opencode|claude|gemini|custom
 	Image       string   `json:"image"`
 	Command     []string `json:"command,omitempty"`

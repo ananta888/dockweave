@@ -1264,6 +1264,28 @@ func (s *Service) SetOrganization(ctx context.Context, idOrName, displayName, un
 	return a, nil
 }
 
+// SetAvatar sets the agent's 2D figure. avatar is a built-in role id; svg is
+// optional custom SVG markup (bounded, never executed by the backend).
+func (s *Service) SetAvatar(ctx context.Context, idOrName, avatar, svg, actor string) (*model.Agent, error) {
+	a, err := s.Store.GetAgent(ctx, idOrName)
+	if err != nil {
+		return nil, err
+	}
+	svg = strings.TrimSpace(svg)
+	if len(svg) > 64*1024 {
+		return nil, errors.New("avatar SVG exceeds 64 KiB")
+	}
+	if svg != "" && !strings.HasPrefix(strings.ToLower(svg), "<svg") {
+		return nil, errors.New("custom avatar must be an SVG document")
+	}
+	if err := s.Store.UpdateAgentAvatar(ctx, a.ID, strings.TrimSpace(avatar), svg); err != nil {
+		return nil, err
+	}
+	a.Avatar, a.AvatarSVG = strings.TrimSpace(avatar), svg
+	s.event(ctx, model.EventAgentIdentity, actor, a.ID, "avatar updated")
+	return a, nil
+}
+
 // EgressStatus reports the configured profile and whether it is enforced.
 func (s *Service) EgressStatus(ctx context.Context, idOrName string) (*EgressStatus, error) {
 	a, err := s.Store.GetAgent(ctx, idOrName)

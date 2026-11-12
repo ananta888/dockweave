@@ -1,7 +1,9 @@
 import { Component, Input, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
+import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
 
@@ -77,6 +79,8 @@ interface GraphNode {
   ghost?: boolean;
   active?: boolean;
   templateId?: string;
+  avatar?: string;
+  avatarSvg?: string;
 }
 
 interface GraphEdge {
@@ -119,6 +123,16 @@ interface GraphEdge {
       </div>
 
       <div class="graph-body">
+        <aside class="node-palette">
+          <h4>Node types</h4>
+          <button (click)="palette('mcp')"><b>MCP</b><span>Server + contract</span></button>
+          <button (click)="palette('skill')"><b>Skill</b><span>agent skill</span></button>
+          <button class="gate" (click)="palette('gate')"><b>Gate</b><span>deterministic</span></button>
+          <button (click)="palette('http')"><b>HTTP</b><span>API endpoint</span></button>
+          <button (click)="palette('agent-chain')"><b>Chain</b><span>agent → agent</span></button>
+          <button (click)="palette('custom')"><b>Custom</b><span>free node</span></button>
+          <p class="muted">Workspace, memory, credential and knowledge come from the agent data.</p>
+        </aside>
         <f-flow fDraggable fFlowId="dockweave-agent-graph" (fFullRendered)="fit()">
           <f-canvas fZoom [fZoomMinimum]="0.2" [fZoomMaximum]="2">
             @for (edge of edges(); track edge.id) {
@@ -162,13 +176,7 @@ interface GraphEdge {
                   </div>
                 } @else if (node.kind === 'agent' && mode() === 'organization') {
                   <div class="figure" [class.on]="node.state === 'running'" [class.error]="node.state === 'error'">
-                    <svg viewBox="0 0 80 108" class="avatar" aria-hidden="true">
-                      <circle cx="40" cy="22" r="16" [attr.fill]="avatarColor(node)"></circle>
-                      <path d="M12 104 C12 69 25 51 40 51 C55 51 68 69 68 104 Z" [attr.fill]="avatarColor(node)"></path>
-                      <circle cx="34" cy="20" r="2" fill="#0b0e14"></circle>
-                      <circle cx="46" cy="20" r="2" fill="#0b0e14"></circle>
-                      <path d="M34 28 Q40 33 46 28" stroke="#0b0e14" stroke-width="2" fill="none"></path>
-                    </svg>
+                    <div class="avatar" [innerHTML]="figureHtml(node)"></div>
                     <div class="figure-name">{{ node.title }}</div>
                     <div class="role-badge">{{ node.role || 'no role' }}</div>
                     <div class="figure-sub">{{ node.state }}</div>
@@ -225,6 +233,22 @@ interface GraphEdge {
                 @for (r of roles; track r) { <option [value]="r"></option> }
               </datalist>
             </label>
+            <div class="avatar-picker">
+              <div class="avatar-preview" [innerHTML]="avatarPreview()"></div>
+              <div class="avatar-grid">
+                @for (f of figures; track f.id) {
+                  <button class="avatar-choice" [class.active]="editAvatar === f.id" (click)="chooseAvatar(f.id)" [title]="f.label">
+                    <span class="avatar-mini" [innerHTML]="trustFigure(f.svg)"></span>
+                    <span>{{ f.label }}</span>
+                  </button>
+                }
+              </div>
+              <div class="inspector-row">
+                <label class="file-button">SVG importieren<input type="file" accept=".svg,image/svg+xml" (change)="importAvatar($event)" hidden /></label>
+                <button class="small" (click)="saveAvatar()" [disabled]="busy()">Avatar speichern</button>
+              </div>
+              @if (avatarError()) { <div class="notice error">{{ avatarError() }}</div> }
+            </div>
             <div class="inspector-row">
               <span class="muted">{{ a.type }} · {{ a.state }}</span>
               <span class="spacer"></span>
@@ -488,7 +512,12 @@ interface GraphEdge {
                   @if (connKind === 'http') {
                     <label class="wide">URL / Endpoint <input [(ngModel)]="connURL" name="connURL" placeholder="https://…" /></label>
                   }
-                  @if (connKind === 'gate' || connKind === 'custom') {
+                  @if (connKind === 'gate') {
+                    <label class="wide">Condition / expression <input [(ngModel)]="gateExpression" name="gateExpression" placeholder="e.g. tests == green && budget < 5" /></label>
+                    <label>On true <input [(ngModel)]="gateTrue" name="gateTrue" placeholder="allow / next agent" /></label>
+                    <label>On false <input [(ngModel)]="gateFalse" name="gateFalse" placeholder="deny / retry" /></label>
+                  }
+                  @if (connKind === 'custom') {
                     <label class="wide">JSON contract <textarea rows="4" [(ngModel)]="connContract" name="connContract"></textarea></label>
                   }
                 </div>
@@ -556,6 +585,14 @@ interface GraphEdge {
     .muted { color:#8b949e; }
     .spacer { flex:1; }
     .graph-body { flex:1; min-height:0; display:flex; }
+    .node-palette { width:150px; border-right:1px solid #30363d; background:#0f141b; padding:.6rem .5rem; display:flex; flex-direction:column; gap:.25rem; overflow:auto; }
+    .node-palette h4 { margin:.1rem 0 .4rem; font-size:.65rem; letter-spacing:.08em; color:#8b949e; text-transform:uppercase; }
+    .node-palette button { display:flex; flex-direction:column; align-items:flex-start; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:.35rem .45rem; color:#c9d1d9; cursor:pointer; text-align:left; }
+    .node-palette button:hover { border-color:#58a6ff; }
+    .node-palette button.gate { border-left:3px solid #d29922; }
+    .node-palette b { font-size:.75rem; }
+    .node-palette span { font-size:.63rem; color:#8b949e; }
+    .node-palette p { font-size:.62rem; color:#8b949e; margin:.5rem 0 0; }
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
     f-canvas { background:#0b0e14; }
     .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
@@ -599,6 +636,14 @@ interface GraphEdge {
     @keyframes pulse-green { 0% { box-shadow:0 0 0 0 #3fb95088; } 70% { box-shadow:0 0 0 9px #3fb95000; } 100% { box-shadow:0 0 0 0 #3fb95000; } }
     @keyframes blink-red { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
     .avatar { width:70px; height:94px; }
+    .avatar-picker { border:1px solid #21262d; border-radius:6px; padding:.45rem; display:flex; flex-direction:column; gap:.4rem; }
+    .avatar-preview { width:70px; height:94px; align-self:center; }
+    .avatar-preview svg { width:70px; height:94px; }
+    .avatar-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:.25rem; }
+    .avatar-choice { background:#0d1117; border:1px solid #30363d; border-radius:5px; padding:.15rem; color:#8b949e; font-size:.55rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; }
+    .avatar-choice.active { border-color:#58a6ff; color:#58a6ff; }
+    .avatar-mini { width:26px; height:36px; display:block; }
+    .avatar-mini svg { width:26px; height:36px; }
     .figure-name { font-weight:700; font-size:.8rem; margin-top:.1rem; max-width:150px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .figure-sub { font-size:.62rem; color:#8b949e; text-transform:uppercase; }
     .edge-label { font-size:.65rem; padding:.1rem .35rem; border-radius:999px; background:#0d1117; border:1px solid #30363d; color:#8b949e; white-space:nowrap; }
@@ -713,6 +758,13 @@ export class GraphComponent {
   skillDescription = '';
   skillSource = '';
   skillConfig = '';
+  gateExpression = '';
+  gateTrue = '';
+  gateFalse = '';
+  editAvatar = '';
+  editAvatarSVG = '';
+  avatarError = signal('');
+  readonly figures = FIGURES;
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -726,6 +778,7 @@ export class GraphComponent {
 
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
   private readonly api = inject(ApiService);
+  private readonly sanitizer = inject(DomSanitizer);
 
   readonly nodes = computed(() => {
     this.layoutNonce();
@@ -757,6 +810,78 @@ export class GraphComponent {
     setTimeout(() => this.canvas?.fitToScreen({ x: 60, y: 60 }, true), 60);
   }
 
+
+  figureHtml(node: GraphNode): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(figureSvg(node.avatar, node.avatarSvg));
+  }
+
+  trustFigure(svg: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(svg);
+  }
+
+  avatarPreview(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(figureSvg(this.editAvatar, this.editAvatarSVG));
+  }
+
+  chooseAvatar(id: string): void {
+    this.editAvatar = id;
+    this.editAvatarSVG = '';
+    this.avatarError.set('');
+  }
+
+  importAvatar(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    file.text().then(text => {
+      const clean = sanitizeSvg(text);
+      if (!clean) {
+        this.avatarError.set('SVG rejected (scripts/event handlers/foreignObject or >64 KiB)');
+        return;
+      }
+      this.editAvatar = 'custom';
+      this.editAvatarSVG = clean;
+      this.avatarError.set('');
+    }).catch(() => this.avatarError.set('could not read SVG'));
+    input.value = '';
+  }
+
+  saveAvatar(): void {
+    const a = this.editor();
+    if (!a) return;
+    this.busy.set(true);
+    this.avatarError.set('');
+    this.api.setAgentAvatar(a.id, this.editAvatar, this.editAvatarSVG).subscribe({
+      next: updated => {
+        this.busy.set(false);
+        this.editor.set(updated);
+        this.message.set('Avatar gespeichert');
+        this.changed.emit();
+      },
+      error: e => { this.busy.set(false); this.avatarError.set(e.message ?? String(e)); },
+    });
+  }
+
+  palette(kind: 'mcp' | 'skill' | 'gate' | 'http' | 'agent-chain' | 'custom'): void {
+    const a = this.agents.find(x => x.id === this.selectedAgentId);
+    if (!a) { this.configError.set('select an agent first'); return; }
+    if (kind === 'mcp' || kind === 'skill') {
+      this.openConnectorDialog(a);
+      return;
+    }
+    this.openConnectorDialog(a);
+    this.connKind = kind;
+  }
+
+  gateSummary(raw: string): string {
+    try {
+      const c = JSON.parse(raw) as { expression?: string; on_true?: string; on_false?: string };
+      return `${c.expression || 'condition'} · true→${c.on_true || 'allow'} · false→${c.on_false || 'deny'}`;
+    } catch {
+      return 'gate';
+    }
+  }
+
   nodeClicked(node: GraphNode): void {
     if (node.kind !== 'agent') return;
     const raw = this.agents.find(x => x.id === this.agentIdOf(node));
@@ -766,6 +891,9 @@ export class GraphComponent {
     this.editDisplay = a.display_name || '';
     this.editUnit = a.org_unit || '';
     this.editRole = a.role || '';
+    this.editAvatar = a.avatar || '';
+    this.editAvatarSVG = a.avatar_svg || '';
+    this.avatarError.set('');
     this.message.set('');
     this.error.set('');
   }
@@ -1011,6 +1139,9 @@ export class GraphComponent {
     this.skillDescription = '';
     this.skillSource = '';
     this.skillConfig = '';
+    this.gateExpression = '';
+    this.gateTrue = '';
+    this.gateFalse = '';
     this.connectorsOpen.set(true);
     this.loadAgentConfig(a.id);
   }
@@ -1025,6 +1156,13 @@ export class GraphComponent {
       return;
     }
     let contractRaw = this.connContract.trim();
+    if (this.connKind === 'gate' && (this.gateExpression.trim() || this.gateTrue.trim() || this.gateFalse.trim())) {
+      contractRaw = JSON.stringify({
+        expression: this.gateExpression.trim(),
+        on_true: this.gateTrue.trim() || 'allow',
+        on_false: this.gateFalse.trim() || 'deny',
+      }, null, 2);
+    }
     if (contractRaw) {
       const parsed = this.parseJsonSafe(contractRaw);
       if (parsed === null) { this.schemaError.set('contract is not valid JSON'); return; }
@@ -1363,7 +1501,7 @@ export class GraphComponent {
         kind: c.kind === 'custom' ? 'custom' : c.kind,
         title: c.name,
         subtitle: c.kind,
-        detail: c.url || (c.contract ? this.contractSummary(c.contract) : ''),
+        detail: c.kind === 'gate' && c.contract ? this.gateSummary(c.contract) : (c.url || (c.contract ? this.contractSummary(c.contract) : '')),
         position: { x: agent.position.x + 320, y: agent.position.y + idx * 130 },
       });
     }
@@ -1664,7 +1802,7 @@ export class GraphComponent {
           id: `agent-${a.id}`, kind: 'agent', title: a.display_name || a.name,
           subtitle: `${a.type} · ${a.state}`, detail: act?.available ? `cpu ${act.cpu_percent.toFixed(0)}%` : '',
           position: { x: unitX.get(u)! + 105, y: 300 + j * 230 },
-          state: a.state, role: a.role, unit: a.org_unit,
+          state: a.state, role: a.role, unit: a.org_unit, avatar: a.avatar, avatarSvg: a.avatar_svg,
         });
       });
     });
@@ -1682,7 +1820,7 @@ export class GraphComponent {
         id: `agent-${a.id}`, kind: 'agent', title: a.display_name || a.name,
         subtitle: `${a.type} · ${a.image}`,
         detail: `egress ${a.network_profile || 'unrestricted-legacy'}${act?.available ? ` · cpu ${act.cpu_percent.toFixed(0)}%` : ''}`,
-        position: { x: 0, y: i * 190 }, state: a.state, role: a.role, unit: a.org_unit,
+        position: { x: 0, y: i * 190 }, state: a.state, role: a.role, unit: a.org_unit, avatar: a.avatar, avatarSvg: a.avatar_svg,
       });
       if (p?.memory_id) {
         nodes.push({
