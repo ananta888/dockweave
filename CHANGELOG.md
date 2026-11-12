@@ -52,7 +52,8 @@ All notable changes to DockWeave are documented here. The format follows
   existing OpenCode/Claude/Codex/Gemini homes and an Agent Types view in the
   web UI. Add a visible node palette, deterministic gate configuration with
   condition/true/false, 10 built-in 2D role figures and sanitized custom SVG
-  import per agent. The gateway is
+  import per agent. Palette nodes can be dragged onto the canvas and are
+  placed at the drop position. The gateway is
   unprivileged, loopback-only and token-protected; assets are embedded via
   `make web`. See `docs/web-ui.md`.
 

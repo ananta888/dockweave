@@ -100,7 +100,7 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   automatisch aufgeräumt und fehlende Template-Nodes als rote, gestrichelte,
   deaktivierte Platzhalter an ihrer gespeicherten Position dargestellt.
   Rechtsklick auf einen Platzhalter aktiviert/deaktiviert oder entfernt ihn.
-- **Node-Palette**: immer sichtbare Node-Typen für MCP, Skill, deterministisches Gate, HTTP, Agentenkette und Custom; Workspace/Memory/Credential/Knowledge kommen aus den Agentendaten.
+- **Node-Palette**: immer sichtbare Node-Typen für MCP, Skill, deterministisches Gate, HTTP, Agentenkette und Custom; Workspace/Memory/Credential/Knowledge kommen aus den Agentendaten. Die Palette ist drag-and-drop-fähig: Node auf die Canvas ziehen erzeugt sie an dieser Position (MCP/Skill öffnen den Konfigurationsdialog und übernehmen die Drop-Position nach dem Speichern).
 - **Deterministische Gates** zeigen ihre Bedingung und `true→…` / `false→…`-Ergebnisse direkt im Node und werden im Connector-Dialog konfiguriert.
 - **2D-Agentenfiguren**: 10 eingebaute Rollenfiguren (CEO, CTO, Developer, Reviewer, QA, DevOps, Researcher, Designer, Analyst, Operator) plus eigener SVG-Import. Eigene SVGs werden bereinigt (keine Scripts/Event-Handler/foreignObject/JS-URLs, max. 64 KiB) und pro Agent gespeichert.
 - **Rechtsklick-Menü** auf jedem Node und auf der Canvas: Layout als Template

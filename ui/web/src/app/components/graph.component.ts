@@ -122,15 +122,15 @@ interface GraphEdge {
         <button class="small" (click)="fit()">Fit</button>
       </div>
 
-      <div class="graph-body">
+      <div class="graph-body" [class.drop-target]="draggingPalette()" (dragover)="onDragOver($event)" (drop)="onPaletteDrop($event)">
         <aside class="node-palette">
           <h4>Node types</h4>
-          <button (click)="palette('mcp')"><b>MCP</b><span>Server + contract</span></button>
-          <button (click)="palette('skill')"><b>Skill</b><span>agent skill</span></button>
-          <button class="gate" (click)="palette('gate')"><b>Gate</b><span>deterministic</span></button>
-          <button (click)="palette('http')"><b>HTTP</b><span>API endpoint</span></button>
-          <button (click)="palette('agent-chain')"><b>Chain</b><span>agent → agent</span></button>
-          <button (click)="palette('custom')"><b>Custom</b><span>free node</span></button>
+          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'mcp')" (dragend)="draggingPalette.set(null)" (click)="palette('mcp')"><b>MCP</b><span>Server + contract</span></button>
+          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'skill')" (dragend)="draggingPalette.set(null)" (click)="palette('skill')"><b>Skill</b><span>agent skill</span></button>
+          <button class="gate" draggable="true" (dragstart)="onPaletteDragStart($event, 'gate')" (dragend)="draggingPalette.set(null)" (click)="palette('gate')"><b>Gate</b><span>deterministic</span></button>
+          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'http')" (dragend)="draggingPalette.set(null)" (click)="palette('http')"><b>HTTP</b><span>API endpoint</span></button>
+          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'agent-chain')" (dragend)="draggingPalette.set(null)" (click)="palette('agent-chain')"><b>Chain</b><span>agent → agent</span></button>
+          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'custom')" (dragend)="draggingPalette.set(null)" (click)="palette('custom')"><b>Custom</b><span>free node</span></button>
           <p class="muted">Workspace, memory, credential and knowledge come from the agent data.</p>
         </aside>
         <f-flow fDraggable fFlowId="dockweave-agent-graph" (fFullRendered)="fit()">
@@ -585,6 +585,7 @@ interface GraphEdge {
     .muted { color:#8b949e; }
     .spacer { flex:1; }
     .graph-body { flex:1; min-height:0; display:flex; }
+    .graph-body.drop-target { outline:2px dashed #58a6ff; outline-offset:-4px; }
     .node-palette { width:150px; border-right:1px solid #30363d; background:#0f141b; padding:.6rem .5rem; display:flex; flex-direction:column; gap:.25rem; overflow:auto; }
     .node-palette h4 { margin:.1rem 0 .4rem; font-size:.65rem; letter-spacing:.08em; color:#8b949e; text-transform:uppercase; }
     .node-palette button { display:flex; flex-direction:column; align-items:flex-start; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:.35rem .45rem; color:#c9d1d9; cursor:pointer; text-align:left; }
@@ -765,6 +766,9 @@ export class GraphComponent implements OnChanges {
   editAvatarSVG = '';
   avatarError = signal('');
   readonly figures = FIGURES;
+  draggingPalette = signal<string | null>(null);
+  private pendingDropPosition: { x: number; y: number } | null = null;
+  private pendingDropKind: string | null = null;
   connectorsOpen = signal(false);
   connectorAgent = signal<Agent | null>(null);
   connKind: ConnectorConfig['kind'] = 'mcp';
@@ -867,6 +871,48 @@ export class GraphComponent implements OnChanges {
       },
       error: e => { this.busy.set(false); this.avatarError.set(e.message ?? String(e)); },
     });
+  }
+
+  onPaletteDragStart(ev: DragEvent, kind: string): void {
+    this.draggingPalette.set(kind);
+    ev.dataTransfer?.setData('application/x-dockweave-node', kind);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy';
+  }
+
+  onDragOver(ev: DragEvent): void {
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+  }
+
+  onPaletteDrop(ev: DragEvent): void {
+    ev.preventDefault();
+    const kind = ev.dataTransfer?.getData('application/x-dockweave-node') || this.draggingPalette();
+    this.draggingPalette.set(null);
+    if (!kind) return;
+    const a = this.agents.find(x => x.id === this.selectedAgentId);
+    if (!a) { this.configError.set('select an agent first'); return; }
+    const pos = this.flowPoint(ev.clientX, ev.clientY);
+    this.openConnectorDialog(a);
+    this.pendingDropPosition = pos;
+    this.pendingDropKind = kind;
+    if (kind === 'mcp' || kind === 'skill') return;
+    this.connKind = kind as ConnectorConfig['kind'];
+    this.connName = kind === 'agent-chain' ? 'New chain' : kind === 'gate' ? 'New gate' : kind === 'http' ? 'New HTTP' : 'New node';
+  }
+
+  private flowPoint(clientX: number, clientY: number): { x: number; y: number } {
+    const flow = document.querySelector('f-flow') as HTMLElement | null;
+    const canvas = document.querySelector('f-canvas') as HTMLElement | null;
+    if (!flow) return { x: clientX, y: clientY };
+    const rect = flow.getBoundingClientRect();
+    if (!canvas) return { x: clientX - rect.left, y: clientY - rect.top };
+    const tr = getComputedStyle(canvas).transform;
+    const m = tr && tr !== 'none' ? tr.match(/matrix\(([^)]+)\)/) : null;
+    const parts = m ? m[1].split(',').map(Number) : [1, 0, 0, 1, 0, 0];
+    const scale = parts[0] || 1;
+    const tx = parts[4] || 0;
+    const ty = parts[5] || 0;
+    return { x: (clientX - rect.left - tx) / scale, y: (clientY - rect.top - ty) / scale };
   }
 
   palette(kind: 'mcp' | 'skill' | 'gate' | 'http' | 'agent-chain' | 'custom'): void {
@@ -1009,10 +1055,8 @@ export class GraphComponent implements OnChanges {
   }
 
   cleanup(): void {
-    if (this.layout() === 'free') {
-      this.manualPositions = {};
-      this.persistPositions({});
-    }
+    this.manualPositions = {};
+    this.persistPositions({});
     this.layoutNonce.update(v => v + 1);
     setTimeout(() => this.fit(), 100);
   }
@@ -1189,6 +1233,13 @@ export class GraphComponent implements OnChanges {
     const next = [...this.connectors(), cfg];
     this.connectors.set(next);
     this.persistConnectors(next);
+    if (this.pendingDropPosition) {
+      this.manualPositions[`connector-${cfg.id}`] = this.pendingDropPosition;
+      this.persistPositions(this.manualPositions);
+      this.pendingDropPosition = null;
+      this.pendingDropKind = null;
+      this.layoutNonce.update(v => v + 1);
+    }
     this.connName = '';
     this.connContract = '';
     this.connURL = '';
@@ -1367,8 +1418,15 @@ export class GraphComponent implements OnChanges {
       command: this.mcpCommand.trim(), args: this.mcpArgs.split('\n').map(s => s.trim()).filter(Boolean),
       url: this.mcpURL.trim(), contract, env_keys: [], enabled: true,
     }).subscribe({
-      next: () => {
+      next: created => {
         this.configBusy.set(false);
+        if (this.pendingDropPosition) {
+          this.manualPositions[`mcp-${created.id}`] = this.pendingDropPosition;
+          this.persistPositions(this.manualPositions);
+          this.pendingDropPosition = null;
+          this.pendingDropKind = null;
+          this.layoutNonce.update(v => v + 1);
+        }
         this.mcpName = ''; this.mcpCommand = ''; this.mcpArgs = ''; this.mcpURL = ''; this.mcpContract = '';
         this.loadAgentConfig(a.id);
       },
@@ -1407,8 +1465,15 @@ export class GraphComponent implements OnChanges {
       name: this.skillName.trim(), description: this.skillDescription.trim(),
       source_path: this.skillSource.trim(), config: this.skillConfig.trim(), enabled: true,
     }).subscribe({
-      next: () => {
+      next: created => {
         this.configBusy.set(false);
+        if (this.pendingDropPosition) {
+          this.manualPositions[`skill-${created.id}`] = this.pendingDropPosition;
+          this.persistPositions(this.manualPositions);
+          this.pendingDropPosition = null;
+          this.pendingDropKind = null;
+          this.layoutNonce.update(v => v + 1);
+        }
         this.skillName = ''; this.skillDescription = ''; this.skillSource = ''; this.skillConfig = '';
         this.loadAgentConfig(a.id);
       },
@@ -1729,22 +1794,22 @@ export class GraphComponent implements OnChanges {
 
   private applyLayout(nodes: GraphNode[]): GraphNode[] {
     const algo = this.layout();
-    if (algo === 'hierarchy') return nodes;
-    if (algo === 'free') {
-      return nodes.map(n => ({ ...n, position: this.manualPositions[n.id] ?? n.position }));
-    }
-    if (algo === 'mixed') {
-      return this.mode() === 'organization' ? nodes : this.columnLayout(nodes);
-    }
-    if (algo === 'columns') return this.columnLayout(nodes);
-    if (algo === 'grid') {
+    let laid: GraphNode[];
+    if (algo === 'free' || algo === 'hierarchy') {
+      laid = nodes;
+    } else if (algo === 'mixed') {
+      laid = this.mode() === 'organization' ? nodes : this.columnLayout(nodes);
+    } else if (algo === 'columns') {
+      laid = this.columnLayout(nodes);
+    } else if (algo === 'grid') {
       const sorted = [...nodes].sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
       const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
-      return sorted.map((n, i) => ({ ...n, position: { x: (i % cols) * 300, y: Math.floor(i / cols) * 200 } }));
+      laid = sorted.map((n, i) => ({ ...n, position: { x: (i % cols) * 300, y: Math.floor(i / cols) * 200 } }));
+    } else {
+      const cx = 0, cy = 0, r = Math.max(260, nodes.length * 24);
+      laid = nodes.map((n, i) => ({ ...n, position: { x: cx + Math.cos((i / nodes.length) * 2 * Math.PI) * r, y: cy + Math.sin((i / nodes.length) * 2 * Math.PI) * r } }));
     }
-    // radial
-    const cx = 0, cy = 0, r = Math.max(260, nodes.length * 24);
-    return nodes.map((n, i) => ({ ...n, position: { x: cx + Math.cos((i / nodes.length) * 2 * Math.PI) * r, y: cy + Math.sin((i / nodes.length) * 2 * Math.PI) * r } }));
+    return laid.map(n => this.manualPositions[n.id] ? { ...n, position: this.manualPositions[n.id] } : n);
   }
 
   private columnLayout(nodes: GraphNode[]): GraphNode[] {
