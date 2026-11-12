@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
+	"github.com/ananta888/dockweave/internal/agentsession"
 	"github.com/ananta888/dockweave/internal/api"
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/config"
@@ -179,6 +180,12 @@ func run(cfgPath string) error {
 	apiSrv.AllowedRoots = cfg.AllowedRoots
 	apiSrv.Root = cfg.Root
 	apiSrv.KnowledgeDir = cfg.KnowledgeDir
+	apiSrv.Sessions = agentsession.New(agentsession.Config{
+		Docker: docker,
+		FindContainer: func(ctx context.Context, idOrName string) (string, error) {
+			return lookup.ContainerID(ctx, idOrName)
+		},
+	})
 	if cfg.BrokerAdminSocket != "" {
 		apiSrv.Broker = brokerclient.New(cfg.BrokerAdminSocket)
 	}

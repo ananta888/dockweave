@@ -109,6 +109,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
 	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
 	mux.Handle("/api/", s.proxy)
+	mux.Handle("/v1/", s.proxy) // OpenAI-compatible endpoint (proxied to daemon)
 	mux.HandleFunc("/ws/term", s.term)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

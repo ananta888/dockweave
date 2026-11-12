@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
+	"github.com/ananta888/dockweave/internal/agentsession"
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/memory"
@@ -80,6 +81,10 @@ type Server struct {
 	// Broker is optional. When set, read-only broker metadata is exposed
 	// through admin/monitor GET endpoints. No secret values cross this API.
 	Broker *brokerclient.Client
+
+	// Sessions drives the running agent terminals for the OpenAI-compatible
+	// endpoint (optional; when nil the endpoint returns 501).
+	Sessions *agentsession.Manager
 
 	// AllowedRoots, Root and KnowledgeDir back the admin directory browser.
 	// Only directories below these roots are ever listed.
@@ -163,6 +168,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/broker/requests", s.brokerRequests)
 	s.mux.HandleFunc("GET /api/v1/broker/usage", s.brokerUsage)
 	s.mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
+	s.mux.HandleFunc("GET /v1/models", s.openAIModels)
+	s.mux.HandleFunc("POST /v1/chat/completions", s.openAIChatCompletions)
 }
 
 // ServeHTTP implements http.Handler.
