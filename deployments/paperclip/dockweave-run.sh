@@ -52,11 +52,11 @@ echo "[dockweave-run] task: $TASK" >&2
 # 2. Run the harness inside the DockWeave container.
 case "$KIND" in
   codex)
-    [ -n "$CONTAINER" ] && docker exec -i "$CONTAINER" "$HARNESS_BIN" exec \
-      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "$TASK"
+    [ -n "$CONTAINER" ] && printf '%s' "$TASK" | docker exec -i "$CONTAINER" "$HARNESS_BIN" exec \
+      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox
     ;;
   opencode)
-    [ -n "$CONTAINER" ] && docker exec -i "$CONTAINER" "$HARNESS_BIN" run "$TASK"
+    [ -n "$CONTAINER" ] && printf '%s' "$TASK" | docker exec -i "$CONTAINER" "$HARNESS_BIN" run
     ;;
   *)
     printf '%s' "$TASK" | docker exec -i "$CONTAINER" \
