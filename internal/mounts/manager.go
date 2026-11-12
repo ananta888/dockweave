@@ -18,6 +18,7 @@ package mounts
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,6 +283,26 @@ func (m *Manager) List(agentID string) ([]model.MountState, error) {
 	return out, nil
 }
 
+// mountNoSymfollow bind-mounts src at target with MS_NOSYMFOLLOW so the kernel
+// refuses to follow symlinks beneath the mount. This closes the "symlink
+// planting" vector (SD-016): an agent with an rw workspace cannot plant a
+// symlink that later resolves to a host path (e.g. /home/<user>/.ssh) when a
+// host-side or cross-mount actor traverses the shared directory.
+//
+// MS_NOSYMFOLLOW requires Linux >= 5.10. On older kernels/filesystems the
+// mount degrades to a plain bind and the degradation is logged (audit); every
+// caller must treat that as security-relevant.
+func (m *Manager) mountNoSymfollow(src, target string, flags uintptr) error {
+	if err := unix.Mount(src, target, "none", flags|unix.MS_NOSYMFOLLOW, ""); err == nil {
+		return nil
+	} else if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
+		log.Printf("mounts: MS_NOSYMFOLLOW unavailable for %q (symlink protection disabled): %v", target, err)
+		return unix.Mount(src, target, "none", flags, "")
+	} else {
+		return err
+	}
+}
+
 // Add mounts source beneath the agent's workspace tree at targetName.
 // RO mounts are staged privately first (see package doc). Idempotent: if the
 // target is already a mountpoint for the same source and mode, Add returns nil.
@@ -343,7 +364,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	}
 
 	if mode == model.ModeRW {
-		if err := unix.Mount(src, target, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+		if err := m.mountNoSymfollow(src, target, unix.MS_BIND|unix.MS_REC); err != nil {
 			os.Remove(target)
 			return "", fmt.Errorf("bind mount %q -> %q: %w", canon, target, err)
 		}
@@ -361,14 +382,23 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		_ = os.Remove(staging)
 		_ = os.Remove(target)
 	}
-	if err := unix.Mount(src, staging, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+	if err := m.mountNoSymfollow(src, staging, unix.MS_BIND|unix.MS_REC); err != nil {
 		os.Remove(staging)
 		os.Remove(target)
 		return "", fmt.Errorf("stage bind %q: %w", canon, err)
 	}
-	if err := unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC, ""); err != nil {
-		cleanup()
-		return "", fmt.Errorf("remount ro on staging %q: %w", staging, err)
+	if err := unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC|unix.MS_NOSYMFOLLOW, ""); err != nil {
+		// MS_NOSYMFOLLOW may not survive the remount on some kernels; the
+		// stage bind above already applied it (or degraded audibly).
+		if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
+			if err = unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC, ""); err != nil {
+				cleanup()
+				return "", fmt.Errorf("remount ro on staging %q: %w", staging, err)
+			}
+		} else {
+			cleanup()
+			return "", fmt.Errorf("remount ro on staging %q: %w", staging, err)
+		}
 	}
 	// MS_REMOUNT does not reach submounts of a recursive bind on all
 	// kernels. mount_setattr(AT_RECURSIVE) enforces read-only on the whole

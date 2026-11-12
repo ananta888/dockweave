@@ -194,3 +194,32 @@ create or verify the network refuses the agent start (fail closed).
 Residual risk: the agent can reach host services bound to the gateway;
 nftables port filtering remains open (`egress-003`). This is stated in
 `docs/egress-security.md` and not claimed as complete isolation.
+
+## SD-016 — Workspace mounts use `nosymfollow` against symlink planting (2026-11-12)
+
+**Hinweis (finding):** Ein Pentest-Agent mit `rw`-Workspace konnte einen
+Symlink `flucht -> /home/<user>/.ssh` im Projektverzeichnis anlegen. Im
+Container war er wirkungslos (die Containergrenze isoliert `/home`), aber da
+der Workspace ein Bind-Mount eines Host-Verzeichnisses ist, lag derselbe
+Symlink auch im Host-Dateisystem und löste dort auf das echte `~/.ssh` auf
+(Private-Keys). Die direkte Exfiltration schlug fehl (Containergrenze hält),
+aber der Symlink blieb eine „Falle“ für jeden Host-seitigen Akteur, der dem
+Symlink folgt (Backup, `rsync`, `tar`, Monitoring, anderer Agent mit breiterem
+Grant).
+
+**Angriffsvektor:** „Symlink planting" / Confused Deputy. Der Agent nutzt sein
+`rw`-Recht am Workspace, um einen Symlink auf einen sensiblen Host-Pfad zu
+hinterlassen. Schaden entsteht nicht beim Anlegen, sondern wenn später ein
+privilegierterer Akteur dem Link folgt.
+
+**Korrektur:** Die Projekt-Mounts (`internal/mounts`) werden mit
+`MS_NOSYMFOLLOW` (Linux ≥ 5.10) gebunden, sodass der Kernel Symlinks unter dem
+Mount nicht mehr auflöst. Auf älteren Kernels degradiert der Mount auf einen
+normalen Bind (geloggt, auditiert). Restrisiko: `nosymfollow` schützt nur die
+Mount-Sicht; Host-seitige Werkzeuge müssen zusätzlich vermeiden, Symlinks in
+Workspace-Verzeichnissen zu folgen (dokumentiert, nicht als vollständige
+Isolation behauptet).
+
+**Testfall:** `docs/validation/symlink-planting.md` — Pentest-Reproduktion,
+Nachweis dass (a) die direkte Exfiltration blockiert wird und (b) der
+Symlink nach der Korrektur unter dem Mount nicht mehr auflösbar ist.
