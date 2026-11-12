@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/ananta888/dockweave/internal/dockerclient"
 )
@@ -61,7 +62,6 @@ func New(cfg Config) *Manager {
 type Session struct {
 	conn   net.Conn
 	cid    string
-	docker *dockerclient.Client
 	screen *Screen
 	mu     sync.Mutex
 	quiet  time.Duration
@@ -104,11 +104,14 @@ func (m *Manager) session(ctx context.Context, idOrName string) (*Session, error
 	s := &Session{
 		conn:   conn,
 		cid:    cid,
-		docker: m.cfg.Docker,
 		screen: NewScreen(m.cfg.ScreenRows, m.cfg.ScreenCols),
 		quiet:  m.cfg.QuietPeriod,
 		max:    m.cfg.MaxWait,
 	}
+	// Match the container TTY to the emulator once, then let the re-render
+	// settle into the screen so the first "before" snapshot is stable.
+	_ = m.cfg.Docker.Resize(ctx, cid, s.screen.rows, s.screen.cols)
+	_ = s.readUntilQuiet(ctx, s.quiet, 3*time.Second)
 	m.sessions[idOrName] = s
 	return s, nil
 }
@@ -117,62 +120,113 @@ func (s *Session) prompt(ctx context.Context, prompt string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Match the emulator to the container TTY so absolute cursor movements
-	// land on the right cells.
-	_ = s.docker.Resize(ctx, s.cid, s.screen.rows, s.screen.cols)
-
-	// Absorb pending output into the screen to establish the "before" state.
-	s.drainInto()
-	before := s.screen.Text()
-
 	if _, err := s.conn.Write([]byte(prompt + "\r")); err != nil {
 		return "", fmt.Errorf("write prompt: %w", err)
 	}
 
+	_ = s.readUntilQuiet(ctx, s.quiet, s.max)
+	return extractAfterPrompt(s.screen.Text(), prompt), nil
+}
+
+// extractAfterPrompt returns the screen content after the LAST echo of the
+// prompt — i.e. the agent's response to this prompt. Anchoring on the prompt
+// (rather than diffing) is robust because Docker.Attach replays no scrollback:
+// the "before" screen is empty and the TUI only redraws on input.
+func extractAfterPrompt(screenText, prompt string) string {
+	lines := splitLines(screenText)
+	anchor := promptAnchor(prompt)
+	last := -1
+	if anchor != "" {
+		for i, l := range lines {
+			if strings.Contains(l, anchor) {
+				last = i
+			}
+		}
+	}
+	if last < 0 {
+		return cleanResponse(screenText)
+	}
+	out := lines[last+1:]
+	return cleanResponse(strings.Join(out, "\n"))
+}
+
+// cleanResponse drops opencode/codex TUI chrome from a captured response:
+// box/spinner-only lines, the "+ Thought …" indicator, the "Build · … tok/s"
+// footer and status-bar lines.
+func cleanResponse(s string) string {
+	lines := splitLines(s)
+	// Drop trailing TUI status-bar lines (they sit at the bottom of the screen).
+	for len(lines) > 0 && isStatusBar(lines[len(lines)-1]) {
+		lines = lines[:len(lines)-1]
+	}
+	var out []string
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if !containsAlnum(t) {
+			continue // only box-drawing / spinner / whitespace
+		}
+		if strings.HasPrefix(t, "+ Thought") || strings.Contains(t, "tok/s") {
+			continue
+		}
+		out = append(out, strings.TrimSpace(l))
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func containsAlnum(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func promptAnchor(prompt string) string {
+	p := strings.TrimSpace(strings.SplitN(prompt, "\n", 2)[0])
+	if len(p) > 40 {
+		p = p[:40]
+	}
+	return p
+}
+
+func isStatusBar(line string) bool {
+	if strings.Contains(line, "ctrl+p") {
+		return true
+	}
+	// opencode status bar: the agent's cwd as the last line (may carry
+	// padding/counters, so match on the trimmed prefix).
+	return strings.HasPrefix(strings.TrimSpace(line), "/workspace/")
+}
+
+// readUntilQuiet reads PTY output into the screen until the stream has been
+// silent for `quiet` or `max` has elapsed.
+func (s *Session) readUntilQuiet(ctx context.Context, quiet, max time.Duration) error {
 	last := time.Now()
-	deadline := time.Now().Add(s.max)
+	deadline := time.Now().Add(max)
 	tmp := make([]byte, 4096)
-	got := false
 	for time.Now().Before(deadline) {
 		_ = s.conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
 		n, err := s.conn.Read(tmp)
 		if n > 0 {
 			s.screen.Feed(tmp[:n])
 			last = time.Now()
-			got = true
 		}
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
-				if got && time.Since(last) >= s.quiet {
-					break
+				if time.Since(last) >= quiet {
+					return nil
 				}
 				if ctx.Err() != nil {
-					return "", ctx.Err()
+					return ctx.Err()
 				}
 				continue
 			}
-			if got {
-				break
-			}
-			return "", err
+			return err
 		}
 	}
-	return diffScreens(before, s.screen.Text()), nil
-}
-
-func (s *Session) drainInto() {
-	_ = s.conn.SetReadDeadline(time.Now().Add(60 * time.Millisecond))
-	tmp := make([]byte, 4096)
-	for {
-		n, err := s.conn.Read(tmp)
-		if n > 0 {
-			s.screen.Feed(tmp[:n])
-		}
-		if err != nil {
-			return
-		}
-	}
+	return nil
 }
 
 // diffScreens returns the lines of `after` that are new relative to `before`.

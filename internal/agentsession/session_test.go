@@ -58,3 +58,10 @@ func TestDiffScreens(t *testing.T) {
 		t.Errorf("diffScreens = %q, want %q", got, want)
 	}
 }
+
+func TestExtractAfterPrompt(t *testing.T) {
+	screen := "old round\n┃  Begrüße mich\nHallo\n\n┃  Bitte tu was\n┃\n\n   Antwort hier\n/workspace/x ctrl+p commands"
+	if got, want := extractAfterPrompt(screen, "Bitte tu was"), "Antwort hier"; got != want {
+		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
+	}
+}
