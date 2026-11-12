@@ -12,15 +12,17 @@
 #
 # Usage (set as adapterConfig):
 #   command: /path/to/dockweave-run.sh
-#   args:    ["<dockweave-container-name-or-id>"]
+#   args:    ["<dockweave-container>", "<codex|opencode|echo>", "<harness-bin-path>"]
 #
-# The harness below is a deterministic placeholder (echoes the task plus the
-# container hostname). Replace it with a real harness CLI, e.g.:
-#   printf '%s' "$TASK" | docker exec -i "$CONTAINER" \
-#     /memory/.local/bin/codex exec --skip-git-repo-check "$TASK"
+# The harness runs INSIDE the DockWeave container (the security boundary) and
+# is the same binary DockWeave already launches (e.g. /memory/.local/bin/codex
+# or /memory/.local/bin/opencode). For a real LLM run the harness needs valid
+# credentials; `echo` is a deterministic fallback for wiring tests.
 set -u
 
 CONTAINER="${1:-${DOCKWEAVE_CONTAINER:-}}"
+KIND="${2:-codex}"
+HARNESS_BIN="${3:-/memory/.local/bin/codex}"
 API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
 API_KEY="${PAPERCLIP_API_KEY:-}"
 
@@ -48,9 +50,16 @@ fi
 echo "[dockweave-run] task: $TASK" >&2
 
 # 2. Run the harness inside the DockWeave container.
-if [ -n "$CONTAINER" ]; then
-  printf '%s' "$TASK" | docker exec -i "$CONTAINER" \
-    sh -c 'read p; echo "harness@$(hostname) processed: $p"'
-else
-  echo "harness@host processed: $TASK"
-fi
+case "$KIND" in
+  codex)
+    [ -n "$CONTAINER" ] && docker exec -i "$CONTAINER" "$HARNESS_BIN" exec \
+      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox "$TASK"
+    ;;
+  opencode)
+    [ -n "$CONTAINER" ] && docker exec -i "$CONTAINER" "$HARNESS_BIN" run "$TASK"
+    ;;
+  *)
+    printf '%s' "$TASK" | docker exec -i "$CONTAINER" \
+      sh -c 'read p; echo "harness@$(hostname) processed: $p"'
+    ;;
+esac
