@@ -75,6 +75,7 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     gate: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
     http: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
     skill: ports(port(1, 0), port(0, 1), port(0, 0), port(0, 0)),
+    custom: ports(port(1, 1), port(1, 1), port(0, 0), port(0, 0)),
   },
   connectionTypes: [
     { id: 'rw', label: 'read-write', color: '#3fb950', strict: true },

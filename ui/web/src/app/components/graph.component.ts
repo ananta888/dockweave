@@ -168,7 +168,13 @@ interface GraphEdge {
                 <svg fMarker type="end-all-states" [width]="10" [height]="10" [refX]="10" [refY]="5" markerUnits="userSpaceOnUse" viewBox="0 0 10 10">
                   <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"></path>
                 </svg>
-                <div fConnectionContent [position]="0.5" class="edge-label" [class]="'edge-' + edge.kind">{{ edge.label }}</div>
+                <div fConnectionContent [position]="0.5" class="edge-content">
+                  <span class="edge-label" [class]="'edge-' + edge.kind">{{ edge.label }}</span>
+                  <span class="edge-actions">
+                    <button fDragBlocker type="button" title="Node auf Kante einfügen" (click)="$event.stopPropagation(); insertNodeOnEdge(edge)">＋</button>
+                    <button fDragBlocker type="button" title="Verbindung löschen" (click)="$event.stopPropagation(); deleteEdge(edge)">×</button>
+                  </span>
+                </div>
               </f-connection>
             }
             @for (node of nodes(); track node.id) {
@@ -217,7 +223,10 @@ interface GraphEdge {
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
                 }
                 @if (node.kind !== 'ghost') {
-                  <button class="node-link-btn" fDragBlocker type="button" title="Neue Verbindung" (click)="$event.stopPropagation(); beginConnect(node)">＋</button>
+                  <span class="node-actions">
+                    <button fDragBlocker type="button" title="Verbindung hinzufügen" (click)="$event.stopPropagation(); beginConnect(node)">＋</button>
+                    <button fDragBlocker type="button" title="Node entfernen" (click)="$event.stopPropagation(); removeNode(node)">×</button>
+                  </span>
                 }
                 @for (p of portsFor(node); track p.id) {
                   <span
@@ -717,8 +726,19 @@ interface GraphEdge {
     .node-palette span { font-size:.63rem; color:#8b949e; }
     .node-palette p { font-size:.62rem; color:#8b949e; margin:.5rem 0 0; }
     .connect-banner { position:absolute; top:8px; left:50%; transform:translateX(-50%); z-index:20; background:#11263b; border:1px solid #1f6feb; border-radius:7px; padding:.4rem .7rem; font-size:.75rem; display:flex; align-items:center; gap:.5rem; }
-    .node-link-btn { position:absolute; top:-9px; right:-9px; width:22px; height:22px; border-radius:50%; border:1px solid #58a6ff; background:#0d1117; color:#58a6ff; cursor:pointer; font-size:.85rem; line-height:1; z-index:6; padding:0; }
-    .node-link-btn:hover { background:#58a6ff; color:#0b0e14; }
+    .node-actions { position:absolute; right:-10px; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:3px; opacity:0; transition:opacity .15s; z-index:8; }
+    .gw-node:hover .node-actions { opacity:1; }
+    .node-actions button { width:22px; height:22px; border-radius:50%; border:1px solid #58a6ff; background:#0d1117; color:#58a6ff; cursor:pointer; font-size:.85rem; line-height:1; padding:0; }
+    .node-actions button:hover { background:#58a6ff; color:#0b0e14; }
+    .node-actions button:last-child { border-color:#f85149; color:#f85149; }
+    .node-actions button:last-child:hover { background:#f85149; color:#fff; }
+    .edge-content { display:flex; align-items:center; gap:4px; }
+    .edge-actions { display:flex; gap:3px; opacity:0; transition:opacity .15s; }
+    .f-connection:hover .edge-actions { opacity:1; }
+    .edge-actions button { width:20px; height:20px; border-radius:50%; border:1px solid #58a6ff; background:#0d1117; color:#58a6ff; cursor:pointer; font-size:.8rem; line-height:1; padding:0; }
+    .edge-actions button:hover { background:#58a6ff; color:#0b0e14; }
+    .edge-actions button:last-child { border-color:#f85149; color:#f85149; }
+    .edge-actions button:last-child:hover { background:#f85149; color:#fff; }
     .edge-toolbar { position:fixed; z-index:120; background:#161b22; border:1px solid #58a6ff; border-radius:8px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; font-size:.75rem; box-shadow:0 6px 18px #000a; }
     .settings-backdrop.floating { position:fixed; inset:0; background:transparent; display:block; pointer-events:none; }
     .settings-backdrop.floating .settings-modal.popover { position:fixed; pointer-events:auto; width:420px; max-width:calc(100vw - 16px); max-height:76vh; overflow:auto; }
@@ -1085,7 +1105,7 @@ export class GraphComponent implements OnChanges {
     const name = kind === 'gate' ? 'New gate' : kind === 'http' ? 'New HTTP' : kind === 'mcp' ? 'New MCP server' : kind === 'skill' ? 'New skill' : kind === 'agent-chain' ? 'New chain' : 'New node';
     const cfg: ConnectorConfig = {
       id, agentId: a.id, kind: mapped as ConnectorConfig['kind'], name,
-      direction: 'out', enabled: true, draft: kind === 'mcp' || kind === 'skill',
+      direction: 'out', enabled: true, connected: false, draft: kind === 'mcp' || kind === 'skill',
       contract: kind === 'gate' ? JSON.stringify({ expression: 'true', on_true: 'allow', on_false: 'deny' }) : undefined,
     };
     const next = [...this.connectors(), cfg];
@@ -1206,6 +1226,66 @@ export class GraphComponent implements OnChanges {
     this.selectedEdge.set(edge);
     this.edgeToolbarPos.set({ x: Math.min(window.innerWidth - 340, ev.clientX + 10), y: Math.min(window.innerHeight - 60, ev.clientY + 10) });
     this.contextMenu.set({ x: ev.clientX, y: ev.clientY, edge });
+  }
+
+  removeNode(node: GraphNode): void {
+    if (node.kind === 'ghost') { this.removeGhost(node.id); return; }
+    if (node.id.startsWith('connector-')) {
+      const cid = node.id.slice('connector-'.length);
+      const next = this.connectors().filter(c => c.id !== cid);
+      this.connectors.set(next);
+      this.persistConnectors(next);
+      const edges = this.customEdges().filter(e => e.source !== node.id && e.target !== node.id);
+      this.customEdges.set(edges);
+      this.persistCustomEdges(edges);
+      delete this.manualPositions[node.id];
+      this.persistPositions(this.manualPositions);
+      this.layoutNonce.update(v => v + 1);
+      return;
+    }
+    if (node.id.startsWith('mcp-')) {
+      const m = this.mcpServers().find(x => 'mcp-' + x.id === node.id);
+      if (m) this.api.deleteMCP(m.agent_id, m.id).subscribe({ next: () => { this.loadAgentConfig(m.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
+      return;
+    }
+    if (node.id.startsWith('skill-')) {
+      const sk = this.skills().find(x => 'skill-' + x.id === node.id);
+      if (sk) this.api.deleteSkill(sk.agent_id, sk.id).subscribe({ next: () => { this.loadAgentConfig(sk.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
+      return;
+    }
+    this.configError.set('dieser Node stammt aus den Agentendaten und kann hier nicht entfernt werden');
+  }
+
+  insertNodeOnEdge(edge: GraphEdge): void {
+    if (!this.customEdges().some(e => e.id === edge.id)) {
+      this.configError.set('nur eigene Kanten können einen Zwischen-Node erhalten');
+      return;
+    }
+    const source = this.nodes().find(n => n.id === edge.source);
+    const target = this.nodes().find(n => n.id === edge.target);
+    if (!source || !target) return;
+    const id = 'conn-' + Date.now();
+    const cfg: ConnectorConfig = {
+      id, agentId: this.agents.find(x => x.id === this.selectedAgentId)?.id || source.id.replace(/^agent-/, ''),
+      kind: 'custom', name: 'Junction', direction: 'out', enabled: true, connected: false,
+    };
+    const next = [...this.connectors(), cfg];
+    this.connectors.set(next);
+    this.persistConnectors(next);
+    const mid = { x: (source.position.x + target.position.x) / 2, y: (source.position.y + target.position.y) / 2 };
+    this.manualPositions['connector-' + id] = mid;
+    this.persistPositions(this.manualPositions);
+    const at = this.pickPort('connector-' + id, 'in', 'left');
+    const ot = this.pickPort('connector-' + id, 'out', 'right');
+    if (at && ot) {
+      const e1: CustomEdge = { id: 'custom-' + Date.now() + '-a', source: edge.source, target: 'connector-' + id, sourcePort: edge.sourcePort, targetPort: at.id, label: edge.label, kind: edge.kind, sourceSide: edge.sourceSide, targetSide: at.side };
+      const e2: CustomEdge = { id: 'custom-' + Date.now() + '-b', source: 'connector-' + id, target: edge.target, sourcePort: ot.id, targetPort: edge.targetPort, label: edge.label, kind: edge.kind, sourceSide: ot.side, targetSide: edge.targetSide };
+      const edges = this.customEdges().filter(e => e.id !== edge.id);
+      edges.push(e1, e2);
+      this.customEdges.set(edges);
+      this.persistCustomEdges(edges);
+    }
+    this.layoutNonce.update(v => v + 1);
   }
 
   deleteEdge(edge: GraphEdge): void {
@@ -1962,7 +2042,6 @@ export class GraphComponent implements OnChanges {
     const used = new Map<string, number>();
     for (const c of this.connectors()) {
       if (!c.enabled || c.kind === 'agent-chain') continue;
-      if (c.connected === false) continue;
       if ((c.kind === 'mcp' || c.kind === 'skill') && !c.draft) continue;
       const agent = byId.get(`agent-${c.agentId}`);
       if (!agent) continue;
