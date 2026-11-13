@@ -1,0 +1,7 @@
+[Unit]
+Description=Refresh DockWeave Codex broker session token
+After=dockweave-broker.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/dockweave-codex-refresh ag_71c98222271f19f7f54a0a80 developer codex-main 8h

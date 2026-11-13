@@ -1,0 +1,14 @@
+[Unit]
+Description=DockWeave credential broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/dockweave/broker.env
+ExecStart=%h/dockweave/bin/dockweave-broker --data-dir %h/.local/share/dockweave/broker --listen 172.17.0.1:8787 --admin-uids 0,1000
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

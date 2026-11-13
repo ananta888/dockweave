@@ -202,6 +202,16 @@ Hinweise:
 - Das ChatGPT-Codex-Backend verlangt `stream: true` und `store: false`; die
   Codex-CLI sendet beides bereits.
 
+### Dauerbetrieb
+
+Der Broker muss vom Agentencontainer erreichbar bleiben und das Session-Token
+vor Ablauf erneuert werden. Ein fertiges systemd-User-Setup liegt in
+[`deployments/credential-broker/`](../deployments/credential-broker/README.de.md):
+Broker am Docker-Bridge-Gateway, stündlicher Timer mit
+`dockweave-codex-refresh` schreibt ein frisches `dws_…`-Token nach
+`/memory/.config/dockweave/codex-token`, Codex liest es über
+`model_providers.*.auth.command`.
+
 ## Operator-CLI
 
 ```bash
