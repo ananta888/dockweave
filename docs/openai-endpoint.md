@@ -60,7 +60,7 @@ while the agent is thinking.
 
 - **One turn at a time per agent.** Concurrent requests to the same agent are
   serialized by a per-session lock.
-- **The TTY is resized** to the emulator grid (default 160×50) on first attach,
+- **The TTY is resized** to the emulator grid (default 160×100) on first attach,
   because absolute cursor addressing must match. Any other terminal attached
   to the same container sees that size too.
 - **Sessions are cached** per agent and dropped when the container goes away,
@@ -77,3 +77,6 @@ while the agent is thinking.
   that stays open ends in `agent_no_response`.
 - Response extraction is heuristic per harness (opencode, codex). New harnesses
   need their own completion/chrome rules.
+- Capture is **viewport-bound**: the harness only paints its own screen, so an
+  answer longer than the TTY height is truncated to what is visible. The
+  default 100-row grid covers typical answers; raise `ScreenRows` for more.

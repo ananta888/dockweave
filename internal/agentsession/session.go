@@ -59,7 +59,7 @@ func New(cfg Config) *Manager {
 		cfg.MaxWait = 3 * time.Minute
 	}
 	if cfg.ScreenRows <= 0 {
-		cfg.ScreenRows = 50
+		cfg.ScreenRows = 100
 	}
 	if cfg.ScreenCols <= 0 {
 		cfg.ScreenCols = 160
@@ -75,10 +75,11 @@ func New(cfg Config) *Manager {
 // terminal freezes. The pump also keeps the screen up to date between API
 // calls, so a manual interaction in the TUI is reflected in the capture.
 type Session struct {
-	conn  net.Conn
-	cid   string
-	quiet time.Duration
-	max   time.Duration
+	conn   net.Conn
+	cid    string
+	docker *dockerclient.Client
+	quiet  time.Duration
+	max    time.Duration
 
 	writeMu sync.Mutex // serializes writes to the TTY (prompt + DSR replies)
 
@@ -153,6 +154,7 @@ func (m *Manager) session(ctx context.Context, idOrName string) (*Session, error
 	s := &Session{
 		conn:   conn,
 		cid:    cid,
+		docker: m.cfg.Docker,
 		screen: NewScreen(m.cfg.ScreenRows, m.cfg.ScreenCols),
 		quiet:  m.cfg.QuietPeriod,
 		max:    m.cfg.MaxWait,
@@ -237,6 +239,15 @@ func (s *Session) prompt(ctx context.Context, prompt string) (string, error) {
 	if !s.alive() {
 		return "", ErrSessionClosed
 	}
+	// Another terminal (web UI, tmux) may have changed the TTY size since the
+	// last turn. Re-assert the emulator geometry so cursor addressing matches.
+	if s.docker != nil {
+		_ = s.docker.Resize(ctx, s.cid, s.screen.rows, s.screen.cols)
+		time.Sleep(120 * time.Millisecond)
+	}
+	s.smu.Lock()
+	baseCompletions := countCompletions(s.screen.TextWithScrollback())
+	s.smu.Unlock()
 
 	// Clear any leftover draft from a previously interrupted submit, then type
 	// the prompt and submit it in a *separate* read on the harness side.
@@ -266,11 +277,11 @@ func (s *Session) prompt(ctx context.Context, prompt string) (string, error) {
 		return "", fmt.Errorf("submit prompt: %w", err)
 	}
 
-	if err := s.waitSettled(ctx, prompt); err != nil {
+	if err := s.waitSettled(ctx, prompt, baseCompletions); err != nil {
 		return "", err
 	}
 	s.smu.Lock()
-	text := s.screen.Text()
+	text := s.screen.TextWithScrollback()
 	s.smu.Unlock()
 	if os.Getenv("DOCKWEAVE_DEBUG_SESSION") != "" {
 		fmt.Fprintf(os.Stderr, "\n=== RAW SCREEN ===\n%s\n=== END RAW ===\n", text)
@@ -340,7 +351,7 @@ func (s *Session) waitForOutputAfter(ctx context.Context, t time.Time, timeout t
 // harness's own "done" footer) allows an early return; without one we keep
 // waiting through the model's thinking gap so a slow first token is not
 // mistaken for "no response".
-func (s *Session) waitSettled(ctx context.Context, prompt string) error {
+func (s *Session) waitSettled(ctx context.Context, prompt string, baseCompletions int) error {
 	start := time.Now()
 	deadline := start.Add(s.max)
 	for {
@@ -353,7 +364,7 @@ func (s *Session) waitSettled(ctx context.Context, prompt string) error {
 		}
 		s.smu.Lock()
 		last := s.lastAt
-		text := s.screen.Text()
+		text := s.screen.TextWithScrollback()
 		s.smu.Unlock()
 		if last.Before(start) {
 			// Nothing has been written since Enter. Give the harness a window
@@ -365,12 +376,54 @@ func (s *Session) waitSettled(ctx context.Context, prompt string) error {
 			continue
 		}
 		if now.Sub(last) >= s.quiet {
-			if hasCompletion(s.afterPrompt(text, prompt)) || now.Sub(start) >= 30*time.Second {
+			// Finished when the harness emitted a completion footer for this
+			// turn, either inside the text after the prompt echo (anchor
+			// visible) or as a new footer count (anchor scrolled away).
+			if countCompletions(text) > baseCompletions || hasCompletion(s.afterPrompt(text, prompt)) {
+				return nil
+			}
+			// Fallback for harnesses without a footer — but not while the TUI
+			// still displays a busy indicator.
+			if now.Sub(start) >= 30*time.Second && !isBusy(text) {
 				return nil
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// countCompletions counts harness completion footers in a screen snapshot.
+func countCompletions(s string) int {
+	n := 0
+	for _, l := range splitLines(s) {
+		if isCompletionLine(l) {
+			n++
+		}
+	}
+	return n
+}
+
+// isBusy reports whether the TUI still shows a working indicator.
+func isBusy(s string) bool {
+	lines := splitLines(s)
+	seen := 0
+	for i := len(lines) - 1; i >= 0; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || !containsAlnum(t) {
+			continue
+		}
+		if strings.Contains(t, "esc to interrupt") ||
+			strings.HasPrefix(t, "Working (") ||
+			strings.HasPrefix(t, "Thinking") ||
+			strings.HasPrefix(t, "Waiting") {
+			return true
+		}
+		seen++
+		if seen >= 8 {
+			break
+		}
+	}
+	return false
 }
 
 // hasCompletion reports whether the captured (post-prompt) text contains a
@@ -391,10 +444,32 @@ func (s *Session) afterPrompt(text, prompt string) string { return rawAfterPromp
 func rawAfterPrompt(screenText, prompt string) string {
 	lines := splitLines(screenText)
 	last := lastAnchorLine(lines, prompt)
-	if last < 0 {
-		return screenText
+	if last >= 0 {
+		return strings.Join(lines[last+1:], "\n")
 	}
-	return strings.Join(lines[last+1:], "\n")
+	// The prompt echo scrolled out of the TUI viewport (long answer). Keep only
+	// the current turn: everything after the previous turn's completion footer.
+	// Returning the whole screen here would leak earlier conversation history.
+	// Pick the last footer that is followed by actual answer content (a footer
+	// at the very bottom is the current turn's own end marker).
+	var footers []int
+	for i, l := range lines {
+		if isCompletionLine(l) {
+			footers = append(footers, i)
+		}
+	}
+	for k := len(footers) - 1; k >= 0; k-- {
+		tail := strings.Join(lines[footers[k]+1:], "\n")
+		if cleanResponse(tail) != "" {
+			return tail
+		}
+	}
+	return ""
+}
+
+func isCompletionLine(l string) bool {
+	t := strings.TrimSpace(l)
+	return strings.Contains(t, "tok/s") || strings.HasPrefix(t, "Worked for ")
 }
 
 func lastAnchorLine(lines []string, prompt string) int {
@@ -458,7 +533,18 @@ func cleanLine(t string) (string, bool) {
 		strings.HasPrefix(t, "└ Tip:") ||
 		strings.HasPrefix(t, "Tip: Use") ||
 		strings.Contains(t, "f2 to view") ||
-		strings.HasPrefix(t, "⚠ ") {
+		strings.HasPrefix(t, "⚠ ") ||
+		strings.Contains(t, "default · /workspace/") {
+		return "", false
+	}
+	// opencode onboarding sidebar / status text
+	if strings.Contains(t, "Getting started") ||
+		strings.Contains(t, "OpenCode includes free models") ||
+		strings.Contains(t, "Connect provider") ||
+		strings.Contains(t, "Claude, GPT, Gemini") ||
+		strings.HasPrefix(t, "use other models") ||
+		strings.Contains(t, "start immediately") ||
+		strings.Contains(t, "Build auto ·") {
 		return "", false
 	}
 	// codex renders assistant messages with a "• " bullet and the empty
@@ -469,8 +555,20 @@ func cleanLine(t string) (string, bool) {
 	if t == "Ask Codex to do anything" {
 		return "", false
 	}
+	// A TUI status bar can bleed onto an answer line at the far right (e.g.
+	// "26          9 269"). Drop a trailing counter fragment separated by a
+	// wide gap of spaces.
+	t = statusFragmentRe.ReplaceAllString(t, "$1")
+	// opencode renders a right-hand sidebar; drop what was painted into the
+	// right columns of an answer line.
+	t = wideGapRe.ReplaceAllString(t, "$1")
 	return t, true
 }
+
+var (
+	statusFragmentRe = regexp.MustCompile(`(\S)\s{4,}[0-9% ]+$`)
+	wideGapRe        = regexp.MustCompile(`(\S)\s{20,}\S.*$`)
+)
 
 func containsAlnum(s string) bool {
 	for _, r := range s {

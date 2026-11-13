@@ -49,6 +49,9 @@ func TestScreenScroll(t *testing.T) {
 	if got, want := s.Text(), "b\nc\nd"; got != want {
 		t.Errorf("Text() = %q, want %q", got, want)
 	}
+	if got, want := s.TextWithScrollback(), "a\nb\nc\nd"; got != want {
+		t.Errorf("TextWithScrollback() = %q, want %q", got, want)
+	}
 }
 
 func TestDiffScreens(t *testing.T) {
@@ -79,6 +82,23 @@ func TestExtractMultilinePrompt(t *testing.T) {
 	screen := "┃  Antworte nur mit OK.\n┃  Zweite Zeile Kontext.\n\n   OK\n/workspace/x"
 	if got, want := extractAfterPrompt(screen, "Antworte nur mit OK.\nZweite Zeile Kontext."), "OK"; got != want {
 		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
+	}
+}
+
+func TestExtractAnchorScrolledAway(t *testing.T) {
+	// The prompt echo is not visible (long answer scrolled the viewport); the
+	// fallback must return only the current turn, not earlier history.
+	screen := "old answer\nBuild · Big Pickle · 1s · 2 tok/s\ncurrent answer 1\ncurrent answer 2\nBuild · Big Pickle · 2s · 3 tok/s"
+	got := extractAfterPrompt(screen, "prompt that scrolled away")
+	want := "current answer 1\ncurrent answer 2"
+	if got != want {
+		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
+	}
+}
+
+func TestExtractNoAnchorNoFooter(t *testing.T) {
+	if got := extractAfterPrompt("some unrelated history", "missing prompt"); got != "" {
+		t.Errorf("extractAfterPrompt = %q, want empty", got)
 	}
 }
 

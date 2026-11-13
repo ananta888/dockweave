@@ -22,6 +22,11 @@ type Screen struct {
 	savedRow       int
 	savedCol       int
 	pending        []byte // incomplete UTF-8 between Feed calls
+
+	// scrollback keeps lines that scrolled off the top so a long agent answer
+	// (longer than the visible screen) can still be extracted completely.
+	scrollback    []string
+	maxScrollback int
 }
 
 // NewScreen creates a blank screen.
@@ -32,7 +37,7 @@ func NewScreen(rows, cols int) *Screen {
 	if cols < 1 {
 		cols = 1
 	}
-	s := &Screen{rows: rows, cols: cols, grid: make([][]rune, rows)}
+	s := &Screen{rows: rows, cols: cols, grid: make([][]rune, rows), maxScrollback: 2000}
 	for i := range s.grid {
 		s.grid[i] = blankRow(cols)
 	}
@@ -116,6 +121,24 @@ func (s *Screen) Text() string {
 	return strings.Join(lines[:end], "\n")
 }
 
+// TextWithScrollback returns the retained scrollback followed by the visible
+// screen. Use it when a response can be longer than the screen.
+func (s *Screen) TextWithScrollback() string {
+	if len(s.scrollback) == 0 {
+		return s.Text()
+	}
+	lines := make([]string, 0, len(s.scrollback)+s.rows)
+	lines = append(lines, s.scrollback...)
+	for i := range s.grid {
+		lines = append(lines, strings.TrimRight(string(s.grid[i]), " "))
+	}
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	return strings.Join(lines[:end], "\n")
+}
+
 func (s *Screen) put(r rune) {
 	if s.curCol >= s.cols {
 		s.curCol = 0
@@ -134,6 +157,11 @@ func (s *Screen) lineFeed() {
 }
 
 func (s *Screen) scrollUp() {
+	top := strings.TrimRight(string(s.grid[0]), " ")
+	s.scrollback = append(s.scrollback, top)
+	if len(s.scrollback) > s.maxScrollback {
+		s.scrollback = append([]string(nil), s.scrollback[len(s.scrollback)-s.maxScrollback:]...)
+	}
 	copy(s.grid, s.grid[1:])
 	s.grid[s.rows-1] = blankRow(s.cols)
 }
@@ -271,6 +299,7 @@ func (s *Screen) applyCSI(params string, final byte) {
 		// alternate screen (1049h/1047h) reset to a clean slate.
 		if private && final == 'h' && (containsInt(nums, 1049) || containsInt(nums, 1047)) {
 			s.clear()
+			s.scrollback = nil
 		}
 		// Everything else (colors, mouse, bracketed paste) is ignored.
 	}

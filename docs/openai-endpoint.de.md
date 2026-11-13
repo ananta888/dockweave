@@ -63,7 +63,7 @@ einem `stop`-Chunk und `data: [DONE]`. Während der Agent denkt, werden alle
 
 - **Ein Turn pro Agent.** Gleichzeitige Anfragen an denselben Agenten werden
   durch einen Session-Lock serialisiert.
-- **Das TTY wird vergrößert** (Default 160×50) beim ersten Attach, weil
+- **Das TTY wird vergrößert** (Default 160×100) beim ersten Attach, weil
   absolute Cursor-Adressierung passen muss. Andere Terminals am selben
   Container sehen diese Größe ebenfalls.
 - **Sessions werden gecacht** pro Agent und verworfen, wenn der Container
@@ -82,3 +82,7 @@ einem `stop`-Chunk und `data: [DONE]`. Während der Agent denkt, werden alle
   unterscheiden; ein dauerhaft offenes Modal endet in `agent_no_response`.
 - Die Antwort-Extraktion ist heuristisch pro Harness (opencode, codex). Neue
   Harnesses brauchen eigene Regeln für Abschluss und Chrome.
+- Die Erfassung ist **viewport-gebunden**: der Harness malt nur seinen eigenen
+  Screen, daher wird eine Antwort, die höher als das TTY ist, auf das
+  Sichtbare gekürzt. Das Default-Raster mit 100 Zeilen deckt typische
+  Antworten ab; für mehr `ScreenRows` erhöhen.
