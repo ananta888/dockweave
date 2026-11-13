@@ -12,10 +12,12 @@ package agentconfig
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/ananta888/dockweave/internal/model"
 )
@@ -48,7 +50,7 @@ func Write(memDir, agentType string, uid, gid int, mcps []*model.AgentMCP, skill
 }
 
 func chownConfig(memDir string, uid, gid int) error {
-	for _, rel := range []string{".dockweave", ".config", ".claude", ".claude.json"} {
+	for _, rel := range []string{".dockweave", ".config", ".claude", ".claude.json", ".codex", ".gemini"} {
 		p := filepath.Join(memDir, rel)
 		_ = filepath.Walk(p, func(path string, info os.FileInfo, err error) error {
 			if err == nil {
@@ -141,11 +143,24 @@ func writeSkills(memDir, agentType string, skills []*model.AgentSkill) error {
 	}
 	sort.Slice(enabled, func(i, j int) bool { return enabled[i].Name < enabled[j].Name })
 	for _, s := range enabled {
+		if !safeSkillName(s.Name) {
+			continue
+		}
 		base := filepath.Join(memDir, ".dockweave", "skills", s.Name)
-		if agentType == "opencode" {
+		switch agentType {
+		case "opencode":
 			base = filepath.Join(memDir, ".config", "opencode", "skills", s.Name)
-		} else if agentType == "claude" {
+		case "claude":
 			base = filepath.Join(memDir, ".claude", "skills", s.Name)
+		case "codex":
+			base = filepath.Join(memDir, ".codex", "skills", s.Name)
+		case "gemini", "antigravity":
+			base = filepath.Join(memDir, ".gemini", "skills", s.Name)
+		}
+		// A skill with a source folder is copied including references,
+		// scripts and assets; a metadata-only entry keeps the legacy stub.
+		if copySkillTree(s.SourcePath, base) == nil {
+			continue
 		}
 		if err := os.MkdirAll(base, 0o755); err != nil {
 			return err
@@ -160,6 +175,94 @@ func writeSkills(memDir, agentType string, skills []*model.AgentSkill) error {
 		if err := os.WriteFile(filepath.Join(base, "SKILL.md"), []byte(body), 0o644); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func safeSkillName(name string) bool {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	return true
+}
+
+// copySkillTree copies a skill folder into dst, replacing any previous copy.
+// It only copies regular files and directories (no symlinks) and refuses paths
+// that escape dst.
+func copySkillTree(src, dst string) error {
+	if src == "" {
+		return errors.New("empty source")
+	}
+	if _, err := os.Stat(filepath.Join(src, "SKILL.md")); err != nil {
+		return err
+	}
+	tmp := dst + ".tmp-skill"
+	_ = os.RemoveAll(tmp)
+	if err := os.MkdirAll(tmp, 0o755); err != nil {
+		return err
+	}
+	files, total := 0, int64(0)
+	err := filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if p == src {
+			return nil
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.Clean(rel)
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return errors.New("skill path escapes source")
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		out := filepath.Join(tmp, rel)
+		if d.IsDir() {
+			return os.MkdirAll(out, 0o755)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		files++
+		total += info.Size()
+		if files > 800 || total > 32<<20 {
+			return errors.New("skill folder too large")
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if info.Mode()&0o111 != 0 {
+			mode = 0o755
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(out, data, mode)
+	})
+	if err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.RemoveAll(tmp)
+		return err
 	}
 	return nil
 }

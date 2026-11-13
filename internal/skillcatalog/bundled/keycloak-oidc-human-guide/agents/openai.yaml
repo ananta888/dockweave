@@ -1,0 +1,4 @@
+interface:
+  display_name: "Keycloak & OIDC Human Guide"
+  short_description: "Keycloak/OIDC identity, audit, and privacy"
+  default_prompt: "Use $keycloak-oidc-human-guide to explain Keycloak/OIDC identity-data boundaries, auditability, privacy, and delegated administration in my language."

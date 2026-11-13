@@ -42,6 +42,7 @@
         <button [class.active]="view() === 'analysis'" (click)="view.set('analysis')">Analysis</button>
         <button [class.active]="view() === 'workspaces'" (click)="view.set('workspaces')">Workspaces</button>
         <button [class.active]="view() === 'types'" (click)="view.set('types')">Agent Types</button>
+        <button [class.active]="view() === 'skills'" (click)="view.set('skills')">Skills</button>
       </nav>
       <span class="spacer"></span>
       @if (store.selected(); as a) {
@@ -125,6 +126,9 @@
         }
         @case ('types') {
           <dw-agent-types />
+        }
+        @case ('skills') {
+          <dw-skills />
         }
         @case ('workspaces') {
           <div class="workspaces">

@@ -22,6 +22,7 @@ import (
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
+	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -91,6 +92,9 @@ type Server struct {
 	Root         string
 	KnowledgeDir string
 
+	// Skills is the managed skill catalog (optional).
+	Skills *skillcatalog.Catalog
+
 	mux *http.ServeMux
 }
 
@@ -138,6 +142,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/mcp", s.addTypeMCP)
 	s.mux.HandleFunc("PATCH /api/v1/agent-types/{type}/mcp/{mcp}", s.updateTypeMCP)
 	s.mux.HandleFunc("DELETE /api/v1/agent-types/{type}/mcp/{mcp}", s.deleteTypeMCP)
+	s.mux.HandleFunc("GET /api/v1/skills/catalog", s.skillCatalog)
+	s.mux.HandleFunc("POST /api/v1/skills/install", s.installCatalogSkill)
+	s.mux.HandleFunc("DELETE /api/v1/skills/{name}", s.deleteCatalogSkill)
 	s.mux.HandleFunc("GET /api/v1/agent-types/{type}/skills", s.listTypeSkills)
 	s.mux.HandleFunc("POST /api/v1/agent-types/{type}/skills", s.addTypeSkill)
 	s.mux.HandleFunc("PATCH /api/v1/agent-types/{type}/skills/{skill}", s.updateTypeSkill)

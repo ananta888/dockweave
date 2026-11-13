@@ -4,7 +4,7 @@ import { Observable, catchError, throwError } from 'rxjs';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
   AgentMCP, AgentSkill, AgentTypeMCP, AgentTypeSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
-  MountState, ProviderStatus, Workspace,
+  MountState, ProviderStatus, Workspace, SkillCatalog, SkillCatalogEntry,
 } from './models';
 
 export interface AgentSpec {
@@ -125,6 +125,9 @@ export class ApiService {
   addSkill(agent: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.post<AgentSkill>(`${this.base}/agents/${agent}/skills`, sk)); }
   updateSkill(agent: string, id: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.patch<AgentSkill>(`${this.base}/agents/${agent}/skills/${id}`, sk)); }
   deleteSkill(agent: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agents/${agent}/skills/${id}`)); }
+  getSkillCatalog(): Observable<SkillCatalog> { return this.req(this.http.get<SkillCatalog>(`${this.base}/skills/catalog`)); }
+  installCatalogSkill(repo: string, path: string, ref: string): Observable<SkillCatalogEntry> { return this.req(this.http.post<SkillCatalogEntry>(`${this.base}/skills/install`, { repo, path, ref })); }
+  deleteCatalogSkill(name: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/skills/${encodeURIComponent(name)}`)); }
   listDirs(path = ''): Observable<DirListing> {
     return this.req(this.http.get<DirListing>(`${this.base}/fs/dirs${path ? `?path=${encodeURIComponent(path)}` : ''}`));
   }

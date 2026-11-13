@@ -239,3 +239,36 @@ export interface AgentTypeSkill {
   created_at: string;
   updated_at: string;
 }
+
+export interface SkillCatalogEntry {
+  name: string;
+  description?: string;
+  path: string;
+  store: string;
+  bundled?: boolean;
+  repo?: string;
+  ref?: string;
+  installed_at?: string;
+}
+
+export interface SkillStoreEntry {
+  name: string;
+  path: string;
+  description?: string;
+}
+
+export interface SkillStore {
+  id: string;
+  name: string;
+  url: string;
+  repo: string;
+  ref: string;
+  description: string;
+  entries: SkillStoreEntry[];
+}
+
+export interface SkillCatalog {
+  bundled: SkillCatalogEntry[];
+  installed: SkillCatalogEntry[];
+  stores: SkillStore[];
+}

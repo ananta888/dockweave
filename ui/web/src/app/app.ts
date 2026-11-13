@@ -11,15 +11,16 @@ import { AnalysisComponent } from './components/analysis.component';
 import { DirPickerComponent } from './components/dir-picker.component';
 import { GraphComponent } from './components/graph.component';
 import { AgentTypesComponent } from './components/agent-types.component';
+import { SkillsComponent } from './components/skills.component';
 import { figureSvg } from './core/figures';
 import { UiBridgeService } from './core/ui-bridge.service';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

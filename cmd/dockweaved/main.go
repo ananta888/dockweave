@@ -36,6 +36,7 @@ import (
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/persistence"
+	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/supervisor"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
@@ -186,6 +187,11 @@ func run(cfgPath string) error {
 			return lookup.ContainerID(ctx, idOrName)
 		},
 	})
+	if skills, err := skillcatalog.New(filepath.Join(cfg.Root, "skills")); err != nil {
+		log.Printf("skill catalog disabled: %v", err)
+	} else {
+		apiSrv.Skills = skills
+	}
 	if cfg.BrokerAdminSocket != "" {
 		apiSrv.Broker = brokerclient.New(cfg.BrokerAdminSocket)
 	}

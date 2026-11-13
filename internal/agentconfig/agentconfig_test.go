@@ -34,6 +34,49 @@ func TestWriteOpenCodeAndClaude(t *testing.T) {
 	}
 }
 
+func TestWriteCopiesSkillTree(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "keycloak")
+	if err := os.MkdirAll(filepath.Join(src, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("---\nname: keycloak\n---\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "references", "foundations.md"), []byte("ref"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, typ := range []struct{ agent, dir string }{
+		{"opencode", ".config/opencode/skills"},
+		{"claude", ".claude/skills"},
+		{"codex", ".codex/skills"},
+		{"gemini", ".gemini/skills"},
+	} {
+		dir := t.TempDir()
+		sk := []*model.AgentSkill{{Name: "keycloak", SourcePath: src, Enabled: true}}
+		if err := Write(dir, typ.agent, 0, 0, nil, sk); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(dir, filepath.FromSlash(typ.dir), "keycloak")
+		if b, err := os.ReadFile(filepath.Join(target, "references", "foundations.md")); err != nil || string(b) != "ref" {
+			t.Errorf("%s: reference not copied: %v", typ.agent, err)
+		}
+		if b, err := os.ReadFile(filepath.Join(target, "SKILL.md")); err != nil || string(b) != "---\nname: keycloak\n---\nbody" {
+			t.Errorf("%s: SKILL.md not the source file: %q %v", typ.agent, b, err)
+		}
+	}
+}
+
+func TestWriteRejectsUnsafeSkillName(t *testing.T) {
+	dir := t.TempDir()
+	sk := []*model.AgentSkill{{Name: "../escape", Description: "x", Enabled: true}}
+	if err := Write(dir, "opencode", 0, 0, nil, sk); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "escape")); err == nil {
+		t.Fatal("unsafe skill name escaped the skills directory")
+	}
+}
+
 func TestScanFindsSkillsAndMCP(t *testing.T) {
 	home := t.TempDir()
 	skillDir := filepath.Join(home, ".config", "opencode", "skills", "review")
