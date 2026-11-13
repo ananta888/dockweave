@@ -227,7 +227,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.Flush()
 	}
 	prompt, completion := uw.usage()
-	if prompt == 0 && completion == 0 {
+	if prompt == 0 && completion == 0 && model != "" {
+		// Only estimate when this was an LLM turn. Metadata calls such as
+		// /models must not consume a token budget.
 		prompt = promptEst
 		completion = int64(written) / 4
 	}

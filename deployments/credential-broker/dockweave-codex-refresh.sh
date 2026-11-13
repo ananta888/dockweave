@@ -14,7 +14,14 @@ TOKEN_PATH="/memory/.config/dockweave/codex-token"
 export DOCKWEAVE_BROKER_ADMIN_SOCKET="${DOCKWEAVE_BROKER_ADMIN_SOCKET:-$HOME/.local/share/dockweave/broker/admin.sock}"
 DOCKWEAVE_BIN="${DOCKWEAVE_BIN:-$HOME/dockweave/bin/dockweave}"
 
-CID=$(docker ps -q --filter "label=dockweave.agent.id=$AGENT_ID")
+# At boot the agent container may start after this timer. Wait up to 5 min so a
+# reboot does not leave an expired token until the next hourly run.
+CID=""
+for _ in $(seq 1 30); do
+  CID=$(docker ps -q --filter "label=dockweave.agent.id=$AGENT_ID" || true)
+  [ -n "$CID" ] && break
+  sleep 10
+done
 if [ -z "$CID" ]; then
   echo "agent $AGENT_ID is not running; nothing to refresh"
   exit 0

@@ -268,6 +268,23 @@ func TestBrokerRejectsPathTraversalAndUnknownProvider(t *testing.T) {
 	}
 }
 
+func TestBrokerMetadataCallDoesNotConsumeTokens(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, strings.Repeat(`{"id":"model-k"},`, 500))
+	}))
+	defer fake.Close()
+	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
+	if got := f.do(t, http.MethodGet, "/p/openrouter/models", "", nil).StatusCode; got != 200 {
+		t.Fatalf("status = %d", got)
+	}
+	if usage := f.budget.Snapshot(f.grant.ID); usage.TokensDay != 0 {
+		t.Fatalf("metadata call consumed %d tokens", usage.TokensDay)
+	}
+	if usage := f.budget.Snapshot(f.grant.ID); usage.RequestsDay != 1 {
+		t.Fatalf("metadata call not counted as a request: %d", usage.RequestsDay)
+	}
+}
+
 func TestAdminSecretMetadataNeverReturnsValue(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer fake.Close()
