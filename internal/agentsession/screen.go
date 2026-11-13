@@ -98,6 +98,9 @@ func (s *Screen) Feed(data []byte) {
 	}
 }
 
+// CursorPos returns the current cursor position (0-based).
+func (s *Screen) CursorPos() (row, col int) { return s.curRow, s.curCol }
+
 // Text renders the screen as lines with trailing whitespace and blank trailing
 // rows removed.
 func (s *Screen) Text() string {

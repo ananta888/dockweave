@@ -65,3 +65,31 @@ func TestExtractAfterPrompt(t *testing.T) {
 		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
 	}
 }
+
+func TestExtractCodexChrome(t *testing.T) {
+	screen := "› Sag hallo\n\n• Hallo! Schön, dass du da bist.\n\n  Worked for 2s • 8:22 AM\n\n› Ask Codex to do anything\n\n  ← for agents · ? for shortcuts"
+	if got, want := extractAfterPrompt(screen, "Sag hallo"), "Hallo! Schön, dass du da bist."; got != want {
+		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
+	}
+}
+
+func TestExtractMultilinePrompt(t *testing.T) {
+	// The echoed prompt spans two lines; anchoring on the first line would
+	// leak the second prompt line into the response.
+	screen := "┃  Antworte nur mit OK.\n┃  Zweite Zeile Kontext.\n\n   OK\n/workspace/x"
+	if got, want := extractAfterPrompt(screen, "Antworte nur mit OK.\nZweite Zeile Kontext."), "OK"; got != want {
+		t.Errorf("extractAfterPrompt = %q, want %q", got, want)
+	}
+}
+
+func TestHasCompletion(t *testing.T) {
+	if !hasCompletion("answer\nBuild · Big Pickle · 1.3s · 25.5 tok/s") {
+		t.Error("opencode completion footer not detected")
+	}
+	if !hasCompletion("answer\nWorked for 2s • 8:22 AM") {
+		t.Error("codex completion footer not detected")
+	}
+	if hasCompletion("answer") {
+		t.Error("plain answer must not count as completion")
+	}
+}

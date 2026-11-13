@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agents"
-	"github.com/ananta888/dockweave/internal/agentsession"
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/memory"
@@ -84,7 +83,7 @@ type Server struct {
 
 	// Sessions drives the running agent terminals for the OpenAI-compatible
 	// endpoint (optional; when nil the endpoint returns 501).
-	Sessions *agentsession.Manager
+	Sessions AgentSessions
 
 	// AllowedRoots, Root and KnowledgeDir back the admin directory browser.
 	// Only directories below these roots are ever listed.
@@ -259,6 +258,7 @@ func (s *Server) removeAgent(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.closeSession(r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -269,6 +269,8 @@ func (s *Server) agentAction(fn func(ctx context.Context, id, actor string) (*mo
 			s.fail(w, err)
 			return
 		}
+		// The container may have been replaced (restart); drop the old TTY.
+		s.closeSession(r.PathValue("id"))
 		writeJSON(w, http.StatusOK, a)
 	}
 }
@@ -278,7 +280,15 @@ func (s *Server) stopAgent(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.closeSession(r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+}
+
+// closeSession drops a cached agent TTY session, if the endpoint is enabled.
+func (s *Server) closeSession(id string) {
+	if s.Sessions != nil {
+		s.Sessions.Close(id)
+	}
 }
 
 func (s *Server) listWorkspaces(w http.ResponseWriter, r *http.Request) {
