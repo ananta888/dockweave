@@ -796,3 +796,14 @@ func TestRuntimeRoundTrip(t *testing.T) {
 		t.Fatalf("runtime = %q, want paperclip", got2.Runtime)
 	}
 }
+
+func TestAppendDefaultEnv(t *testing.T) {
+	env := appendDefaultEnv(nil, "TERM", "xterm-256color")
+	if len(env) != 1 || env[0] != "TERM=xterm-256color" {
+		t.Fatalf("env = %v", env)
+	}
+	env = appendDefaultEnv([]string{"TERM=screen-256color"}, "TERM", "xterm-256color")
+	if len(env) != 1 || env[0] != "TERM=screen-256color" {
+		t.Fatalf("override not preserved: %v", env)
+	}
+}

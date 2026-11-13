@@ -16,6 +16,10 @@ import { FormsModule } from '@angular/forms';
         <span class="dot" [class.on]="running"></span>
         <strong>{{ agentName }}</strong>
         <span class="muted">{{ running ? 'live terminal / chat' : 'agent not running' }}</span>
+        <label class="mouse-toggle" title="Mouse events (click, wheel, drag) an das TUI weitergeben">
+          <input type="checkbox" [checked]="mouseEnabled" (change)="toggleMouse($event)" [disabled]="!running" />
+          Mouse
+        </label>
         <span class="spacer"></span>
         <button type="button" (click)="reconnect()" [disabled]="!running">Reconnect</button>
         <button type="button" (click)="clear()">Clear</button>
@@ -42,6 +46,8 @@ import { FormsModule } from '@angular/forms';
     .term-bar .dot { width:.55rem; height:.55rem; border-radius:50%; background:#f85149; }
     .term-bar .dot.on { background:#3fb950; }
     .term-bar .muted { color:#8b949e; }
+    .term-bar .mouse-toggle { display:flex; align-items:center; gap:.25rem; color:#8b949e; cursor:pointer; }
+    .term-bar .mouse-toggle input { margin:0; }
     .term-bar .spacer { flex:1; }
     .term-host { flex:1; min-height:320px; padding:.35rem .5rem; overflow:hidden; }
     .term-shell.compact .term-host { min-height:150px; }
@@ -62,6 +68,7 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   status = signal('');
   prompt = '';
+  mouseEnabled = true;
   readonly start = output<void>();
 
   private term?: Terminal;
@@ -151,6 +158,7 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.status.set('');
       this.term?.reset();
       this.term?.writeln(`\x1b[38;5;244mconnected to ${this.agentName}\x1b[0m`);
+      this.applyMouseMode();
       // TUIs only repaint on SIGWINCH. Send a *different* size first, then
       // the real size, exactly like the native attach client. Otherwise an
       // agent already at this size stays blank after switching agents.
@@ -188,6 +196,21 @@ export class TerminalComponent implements AfterViewInit, OnChanges, OnDestroy {
   reconnect(): void { this.connect(); }
 
   clear(): void { this.term?.clear(); }
+
+  toggleMouse(ev: Event): void {
+    this.mouseEnabled = (ev.target as HTMLInputElement).checked;
+    this.applyMouseMode();
+  }
+
+  // Docker attach does not replay the TUI's startup output, so the local
+  // xterm never saw the app's "enable mouse reporting" (DECSET 1002/1006)
+  // sequence. Re-assert it locally: xterm then encodes clicks, wheel and drag
+  // as SGR mouse reports and sends them through onData to the PTY.
+  private applyMouseMode(): void {
+    if (!this.term) return;
+    this.term.write(this.mouseEnabled ? '\x1b[?1002h\x1b[?1006h' : '\x1b[?1002l\x1b[?1006l');
+    if (this.mouseEnabled) this.term.focus();
+  }
 
   sendPrompt(): void {
     const text = this.prompt.trim();

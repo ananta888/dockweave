@@ -1238,6 +1238,12 @@ func (s *Service) Start(ctx context.Context, idOrName, actor string) (*model.Age
 			}
 		}
 	}
+	// TUIs (codex/opencode/claude) disable colors and mouse reporting when TERM
+	// is unset. Docker does not set it for a container TTY, so provide a
+	// sensible default unless the agent explicitly configured one.
+	env = appendDefaultEnv(env, "TERM", "xterm-256color")
+	env = appendDefaultEnv(env, "COLORTERM", "truecolor")
+
 	runtimeAgent := *a
 	runtimeAgent.Env = env
 	if err := s.applyNetworkProfile(ctx, &runtimeAgent); err != nil {
@@ -1649,3 +1655,14 @@ func baseName(p string) string {
 
 // ErrAgentRunning is returned when an operation requires a stopped agent.
 var ErrAgentRunning = errors.New("agent is running")
+
+// appendDefaultEnv adds key=value unless the environment already defines key.
+func appendDefaultEnv(env []string, key, value string) []string {
+	prefix := key + "="
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			return env
+		}
+	}
+	return append(env, prefix+value)
+}
