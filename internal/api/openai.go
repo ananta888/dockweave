@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/agentsession"
+	"github.com/ananta888/dockweave/internal/model"
 )
 
 // openAIModels lists running agents as OpenAI models.
@@ -29,6 +30,9 @@ func (s *Server) openAIModels(w http.ResponseWriter, r *http.Request) {
 	}
 	data := make([]map[string]any, 0, len(agents))
 	for _, a := range agents {
+		if a.State != model.AgentRunning {
+			continue // a stopped agent cannot be driven through its TTY
+		}
 		data = append(data, map[string]any{
 			"id":       a.Name,
 			"object":   "model",
