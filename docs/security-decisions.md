@@ -223,3 +223,38 @@ Isolation behauptet).
 **Testfall:** `docs/validation/symlink-planting.md` — Pentest-Reproduktion,
 Nachweis dass (a) die direkte Exfiltration blockiert wird und (b) der
 Symlink nach der Korrektur unter dem Mount nicht mehr auflösbar ist.
+
+## SD-017 — OAuth credential bundles and broker-side refresh (2026-11-13)
+
+**Finding:** Existing agent logins are not always static API keys. Codex uses a
+ChatGPT OAuth login (`auth.openai.com`, rotating refresh tokens,
+`chatgpt.com/backend-api/codex`) and OpenCode Go needs an additional
+`x-opencode-session` header. The original broker model — one static auth header
+into a fixed OpenAI-compatible base URL — cannot represent either, so these
+logins would have to stay in the container (the state the vault is meant to
+remove).
+
+**Decision:** The vault stores an OAuth **bundle** (`access_token`,
+`refresh_token`, `expires_at`, `account_id`, `id_token`) as encrypted JSON. A
+provider may declare an `oauth` block (fixed token endpoint, client id, scope,
+account-id header) and an operator-defined `headers` map. Before injecting, the
+broker refreshes the bundle when it is within 120 s of expiry, serializes
+refreshes under a lock, persists the rotated bundle, and sends only the access
+token plus derived headers upstream. The agent still only receives a `dws_…`
+session token. Refresh tokens are never returned to the agent or written to the
+request log.
+
+**Fixed destinations:** the token endpoint is part of the operator-defined
+provider (https only, no agent input, redirects not followed). The existing
+`/p/{provider}/{path}` gateway still pins the upstream host.
+
+**Residual risks:** (a) refresh tokens rotate, so the same login must not be
+used by an independent client in parallel — two consumers invalidate each
+other; use a separate login for direct terminal use or let the broker own it.
+(b) A broker compromise exposes the refresh token, same as any vault secret.
+(c) Provider terms of use are the operator's responsibility. (d) The bundle is
+JSON in the vault; the admin API still never returns values.
+
+**Test:** `internal/credentialbroker/oauth_test.go` (refresh, persistence,
+header injection, refresh failure, static-secret compatibility) and a live
+Codex CLI run against a temporary broker.

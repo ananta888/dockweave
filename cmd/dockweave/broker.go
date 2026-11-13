@@ -5,6 +5,8 @@ package main
 // operator socket; they are never accepted as command-line arguments.
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -82,7 +84,7 @@ func secretCmd() *cobra.Command {
 			fmt.Printf("stored %s (provider %s)\n", args[0], provider)
 		},
 	}
-	put.Flags().StringVar(&provider, "provider", "", "provider adapter (openrouter|openai|anthropic|deepseek|gemini)")
+	put.Flags().StringVar(&provider, "provider", "", "provider adapter (openrouter|openai|anthropic|deepseek|gemini|opencode|codex-chatgpt)")
 	_ = put.MarkFlagRequired("provider")
 
 	list := &cobra.Command{
@@ -148,9 +150,168 @@ func secretCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(put, list, rotate, revoke, secretMigrateCmd(&adminSocket))
+	cmd.AddCommand(put, list, rotate, revoke, secretMigrateCmd(&adminSocket),
+		secretImportCodexCmd(&adminSocket), secretImportOpenCodeCmd(&adminSocket))
 	addAdminSocketFlag(cmd, &adminSocket)
 	return cmd
+}
+
+// grantFlags are the optional grant settings shared by the import commands.
+type grantFlags struct {
+	enable     bool
+	agent      string
+	models     string
+	rpm        int
+	concurrent int
+	tokensDay  int64
+}
+
+func (g *grantFlags) bind(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&g.enable, "grant", false, "also create a grant for an agent")
+	cmd.Flags().StringVar(&g.agent, "agent", "", "agent id/name for --grant")
+	cmd.Flags().StringVar(&g.models, "models", "*", "allowed models (comma-separated, * = any) for --grant")
+	cmd.Flags().IntVar(&g.rpm, "rpm", 60, "requests per minute for --grant")
+	cmd.Flags().IntVar(&g.concurrent, "concurrent", 4, "max concurrent requests for --grant")
+	cmd.Flags().Int64Var(&g.tokensDay, "tokens-day", 0, "max tokens per day for --grant (0 = broker default)")
+}
+
+func (g *grantFlags) apply(adminSocket, credential, provider string) {
+	if !g.enable {
+		return
+	}
+	if strings.TrimSpace(g.agent) == "" {
+		fail(errors.New("--grant requires --agent"))
+	}
+	limits := credentialbroker.DefaultLimits()
+	limits.MaxRequestsPerMinute = g.rpm
+	limits.MaxConcurrent = g.concurrent
+	limits.MaxTokensPerDay = g.tokensDay
+	gr := credentialbroker.Grant{
+		Agent: g.agent, Credential: credential, Provider: provider,
+		Models: strings.Split(g.models, ","), Limits: limits,
+	}
+	out, err := brokerAdminClient(adminSocket).AddGrant(ctx(), gr)
+	if err != nil {
+		fail(err)
+	}
+	fmt.Printf("granted %s to %s (%s)\n", credential, g.agent, out.ID)
+}
+
+// secretImportCodexCmd imports an existing Codex CLI auth.json as an OAuth
+// bundle. Values are never printed; the source file is left untouched.
+func secretImportCodexCmd(adminSocket *string) *cobra.Command {
+	var authFile string
+	var grant grantFlags
+	cmd := &cobra.Command{
+		Use:   "import-codex NAME",
+		Short: "Import an existing Codex ChatGPT login (auth.json) as an OAuth bundle",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			raw, err := os.ReadFile(authFile)
+			if err != nil {
+				fail(err)
+			}
+			var a struct {
+				AuthMode string `json:"auth_mode"`
+				Tokens   struct {
+					AccessToken  string `json:"access_token"`
+					RefreshToken string `json:"refresh_token"`
+					IDToken      string `json:"id_token"`
+					AccountID    string `json:"account_id"`
+				} `json:"tokens"`
+			}
+			if err := json.Unmarshal(raw, &a); err != nil {
+				fail(fmt.Errorf("parse auth file: %w", err))
+			}
+			if a.AuthMode != "chatgpt" {
+				fail(fmt.Errorf("auth file is %q, expected chatgpt", a.AuthMode))
+			}
+			if a.Tokens.AccessToken == "" || a.Tokens.RefreshToken == "" {
+				fail(errors.New("auth file has no access/refresh token"))
+			}
+			bundle := map[string]any{
+				"type":          "oauth",
+				"access_token":  a.Tokens.AccessToken,
+				"refresh_token": a.Tokens.RefreshToken,
+				"id_token":      a.Tokens.IDToken,
+				"account_id":    a.Tokens.AccountID,
+			}
+			if exp, ok := jwtExp(a.Tokens.AccessToken); ok {
+				bundle["expires_at"] = exp.UTC().Format(time.RFC3339)
+			}
+			value, err := json.Marshal(bundle)
+			if err != nil {
+				fail(err)
+			}
+			if err := brokerAdminClient(*adminSocket).PutSecret(ctx(), args[0], "codex-chatgpt", string(value)); err != nil {
+				fail(err)
+			}
+			fmt.Printf("stored %s (provider codex-chatgpt, oauth bundle)\n", args[0])
+			grant.apply(*adminSocket, args[0], "codex-chatgpt")
+		},
+	}
+	cmd.Flags().StringVar(&authFile, "auth-file", "", "path to ~/.codex/auth.json (required)")
+	_ = cmd.MarkFlagRequired("auth-file")
+	grant.bind(cmd)
+	return cmd
+}
+
+// secretImportOpenCodeCmd imports an OpenCode provider key from auth.json.
+func secretImportOpenCodeCmd(adminSocket *string) *cobra.Command {
+	var authFile, providerKey, provider string
+	var grant grantFlags
+	cmd := &cobra.Command{
+		Use:   "import-opencode NAME",
+		Short: "Import an existing OpenCode provider key (auth.json)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			raw, err := os.ReadFile(authFile)
+			if err != nil {
+				fail(err)
+			}
+			var entries map[string]struct {
+				Key  string `json:"key"`
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(raw, &entries); err != nil {
+				fail(fmt.Errorf("parse auth file: %w", err))
+			}
+			e, ok := entries[providerKey]
+			if !ok || e.Key == "" {
+				fail(fmt.Errorf("no key for provider %q in auth file", providerKey))
+			}
+			if err := brokerAdminClient(*adminSocket).PutSecret(ctx(), args[0], provider, e.Key); err != nil {
+				fail(err)
+			}
+			fmt.Printf("stored %s (provider %s)\n", args[0], provider)
+			grant.apply(*adminSocket, args[0], provider)
+		},
+	}
+	cmd.Flags().StringVar(&authFile, "auth-file", "", "path to opencode auth.json (required)")
+	cmd.Flags().StringVar(&providerKey, "provider-key", "opencode", "key inside auth.json")
+	cmd.Flags().StringVar(&provider, "provider", "opencode", "broker provider adapter")
+	_ = cmd.MarkFlagRequired("auth-file")
+	grant.bind(cmd)
+	return cmd
+}
+
+// jwtExp extracts the exp claim from a JWT without verifying the signature.
+func jwtExp(token string) (time.Time, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return time.Time{}, false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return time.Time{}, false
+	}
+	var c struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(raw, &c); err != nil || c.Exp == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(c.Exp, 0), true
 }
 
 func credentialCmd() *cobra.Command {

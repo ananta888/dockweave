@@ -55,6 +55,10 @@ type Server struct {
 	logMu   sync.Mutex
 	recent  []RequestLogEntry
 	maxLogs int
+
+	// refreshMu serializes OAuth refreshes; refresh tokens rotate and two
+	// concurrent refreshes would invalidate each other.
+	refreshMu sync.Mutex
 }
 
 // NewServer validates configuration and returns a broker handler.
@@ -71,6 +75,9 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 		if !cfg.AllowInsecureHTTP && !strings.HasPrefix(p.BaseURL, "https://") {
 			return nil, fmt.Errorf("provider %q: base_url must use https", p.Name)
+		}
+		if p.OAuth != nil && !cfg.AllowInsecureHTTP && !strings.HasPrefix(p.OAuth.TokenURL, "https://") {
+			return nil, fmt.Errorf("provider %q: oauth token_url must use https", p.Name)
 		}
 	}
 	if cfg.MaxBodyBytes <= 0 {
@@ -196,7 +203,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req.Header.Del("X-Goog-Api-Key")
 	req.Header.Del("Proxy-Authorization")
 	req.Header.Del("X-Dockweave-Session")
-	req.Header.Set(provider.AuthHeader, provider.AuthPrefix+secret.Value)
+	if err := s.injectCredential(r.Context(), req, provider, secret); err != nil {
+		entry.Status = http.StatusBadGateway
+		s.record(entry)
+		writeError(w, http.StatusBadGateway, "credential refresh failed")
+		return
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {

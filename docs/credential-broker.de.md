@@ -149,6 +149,59 @@ Hinweise:
   konfigurierte Preise), keine Abrechnungsgarantie. Zusätzlich harte Limits
   beim Provider setzen.
 
+## OAuth-Credentials (Codex ChatGPT)
+
+Codex nutzt eine ChatGPT-OAuth-Anmeldung, keinen API-Key. Der Broker speichert
+das OAuth-Bundle im Vault und erneuert den Access-Token vor der Injektion. Der
+Agent sieht nur ein `dws_…`-Session-Token.
+
+1. Bestehenden Login importieren (die Quelldatei bleibt unangetastet):
+
+   ```bash
+   ./bin/dockweave secret import-codex codex-main \
+     --auth-file ~/.codex/auth.json \
+     --grant --agent developer --models '*'
+   ```
+
+   Das Bundle enthält `access_token`, `refresh_token`, `id_token` und
+   `account_id`; nichts davon wird ausgegeben.
+
+2. Session erzeugen und Codex auf den Broker zeigen lassen
+   (`~/.codex/config.toml` des Agenten):
+
+   ```toml
+   model = "gpt-6.1-sol"
+   model_provider = "dockweave"
+
+   [model_providers.dockweave]
+   name = "DockWeave"
+   base_url = "http://<broker>:8787/p/codex-chatgpt"
+   env_key = "DOCKWEAVE_TOKEN"
+   wire_api = "responses"
+   ```
+
+   ```bash
+   export DOCKWEAVE_TOKEN="$(dockweave broker session create developer codex-main --ttl 8h | tail -1)"
+   ```
+
+3. Der Broker mappt `/p/codex-chatgpt/responses` auf
+   `https://chatgpt.com/backend-api/codex/responses`, erneuert den Token
+   innerhalb von 120 s vor Ablauf, persistiert den rotierten Refresh-Token und
+   setzt `chatgpt-account-id` plus die festen Header `OpenAI-Beta`/`originator`.
+
+Hinweise:
+
+- Refresh-Tokens rotieren. Wird derselbe Login auch außerhalb des Brokers
+  genutzt, invalidieren sich beide Seiten gegenseitig. Für die direkte
+  Terminal-Nutzung einen separaten Login verwenden oder den Broker allein
+  besitzen lassen.
+- Die `headers`-Map eines Providers ist Operator-definiert und kann vom Agenten
+  nicht gesetzt werden.
+- `secret import-opencode NAME --auth-file …` importiert einen OpenCode-Zen-Key
+  (Provider `opencode`).
+- Das ChatGPT-Codex-Backend verlangt `stream: true` und `store: false`; die
+  Codex-CLI sendet beides bereits.
+
 ## Operator-CLI
 
 ```bash

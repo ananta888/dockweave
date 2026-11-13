@@ -5,12 +5,14 @@ holding the real API key**. Secrets live in an encrypted local vault; the
 agent gets a short-lived session token that only works for its explicit
 grant.
 
-> **Status of this increment (2026-11-08):** vault, policy, sessions,
-> HTTP gateway, budgets, CLI, daemon/TUI metadata and the `offline` /
-> `broker-only` egress profiles are implemented and tested. `broker-only`
+> **Status of this increment (2026-11-13):** vault, policy, sessions,
+> HTTP gateway, budgets, CLI, daemon/TUI metadata, the `offline` /
+> `broker-only` egress profiles, **OAuth credential bundles with
+> broker-side refresh (Codex ChatGPT)** and the `opencode` / `codex-chatgpt`
+> provider adapters are implemented and tested. `broker-only`
 > uses an internal Docker network with no external route. Remaining open:
 > host-gateway port filtering with nftables, `restricted-development`,
-> real-provider E2E, and the SSH broker. See
+> OpenCode Go's extra session header, and the SSH broker. See
 > [egress-security.md](egress-security.md) and
 > `todo/credential-vault.json`.
 
@@ -179,6 +181,57 @@ Notes:
 - Cost budgets use `--prompt-usd-per-1k` / `--completion-usd-per-1k` and the
   provider's usage metadata. They are broker-side estimates, not a provider
   billing guarantee. Configure hard limits at the provider as well.
+
+## OAuth credentials (Codex ChatGPT)
+
+Codex uses a ChatGPT OAuth login, not an API key. The broker stores the OAuth
+bundle in the vault and refreshes the access token before injecting it. The
+agent only ever holds a `dws_…` session token.
+
+1. Import the existing login (the source file is left untouched):
+
+   ```bash
+   ./bin/dockweave secret import-codex codex-main \
+     --auth-file ~/.codex/auth.json \
+     --grant --agent developer --models '*'
+   ```
+
+   The bundle contains `access_token`, `refresh_token`, `id_token` and
+   `account_id`; none of it is printed.
+
+2. Mint a session and point Codex at the broker (`~/.codex/config.toml` of the
+   agent):
+
+   ```toml
+   model = "gpt-6.1-sol"
+   model_provider = "dockweave"
+
+   [model_providers.dockweave]
+   name = "DockWeave"
+   base_url = "http://<broker>:8787/p/codex-chatgpt"
+   env_key = "DOCKWEAVE_TOKEN"
+   wire_api = "responses"
+   ```
+
+   ```bash
+   export DOCKWEAVE_TOKEN="$(dockweave broker session create developer codex-main --ttl 8h | tail -1)"
+   ```
+
+3. The broker maps `/p/codex-chatgpt/responses` to
+   `https://chatgpt.com/backend-api/codex/responses`, refreshes the token when
+   it is within 120 s of expiry, persists the rotated refresh token, and adds
+   `chatgpt-account-id` plus the fixed `OpenAI-Beta`/`originator` headers.
+
+Notes:
+
+- Refresh tokens rotate. If the same login is also used by a client outside the
+  broker, both sides invalidate each other. Use a separate login for direct
+  terminal use, or let the broker own it.
+- The provider `headers` map is operator-defined and cannot be set by an agent.
+- `secret import-opencode NAME --auth-file …` imports an OpenCode Zen key
+  (provider `opencode`).
+- The ChatGPT Codex backend requires `stream: true` and `store: false`; the
+  Codex CLI already sends both.
 
 ## Operator CLI
 
