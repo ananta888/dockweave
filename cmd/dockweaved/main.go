@@ -35,6 +35,7 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
+	"github.com/ananta888/dockweave/internal/nativeagent"
 	"github.com/ananta888/dockweave/internal/persistence"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/supervisor"
@@ -186,6 +187,9 @@ func run(cfgPath string) error {
 		FindContainer: func(ctx context.Context, idOrName string) (string, error) {
 			return lookup.ContainerID(ctx, idOrName)
 		},
+	})
+	apiSrv.Native = nativeagent.New(docker, func(ctx context.Context, idOrName string) (string, error) {
+		return lookup.ContainerID(ctx, idOrName)
 	})
 	if skills, err := skillcatalog.New(filepath.Join(cfg.Root, "skills")); err != nil {
 		log.Printf("skill catalog disabled: %v", err)

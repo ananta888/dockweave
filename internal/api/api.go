@@ -21,6 +21,7 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
 	"github.com/ananta888/dockweave/internal/mounts"
+	"github.com/ananta888/dockweave/internal/nativeagent"
 	"github.com/ananta888/dockweave/internal/persistence"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/workspaces"
@@ -85,6 +86,9 @@ type Server struct {
 	// Sessions drives the running agent terminals for the OpenAI-compatible
 	// endpoint (optional; when nil the endpoint returns 501).
 	Sessions AgentSessions
+	// Native talks to harness server APIs (opencode) and takes precedence over
+	// the TUI session driver when available.
+	Native *nativeagent.Manager
 
 	// AllowedRoots, Root and KnowledgeDir back the admin directory browser.
 	// Only directories below these roots are ever listed.

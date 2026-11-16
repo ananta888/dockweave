@@ -22,6 +22,34 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 )
 
+// openCodeNativeScript starts the shared OpenCode server and pins the TUI to
+// the session that the daemon's native backend drives over HTTP.
+const openCodeNativeScript = `#!/bin/sh
+set -eu
+BIN="$HOME/.local/bin/opencode"
+rm -f "$HOME/.local/bin/opencode2"
+npm install -g --prefix "$HOME/.local" @opencode/cli@2.2.6
+"$BIN" service set hostname 127.0.0.1 || true
+"$BIN" service set port 4096 || true
+"$BIN" service start || "$BIN" service restart || true
+i=0
+while [ "$i" -lt 100 ]; do
+  if "$BIN" api GET /api/health >/dev/null 2>&1; then break; fi
+  i=$((i + 1))
+  sleep 0.2
+done
+SID=""
+if [ -f "$HOME/.dockweave/opencode-session" ]; then
+  SID=$(cat "$HOME/.dockweave/opencode-session")
+fi
+if [ -z "$SID" ]; then
+  SID=$("$BIN" api POST /api/session --data "{\"title\":\"dockweave\",\"location\":{\"directory\":\"$PWD\"}}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["id"])')
+  mkdir -p "$HOME/.dockweave"
+  printf '%s' "$SID" > "$HOME/.dockweave/opencode-session"
+fi
+exec "$BIN" --session "$SID" --auto
+`
+
 // Write materializes the current configuration into memDir.
 func Write(memDir, agentType string, uid, gid int, mcps []*model.AgentMCP, skills []*model.AgentSkill) error {
 	if memDir == "" {
@@ -45,6 +73,12 @@ func Write(memDir, agentType string, uid, gid int, mcps []*model.AgentMCP, skill
 	}
 	if err := writeSkills(memDir, agentType, skills); err != nil {
 		return err
+	}
+	if agentType == "opencode" {
+		p := filepath.Join(memDir, ".dockweave", "opencode-native.sh")
+		if err := os.WriteFile(p, []byte(openCodeNativeScript), 0o755); err != nil {
+			return err
+		}
 	}
 	return chownConfig(memDir, uid, gid)
 }

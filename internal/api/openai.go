@@ -57,7 +57,7 @@ type openAIMessage struct {
 // openAIChatCompletions drives one agent with the last user message and
 // returns the response in OpenAI chat.completions shape.
 func (s *Server) openAIChatCompletions(w http.ResponseWriter, r *http.Request) {
-	if s.Sessions == nil {
+	if s.Sessions == nil && s.Native == nil {
 		writeErr(w, http.StatusNotImplemented, "not_implemented", errAgentSessionsUnavailable)
 		return
 	}
@@ -87,11 +87,11 @@ func (s *Server) openAIChatCompletions(w http.ResponseWriter, r *http.Request) {
 	created := time.Now().Unix()
 
 	if req.Stream {
-		s.streamAgent(w, r, id, created, req.Model, agent.ID, prompt)
+		s.streamAgent(w, r, id, created, req.Model, agent.Type, agent.ID, prompt)
 		return
 	}
 
-	content, err := s.Sessions.Prompt(r.Context(), agent.ID, prompt)
+	content, err := s.promptAgent(r.Context(), agent.Type, agent.ID, prompt)
 	if err != nil {
 		s.openAIFail(w, err)
 		return
@@ -116,7 +116,7 @@ func (s *Server) openAIChatCompletions(w http.ResponseWriter, r *http.Request) {
 // delivered as one delta when the turn completes, followed by a stop chunk.
 // Keep-alive comments prevent proxies and clients from timing out while the
 // agent is thinking.
-func (s *Server) streamAgent(w http.ResponseWriter, r *http.Request, id string, created int64, model, agentID, prompt string) {
+func (s *Server) streamAgent(w http.ResponseWriter, r *http.Request, id string, created int64, model, agentType, agentID, prompt string) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		writeErr(w, http.StatusInternalServerError, "internal", errors.New("streaming unsupported by server"))
@@ -164,7 +164,7 @@ func (s *Server) streamAgent(w http.ResponseWriter, r *http.Request, id string, 
 	done := make(chan result, 1)
 	ctx := r.Context()
 	go func() {
-		c, err := s.Sessions.Prompt(ctx, agentID, prompt)
+		c, err := s.promptAgent(ctx, agentType, agentID, prompt)
 		done <- result{content: c, err: err}
 	}()
 
@@ -200,6 +200,20 @@ func (s *Server) streamAgent(w http.ResponseWriter, r *http.Request, id string, 
 			return
 		}
 	}
+}
+
+// promptAgent prefers the harness's native API and falls back to driving the
+// live TUI. The fallback keeps codex/claude and older agents working.
+func (s *Server) promptAgent(ctx context.Context, agentType, agentID, prompt string) (string, error) {
+	if s.Native != nil {
+		if out, err := s.Native.Prompt(ctx, agentType, agentID, prompt); err == nil {
+			return out, nil
+		}
+	}
+	if s.Sessions == nil {
+		return "", errAgentSessionsUnavailable
+	}
+	return s.Sessions.Prompt(ctx, agentID, prompt)
 }
 
 // openAIFail maps agent-session failures to OpenAI-style HTTP errors.

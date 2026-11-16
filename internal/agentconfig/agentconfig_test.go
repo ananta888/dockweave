@@ -23,6 +23,9 @@ func TestWriteOpenCodeAndClaude(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".config", "opencode", "skills", "review", "SKILL.md")); err != nil {
 		t.Fatalf("opencode skill missing: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, ".dockweave", "opencode-native.sh")); err != nil {
+		t.Fatalf("opencode native entrypoint missing: %v", err)
+	}
 	if err := Write(dir, "claude", 0, 0, mcps, skills); err != nil {
 		t.Fatal(err)
 	}
