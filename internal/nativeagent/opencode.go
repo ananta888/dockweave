@@ -90,6 +90,11 @@ func (m *Manager) promptOpenCode(ctx context.Context, idOrName, prompt string) (
 	if b, err := m.Docker.ExecOutput(ctx, cid, []string{"cat", opencodeSessionFile}); err == nil {
 		sid = strings.TrimSpace(b)
 	}
+	if sid == "" {
+		// Not started through the native entrypoint (or the file is missing):
+		// let the caller fall back to the TUI session driver.
+		return "", errors.New("opencode native session is not pinned")
+	}
 	out, err := m.Docker.ExecOutput(ctx, cid, []string{
 		"python3", "-c", opencodePromptScript,
 		svc.URL, sid, svc.Password, prompt, strconv.Itoa(int(m.Timeout.Seconds())),

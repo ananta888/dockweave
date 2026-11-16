@@ -28,6 +28,10 @@ func (m *Manager) promptCodex(ctx context.Context, idOrName, prompt string) (str
 	if b, err := m.Docker.ExecOutput(ctx, cid, []string{"cat", codexThreadFile}); err == nil {
 		tid = strings.TrimSpace(b)
 	}
+	if tid == "" {
+		// Not started through the native entrypoint: use the TUI fallback.
+		return "", errors.New("codex native thread is not pinned")
+	}
 	path, err := m.codexRollout(ctx, cid, tid)
 	if err != nil {
 		return "", err
