@@ -50,6 +50,31 @@ fi
 exec "$BIN" --session "$SID" --auto
 `
 
+// codexNativeScript resumes a stable Codex thread so the TUI and the daemon's
+// `codex queue` path share the same session.
+const codexNativeScript = `#!/bin/sh
+set -eu
+BIN="$HOME/.local/bin/codex"
+npm install -g --prefix "$HOME/.local" @openai/codex
+THREAD_FILE="$HOME/.dockweave/codex-thread"
+THREAD=""
+if [ -f "$THREAD_FILE" ]; then
+  THREAD=$(cat "$THREAD_FILE")
+fi
+if [ -z "$THREAD" ]; then
+  NEWEST=$(ls -t "$HOME"/.codex/sessions/*/*/*/*.jsonl 2>/dev/null | head -1 || true)
+  if [ -n "$NEWEST" ]; then
+    THREAD=$(printf '%s' "$(basename "$NEWEST")" | grep -oE '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    mkdir -p "$HOME/.dockweave"
+    printf '%s' "$THREAD" > "$THREAD_FILE"
+  fi
+fi
+if [ -n "$THREAD" ]; then
+  exec "$BIN" resume "$THREAD" --dangerously-bypass-approvals-and-sandbox
+fi
+exec "$BIN" --dangerously-bypass-approvals-and-sandbox
+`
+
 // Write materializes the current configuration into memDir.
 func Write(memDir, agentType string, uid, gid int, mcps []*model.AgentMCP, skills []*model.AgentSkill) error {
 	if memDir == "" {
@@ -77,6 +102,12 @@ func Write(memDir, agentType string, uid, gid int, mcps []*model.AgentMCP, skill
 	if agentType == "opencode" {
 		p := filepath.Join(memDir, ".dockweave", "opencode-native.sh")
 		if err := os.WriteFile(p, []byte(openCodeNativeScript), 0o755); err != nil {
+			return err
+		}
+	}
+	if agentType == "codex" {
+		p := filepath.Join(memDir, ".dockweave", "codex-native.sh")
+		if err := os.WriteFile(p, []byte(codexNativeScript), 0o755); err != nil {
 			return err
 		}
 	}

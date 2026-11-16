@@ -233,50 +233,27 @@ func (s *Session) shutdown() {
 	})
 }
 
+// TypePrompt submits a prompt into the live TUI without waiting for or
+// extracting the response. Native harness adapters use it together with their
+// own structured response source (e.g. the Claude transcript).
+func (m *Manager) TypePrompt(ctx context.Context, idOrName, prompt string) error {
+	s, err := m.session(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err = s.submitLocked(ctx, prompt)
+	return err
+}
+
 func (s *Session) prompt(ctx context.Context, prompt string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.alive() {
-		return "", ErrSessionClosed
-	}
-	// Another terminal (web UI, tmux) may have changed the TTY size since the
-	// last turn. Re-assert the emulator geometry so cursor addressing matches.
-	if s.docker != nil {
-		_ = s.docker.Resize(ctx, s.cid, s.screen.rows, s.screen.cols)
-		time.Sleep(120 * time.Millisecond)
-	}
-	s.smu.Lock()
-	baseCompletions := countCompletions(s.screen.TextWithScrollback())
-	s.smu.Unlock()
-
-	// Clear any leftover draft from a previously interrupted submit, then type
-	// the prompt and submit it in a *separate* read on the harness side.
-	// Clear a leftover draft only if a previous submit may have been dropped;
-	// otherwise a human may be typing in the TUI right now.
-	if s.dirty {
-		if err := s.clearComposer(); err != nil {
-			return "", err
-		}
-		s.dirty = false
-	}
-	if err := s.typePrompt(ctx, prompt); err != nil {
+	baseCompletions, err := s.submitLocked(ctx, prompt)
+	if err != nil {
 		return "", err
 	}
-	s.dirty = true
-	typedAt := time.Now()
-	s.waitForOutputAfter(ctx, typedAt, 3*time.Second)
-	time.Sleep(150 * time.Millisecond)
-	if !s.alive() {
-		return "", ErrSessionClosed
-	}
-	s.writeMu.Lock()
-	_, err := s.conn.Write([]byte("\r"))
-	s.writeMu.Unlock()
-	if err != nil {
-		s.shutdown()
-		return "", fmt.Errorf("submit prompt: %w", err)
-	}
-
 	if err := s.waitSettled(ctx, prompt, baseCompletions); err != nil {
 		return "", err
 	}
@@ -292,6 +269,49 @@ func (s *Session) prompt(ctx context.Context, prompt string) (string, error) {
 	}
 	s.dirty = false
 	return out, nil
+}
+
+// submitLocked types the prompt and presses Enter. The caller holds s.mu.
+func (s *Session) submitLocked(ctx context.Context, prompt string) (int, error) {
+	if !s.alive() {
+		return 0, ErrSessionClosed
+	}
+	// Another terminal (web UI, tmux) may have changed the TTY size since the
+	// last turn. Re-assert the emulator geometry so cursor addressing matches.
+	if s.docker != nil {
+		_ = s.docker.Resize(ctx, s.cid, s.screen.rows, s.screen.cols)
+		time.Sleep(120 * time.Millisecond)
+	}
+	s.smu.Lock()
+	baseCompletions := countCompletions(s.screen.TextWithScrollback())
+	s.smu.Unlock()
+
+	// Clear a leftover draft only if a previous submit may have been dropped;
+	// otherwise a human may be typing in the TUI right now.
+	if s.dirty {
+		if err := s.clearComposer(); err != nil {
+			return 0, err
+		}
+		s.dirty = false
+	}
+	if err := s.typePrompt(ctx, prompt); err != nil {
+		return 0, err
+	}
+	s.dirty = true
+	typedAt := time.Now()
+	s.waitForOutputAfter(ctx, typedAt, 3*time.Second)
+	time.Sleep(150 * time.Millisecond)
+	if !s.alive() {
+		return 0, ErrSessionClosed
+	}
+	s.writeMu.Lock()
+	_, err := s.conn.Write([]byte("\r"))
+	s.writeMu.Unlock()
+	if err != nil {
+		s.shutdown()
+		return 0, fmt.Errorf("submit prompt: %w", err)
+	}
+	return baseCompletions, nil
 }
 
 // clearComposer deletes any text left in the harness input line. A submit that

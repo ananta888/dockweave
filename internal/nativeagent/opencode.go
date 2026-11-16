@@ -29,6 +29,7 @@ def call(path, method="GET", body=None):
         raw = resp.read()
         return json.loads(raw) if raw else {}
 
+submitted = False
 try:
     if not sid:
         sessions = call("/api/session").get("data", [])
@@ -36,6 +37,7 @@ try:
             raise RuntimeError("no opencode session")
         sid = sessions[0]["id"]
     user = call("/api/session/%s/prompt" % sid, "POST", {"text": prompt})
+    submitted = True
     started = user.get("data", {}).get("time", {}).get("created", 0)
     deadline = time.time() + timeout_s
     state = {}
@@ -60,7 +62,7 @@ try:
         raise RuntimeError("session outcome: " + outcome)
     print(json.dumps({"session": sid, "text": "\n".join(parts).strip()}))
 except Exception as e:
-    print(json.dumps({"session": sid, "error": str(e)}))
+    print(json.dumps({"session": sid, "submitted": submitted, "error": str(e)}))
 `
 
 type opencodeService struct {
@@ -96,14 +98,18 @@ func (m *Manager) promptOpenCode(ctx context.Context, idOrName, prompt string) (
 		return "", fmt.Errorf("opencode api: %w", err)
 	}
 	var res struct {
-		Session string `json:"session"`
-		Text    string `json:"text"`
-		Error   string `json:"error"`
+		Session   string `json:"session"`
+		Text      string `json:"text"`
+		Submitted bool   `json:"submitted"`
+		Error     string `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &res); err != nil {
 		return "", fmt.Errorf("opencode api returned invalid JSON: %w", err)
 	}
 	if res.Error != "" {
+		if res.Submitted {
+			return "", fmt.Errorf("%w: %s", ErrAlreadySubmitted, res.Error)
+		}
 		return "", errors.New(res.Error)
 	}
 	return res.Text, nil

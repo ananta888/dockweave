@@ -19,6 +19,7 @@ import (
 
 	"github.com/ananta888/dockweave/internal/agentsession"
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/nativeagent"
 )
 
 // openAIModels lists running agents as OpenAI models.
@@ -206,9 +207,14 @@ func (s *Server) streamAgent(w http.ResponseWriter, r *http.Request, id string, 
 // live TUI. The fallback keeps codex/claude and older agents working.
 func (s *Server) promptAgent(ctx context.Context, agentType, agentID, prompt string) (string, error) {
 	if s.Native != nil {
-		if out, err := s.Native.Prompt(ctx, agentType, agentID, prompt); err == nil {
+		out, err := s.Native.Prompt(ctx, agentType, agentID, prompt)
+		if err == nil {
 			return out, nil
 		}
+		if errors.Is(err, nativeagent.ErrAlreadySubmitted) {
+			return "", err
+		}
+		// Unsupported or pre-submit failures fall back to the TUI driver.
 	}
 	if s.Sessions == nil {
 		return "", errAgentSessionsUnavailable

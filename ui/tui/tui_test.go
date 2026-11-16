@@ -612,7 +612,7 @@ func TestSetupNewAgentMode(t *testing.T) {
 	m.form.mode = 1
 	m.applyTypeDefaults()
 	out := m.View()
-	for _, want := range []string{"new agent", "Create", "Clear", "codex-01", "node:22-bookworm", "@openai/codex"} {
+	for _, want := range []string{"new agent", "Create", "Clear", "codex-01", "node:22-bookworm", "codex-native.sh"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("new-agent view missing %q:\n%s", want, out)
 		}
@@ -680,7 +680,7 @@ func TestSetupTypeDefaultsPreFill(t *testing.T) {
 	if got := m.form.name.Value(); got != "codex-01" {
 		t.Fatalf("name default = %q, want codex-01", got)
 	}
-	if !strings.Contains(m.form.cmd.Value(), "@openai/codex") {
+	if !strings.Contains(m.form.cmd.Value(), "codex-native.sh") {
 		t.Fatalf("cmd default = %q", m.form.cmd.Value())
 	}
 	m.cycleType(true) // -> opencode
@@ -1008,6 +1008,14 @@ func TestAllPresetsStartInYoloMode(t *testing.T) {
 		p, ok := agentPresets[name]
 		if !ok {
 			t.Fatalf("preset %s missing", name)
+		}
+		// codex/opencode use DockWeave entrypoint scripts that pass the YOLO
+		// flag at runtime; the command itself references the wrapper.
+		if name == "codex" || name == "opencode" {
+			if !strings.Contains(p.command, name+"-native.sh") {
+				t.Fatalf("preset %s must use its native entrypoint: %q", name, p.command)
+			}
+			continue
 		}
 		if !strings.Contains(p.command, flag) {
 			t.Fatalf("preset %s must pass %s (YOLO): %q", name, flag, p.command)

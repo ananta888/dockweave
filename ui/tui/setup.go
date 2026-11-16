@@ -35,7 +35,7 @@ var agentPresets = map[string]agentPreset{
 	// container *is* the sandbox (non-root, CapDrop ALL, no-new-privileges).
 	"codex": {
 		image:   "node:22-bookworm",
-		command: `npm install -g --prefix "$HOME/.local" @openai/codex && exec "$HOME/.local/bin/codex" --dangerously-bypass-approvals-and-sandbox`,
+		command: `exec "$HOME/.dockweave/codex-native.sh"`,
 	},
 	"opencode": {
 		image:   "node:22-bookworm",
