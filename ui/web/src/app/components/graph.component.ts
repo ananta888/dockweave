@@ -135,6 +135,9 @@ interface GraphEdge {
       </div>
 
       <div class="graph-body" [class.drop-target]="draggingPalette()" (dragover)="onDragOver($event)" (drop)="onPaletteDrop($event)">
+        @if (computing()) {
+          <div class="layout-spinner"><span class="spinner"></span> Layout wird berechnet …</div>
+        }
         @if (connectingSource(); as src) {
           <div class="connect-banner">
             Verbindungstyp <b>{{ connectingType() }}</b> · Ziel-Node anklicken (Quelle: {{ src.title }})
@@ -762,6 +765,9 @@ interface GraphEdge {
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
     f-canvas { background:#0b0e14; }
     .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
+    .layout-spinner { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:50; display:flex; align-items:center; gap:.5rem; background:#161b22ee; border:1px solid #30363d; border-radius:999px; padding:.35rem .8rem; color:#c9d1d9; font-size:.75rem; pointer-events:none; }
+    .spinner { width:12px; height:12px; border:2px solid #30363d; border-top-color:#58a6ff; border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .gw-node { position:relative; width:250px; padding:.6rem .7rem; border-radius:9px; background:#161b22; border:1px solid #30363d; color:#c9d1d9; cursor:pointer; box-shadow:0 4px 16px #0008; box-sizing:border-box; }
     .gw-node.selected { border-color:#58a6ff; box-shadow:0 0 0 2px #58a6ff55, 0 4px 16px #0008; }
     .gw-node.kind-agent { padding:0; width:170px; background:transparent; border:none; box-shadow:none; }
@@ -901,6 +907,9 @@ export class GraphComponent implements OnChanges {
   settingsOpen = signal(false);
   customEdges = signal<CustomEdge[]>(this.loadCustomEdges());
   layoutNonce = signal(0);
+  readonly computing = signal(false);
+  private layoutCacheKey = '';
+  private layoutCache = new Map<string, { x: number; y: number }>();
   schemaJson = '';
   schemaError = signal('');
   connSource = '';
@@ -1576,8 +1585,14 @@ export class GraphComponent implements OnChanges {
 
   setLayout(algo: LayoutAlgorithm): void {
     this.layout.set(algo);
-    this.layoutNonce.update(v => v + 1);
-    setTimeout(() => this.fit(), 100);
+    this.computing.set(true);
+    // Yield one frame so the spinner paints, then run the layout.
+    setTimeout(() => {
+      this.layoutNonce.update(v => v + 1);
+      void this.nodes(); // force evaluation while the spinner is visible
+      this.computing.set(false);
+      this.fit();
+    }, 16);
   }
 
   cleanup(): void {
@@ -2355,8 +2370,14 @@ export class GraphComponent implements OnChanges {
 
   private applyLayout(nodes: GraphNode[]): GraphNode[] {
     const algo = this.layout();
+    const key = this.mode() + '|' + this.layout() + '|' + this.schema().version + '|' +
+      nodes.map(n => n.kind + ':' + n.id).sort().join(',');
     let laid: GraphNode[];
-    if (algo === 'free') {
+    if (algo !== 'free' && this.layoutCacheKey === key) {
+      // Structure unchanged: reuse positions so periodic data refreshes do not
+      // re-run an expensive layout.
+      laid = nodes.map(n => ({ ...n, position: this.layoutCache.get(n.id) ?? n.position }));
+    } else if (algo === 'free') {
       laid = nodes;
     } else if (algo === 'hierarchy') {
       laid = this.layeredLayout(nodes);
@@ -2372,6 +2393,11 @@ export class GraphComponent implements OnChanges {
       laid = this.stressLayout(nodes);
     } else {
       laid = this.radialLayout(nodes);
+    }
+    if (algo !== 'free') {
+      this.layoutCacheKey = key;
+      this.layoutCache.clear();
+      for (const n of laid) this.layoutCache.set(n.id, n.position);
     }
     const sane = laid.every(n =>
       Number.isFinite(n.position.x) && Number.isFinite(n.position.y) &&
