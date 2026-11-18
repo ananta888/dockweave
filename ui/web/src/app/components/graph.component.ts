@@ -10,7 +10,7 @@ import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, M
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
-type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'free' | 'mixed';
+type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'stress' | 'free' | 'mixed';
 
 interface GraphPort {
   id: string;
@@ -122,6 +122,7 @@ interface GraphEdge {
         <select class="small-select" [ngModel]="layout()" (ngModelChange)="setLayout($event)">
           <option value="mixed">Gemischt</option>
           <option value="force">Force (federnd)</option>
+          <option value="stress">Stress (SMACOF)</option>
           <option value="hierarchy">Hierarchie (hart)</option>
           <option value="columns">Spalten (hart)</option>
           <option value="grid">Grid</option>
@@ -327,6 +328,8 @@ interface GraphEdge {
                     <option value="grid">Grid</option>
                     <option value="radial">Radial</option>
                     <option value="force">Force (federnd)</option>
+                    <option value="stress">Stress (SMACOF, überlappungsfrei)</option>
+          <option value="stress">Stress (SMACOF)</option>
                     <option value="free">Frei (manuell, Positionen bleiben)</option>
                   </select>
                   <button class="primary" (click)="cleanup()">Aufräumen</button>
@@ -2365,6 +2368,8 @@ export class GraphComponent implements OnChanges {
       laid = this.gridLayout(nodes);
     } else if (algo === 'force') {
       laid = this.forceLayout(nodes);
+    } else if (algo === 'stress') {
+      laid = this.stressLayout(nodes);
     } else {
       laid = this.radialLayout(nodes);
     }
@@ -2552,6 +2557,141 @@ export class GraphComponent implements OnChanges {
       if (!moved) break;
     }
     return nodes.map(n => ({ ...n, position: { x: Math.round(pos.get(n.id)!.x), y: Math.round(pos.get(n.id)!.y) } }));
+  }
+
+  // Constrained stress majorization (Gansner-Koren-North 2004, Dwyer 2009,
+  // Wang et al. 2018): minimizes the weighted squared discrepancy to graph
+  // distances and then projects onto non-overlap separation constraints.
+  private stressLayout(nodes: GraphNode[]): GraphNode[] {
+    if (nodes.length < 2) return nodes.map(n => ({ ...n, position: { x: 0, y: 0 } }));
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = this.buildEdges().filter(e => ids.has(e.source) && ids.has(e.target));
+    const n = nodes.length;
+    const idx = new Map(nodes.map((nd, i) => [nd.id, i]));
+    const sizes = nodes.map(nd => this.nodeSize(nd));
+
+    const adj: number[][] = nodes.map(() => []);
+    for (const e of edges) {
+      const a = idx.get(e.source), b = idx.get(e.target);
+      if (a != null && b != null) { adj[a].push(b); adj[b].push(a); }
+    }
+    // unweighted shortest-path distances (hops) via BFS
+    const hop: number[][] = nodes.map(() => new Array(n).fill(-1));
+    for (let s = 0; s < n; s++) {
+      const dist = new Array(n).fill(-1); dist[s] = 0;
+      const q = [s];
+      for (let qi = 0; qi < q.length; qi++) {
+        const u = q[qi];
+        for (const v of adj[u]) if (dist[v] < 0) { dist[v] = dist[u] + 1; q.push(v); }
+      }
+      hop[s] = dist;
+    }
+
+    const U = 230; // ideal unit distance (node size + gap)
+    const w: number[][] = nodes.map(() => new Array(n).fill(0));
+    const d: number[][] = nodes.map(() => new Array(n).fill(0));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      const h = hop[i][j];
+      if (h > 0) {
+        d[i][j] = d[j][i] = h * U;
+        w[i][j] = w[j][i] = 1 / ((h * U) * (h * U));
+      } else {
+        // disconnected components: mild mutual repulsion
+        d[i][j] = d[j][i] = U * 3;
+        w[i][j] = w[j][i] = 1 / ((U * 3) * (U * 3));
+      }
+    }
+
+    let x = new Float64Array(n), y = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = 2 * Math.PI * i / n;
+      x[i] = Math.cos(a) * (n * U / (2 * Math.PI));
+      y[i] = Math.sin(a) * (n * U / (2 * Math.PI));
+    }
+
+    const iterations = Math.min(60, 20 + n * 3);
+    for (let it = 0; it < iterations; it++) {
+      for (const isX of [true, false]) {
+        const pos = isX ? x : y;
+        const b = new Float64Array(n);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            if (i === j || w[i][j] === 0) continue;
+            const dist = Math.hypot(x[i] - x[j], y[i] - y[j]) || 0.01;
+            b[i] += w[i][j] * (pos[j] + d[i][j] * (pos[i] - pos[j]) / dist);
+          }
+        }
+        const sol = this.solveLaplacian(w, b, n);
+        for (let i = 0; i < n; i++) if (isX) x[i] = sol[i]; else y[i] = sol[i];
+      }
+      // separation projection (hard non-overlap, with gap)
+      for (let pass = 0; pass < 6; pass++) {
+        let moved = false;
+        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+          const minX = (sizes[i].w + sizes[j].w) / 2 + 44;
+          const minY = (sizes[i].h + sizes[j].h) / 2 + 44;
+          const dx = x[i] - x[j], dy = y[i] - y[j];
+          if (Math.abs(dx) < minX && Math.abs(dy) < minY) {
+            moved = true;
+            if (Math.abs(dx) * minY > Math.abs(dy) * minX) {
+              const push = Math.sign(dx || 1) * (minX - Math.abs(dx));
+              x[i] += push / 2; x[j] -= push / 2;
+            } else {
+              const push = Math.sign(dy || 1) * (minY - Math.abs(dy));
+              y[i] += push / 2; y[j] -= push / 2;
+            }
+          }
+        }
+        if (!moved) break;
+      }
+    }
+    return nodes.map((nd, i) => ({ ...nd, position: { x: Math.round(x[i]), y: Math.round(y[i]) } }));
+  }
+
+  // Solve the pinned weighted Laplacian system L x = b (node 0 fixed at 0)
+  // with conjugate gradient. The reduced system is symmetric positive
+  // definite, so CG converges quickly for our small graphs.
+  private solveLaplacian(w: number[][], b: Float64Array, n: number): Float64Array {
+    const sol = new Float64Array(n);
+    if (n <= 1) return sol;
+    const m = n - 1;
+    const diag = new Float64Array(m);
+    for (let u = 0; u < m; u++) {
+      const i = u + 1;
+      let s = 0;
+      for (let j = 0; j < n; j++) if (j !== i) s += w[i][j];
+      diag[u] = s;
+    }
+    const matvec = (v: Float64Array, out: Float64Array) => {
+      for (let u = 0; u < m; u++) {
+        const i = u + 1;
+        let acc = diag[u] * v[u];
+        for (let k = 0; k < m; k++) if (k !== u) acc -= w[i][k + 1] * v[k];
+        out[u] = acc;
+      }
+    };
+    const rhs = new Float64Array(m);
+    for (let u = 0; u < m; u++) rhs[u] = b[u + 1];
+    const x = new Float64Array(m);
+    const r = new Float64Array(m); r.set(rhs);
+    const p = new Float64Array(m); p.set(rhs);
+    const Ap = new Float64Array(m);
+    let rr = 0; for (let u = 0; u < m; u++) rr += r[u] * r[u];
+    const tol = 1e-12;
+    for (let it = 0; it < 300 && rr > tol; it++) {
+      matvec(p, Ap);
+      let pAp = 0; for (let u = 0; u < m; u++) pAp += p[u] * Ap[u];
+      if (pAp <= 0) break;
+      const alpha = rr / pAp;
+      for (let u = 0; u < m; u++) x[u] += alpha * p[u];
+      for (let u = 0; u < m; u++) r[u] -= alpha * Ap[u];
+      let rrNew = 0; for (let u = 0; u < m; u++) rrNew += r[u] * r[u];
+      const beta = rrNew / rr;
+      for (let u = 0; u < m; u++) p[u] = r[u] + beta * p[u];
+      rr = rrNew;
+    }
+    for (let u = 0; u < m; u++) sol[u + 1] = x[u];
+    return sol;
   }
 
   private effective(a: Agent): Agent {
