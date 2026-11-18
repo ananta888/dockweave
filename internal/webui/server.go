@@ -148,15 +148,22 @@ func New(cfg Config) (*Server, error) {
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
 	s.loginLim = newLoginLimiter()
 	if cfg.OIDC != nil && cfg.OIDC.Issuer != "" {
-		prov, err := oidc.NewProvider(context.Background(), *cfg.OIDC)
+		// Discovery must never block the whole gateway: bound it and fall back
+		// to the static token if the IdP is unreachable.
+		dctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		prov, err := oidc.NewProvider(dctx, *cfg.OIDC)
+		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("oidc: %w", err)
+			if cfg.Logger != nil {
+				cfg.Logger.Warn("oidc disabled (issuer unreachable)", "issuer", cfg.OIDC.Issuer, "error", err)
+			}
+		} else {
+			store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
+			s.oidcSvc = oidc.NewService(prov, store, *cfg.OIDC)
+			s.oidcSvc.SetAuditor(func(event string, p oidc.Principal) {
+				s.auditOIDC(event, p)
+			})
 		}
-		store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
-		s.oidcSvc = oidc.NewService(prov, store, *cfg.OIDC)
-		s.oidcSvc.SetAuditor(func(event string, p oidc.Principal) {
-			s.auditOIDC(event, p)
-		})
 	}
 	s.handler = s.securityHeaders(s.auth(s.routes()))
 	return s, nil
