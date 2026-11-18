@@ -6,8 +6,8 @@ func TestLastTaskComplete(t *testing.T) {
 	out := `{"type":"event_msg","payload":{"type":"token_count"}}
 {"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"CODE"}}
 {"type":"event_msg","payload":{"type":"task_complete","last_agent_message":"ANSWER"}}`
-	if got, ok := lastTaskComplete(out); !ok || got != "ANSWER" {
-		t.Fatalf("got %q ok=%v", got, ok)
+	if got, errMsg, ok := lastTaskComplete(out); !ok || got != "ANSWER" || errMsg != "" {
+		t.Fatalf("got %q err=%q ok=%v", got, errMsg, ok)
 	}
 }
 

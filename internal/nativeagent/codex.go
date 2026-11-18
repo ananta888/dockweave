@@ -78,7 +78,10 @@ func (m *Manager) promptCodex(ctx context.Context, idOrName, prompt string) (str
 				seenUser = true
 			}
 			if seenUser {
-				if msg, ok := lastTaskComplete(out); ok {
+				if msg, errMsg, ok := lastTaskComplete(out); ok {
+					if errMsg != "" {
+						return "", fmt.Errorf("%w: %s", ErrAlreadySubmitted, errMsg)
+					}
 					return msg, nil
 				}
 			}
@@ -133,8 +136,8 @@ func taskAnchor(prompt string) string {
 	return p
 }
 
-func lastTaskComplete(out string) (string, bool) {
-	msg, found := "", false
+func lastTaskComplete(out string) (string, string, bool) {
+	msg, errMsg, found := "", "", false
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -145,14 +148,20 @@ func lastTaskComplete(out string) (string, bool) {
 			Payload struct {
 				Type             string `json:"type"`
 				LastAgentMessage string `json:"last_agent_message"`
+				Error            *struct {
+					Message string `json:"message"`
+				} `json:"error"`
 			} `json:"payload"`
 		}
 		if err := json.Unmarshal([]byte(line), &ev); err != nil {
 			continue
 		}
 		if ev.Type == "event_msg" && ev.Payload.Type == "task_complete" {
-			msg, found = ev.Payload.LastAgentMessage, true
+			msg, errMsg, found = ev.Payload.LastAgentMessage, "", true
+			if ev.Payload.Error != nil {
+				errMsg = ev.Payload.Error.Message
+			}
 		}
 	}
-	return msg, found
+	return msg, errMsg, found
 }

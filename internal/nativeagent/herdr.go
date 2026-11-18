@@ -56,7 +56,10 @@ func (m *Manager) promptHerdr(ctx context.Context, idOrName, prompt string) (str
 	for time.Now().Before(deadline) {
 		out, err := m.Docker.ExecOutput(ctx, cid, []string{"tail", "-n", "200", path})
 		if err == nil {
-			if msg, ok := lastTaskComplete(out); ok {
+			if msg, errMsg, ok := lastTaskComplete(out); ok {
+				if errMsg != "" {
+					return "", fmt.Errorf("%w: %s", ErrAlreadySubmitted, errMsg)
+				}
 				return msg, nil
 			}
 		}
