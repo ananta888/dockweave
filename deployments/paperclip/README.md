@@ -51,6 +51,8 @@ paperclip → dockweave-run.sh → POST /v1/chat/completions (unix socket)
 - Der Task bleibt in der **live TUI** sichtbar (Mode 2), weil der Endpoint
   dieselbe Session treibt.
 - Der Wrapper gibt die Antwort aus; paperclip speichert sie als Run-Output.
+- Best effort: die Antwort wird zusätzlich als Kommentar am Issue abgelegt.
+  Mit `DOCKWEAVE_PAPERCLIP_CLOSE=1` wird das Issue danach auf `done` gesetzt.
 
 Adapter-Konfiguration des Agents:
 

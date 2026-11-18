@@ -29,10 +29,11 @@ TIMEOUT="${PAPERCLIP_PROCESS_TIMEOUT:-${DOCKWEAVE_TIMEOUT:-240}}"
 
 # 1. Fetch the assigned task (first inbox item via the heartbeat inbox).
 TASK=""
+ISSUE_ID=""
 if [ -n "$API_KEY" ]; then
-  TASK=$(curl -s --max-time 15 -H "Authorization: Bearer $API_KEY" \
-    "$API_URL/api/agents/me/inbox-lite" \
-    | python3 -c 'import json,sys
+  INBOX=$(curl -s --max-time 15 -H "Authorization: Bearer $API_KEY" \
+    "$API_URL/api/agents/me/inbox-lite" 2>/dev/null || true)
+  TASK=$(printf '%s' "$INBOX" | python3 -c 'import json,sys
 try:
     d = json.load(sys.stdin)
 except Exception:
@@ -44,6 +45,15 @@ it = items[0]
 ident = it.get("identifier") or ""
 title = it.get("title") or it.get("description") or ""
 print((ident + ": " + title) if ident else title)
+' 2>/dev/null)
+  ISSUE_ID=$(printf '%s' "$INBOX" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = d.get("items") if isinstance(d, dict) else d
+if items:
+    print(items[0].get("id") or "")
 ' 2>/dev/null)
 fi
 [ -z "$TASK" ] && TASK="${DOCKWEAVE_DEFAULT_TASK:-(no task assigned)}"
@@ -85,7 +95,7 @@ if [ "$STATUS" != 0 ]; then
   exit 1
 fi
 
-printf '%s' "$RESP" | python3 -c 'import json,sys
+CONTENT=$(printf '%s' "$RESP" | python3 -c 'import json,sys
 raw = sys.stdin.read()
 try:
     d = json.loads(raw)
@@ -94,4 +104,21 @@ except Exception as e:
     print("[dockweave-run] invalid endpoint response: %s" % e, file=sys.stderr)
     print(raw[:500], file=sys.stderr)
     sys.exit(1)
-'
+') || exit 1
+printf '%s\n' "$CONTENT"
+
+# Record the answer on the paperclip issue so the run is visible outside the TUI.
+if [ -n "$ISSUE_ID" ] && [ -n "$API_KEY" ] && command -v paperclipai >/dev/null 2>&1; then
+  if [ -n "${PAPERCLIP_RUN_ID:-}" ]; then
+    paperclipai issue comment "$ISSUE_ID" --body "$CONTENT" \
+      --api-key "$API_KEY" --api-base "$API_URL" --run-id "$PAPERCLIP_RUN_ID" --json \
+      >/dev/null 2>&1 || true
+  else
+    paperclipai issue comment "$ISSUE_ID" --body "$CONTENT" \
+      --api-key "$API_KEY" --api-base "$API_URL" --json >/dev/null 2>&1 || true
+  fi
+  if [ "${DOCKWEAVE_PAPERCLIP_CLOSE:-0}" = "1" ]; then
+    paperclipai issue update "$ISSUE_ID" --status done \
+      --api-key "$API_KEY" --api-base "$API_URL" --json >/dev/null 2>&1 || true
+  fi
+fi
