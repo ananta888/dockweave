@@ -57,14 +57,30 @@ func (m *Manager) promptCodex(ctx context.Context, idOrName, prompt string) (str
 		return "", fmt.Errorf("codex queue: %w", err)
 	}
 
+	// The thread may still be busy with a previous turn. Wait until the new
+	// user message appears before accepting a task_complete, otherwise a stale
+	// completion from the previous turn is attributed to this prompt.
+	anchor := taskAnchor(prompt)
+	seenUser := false
+	started := time.Now()
 	deadline := time.Now().Add(m.Timeout)
 	for time.Now().Before(deadline) {
 		out, err := m.Docker.ExecOutput(ctx, cid, []string{
 			"tail", "-n", "+" + strconv.Itoa(before+1), path,
 		})
 		if err == nil && strings.TrimSpace(out) != "" {
-			if msg, ok := lastTaskComplete(out); ok {
-				return msg, nil
+			if !seenUser && (anchor == "" || strings.Contains(out, anchor)) {
+				seenUser = true
+			}
+			// Fallback for harnesses that do not echo the user text: after a
+			// grace period accept the next completion.
+			if !seenUser && time.Since(started) > 20*time.Second {
+				seenUser = true
+			}
+			if seenUser {
+				if msg, ok := lastTaskComplete(out); ok {
+					return msg, nil
+				}
 			}
 		}
 		select {
@@ -107,6 +123,14 @@ func firstLine(s string) string {
 		}
 	}
 	return ""
+}
+
+func taskAnchor(prompt string) string {
+	p := strings.TrimSpace(strings.SplitN(prompt, "\n", 2)[0])
+	if len(p) > 40 {
+		p = p[:40]
+	}
+	return p
 }
 
 func lastTaskComplete(out string) (string, bool) {

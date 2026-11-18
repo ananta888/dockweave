@@ -107,18 +107,12 @@ except Exception as e:
 ') || exit 1
 printf '%s\n' "$CONTENT"
 
-# Record the answer on the paperclip issue so the run is visible outside the TUI.
-if [ -n "$ISSUE_ID" ] && [ -n "$API_KEY" ] && command -v paperclipai >/dev/null 2>&1; then
-  if [ -n "${PAPERCLIP_RUN_ID:-}" ]; then
-    paperclipai issue comment "$ISSUE_ID" --body "$CONTENT" \
-      --api-key "$API_KEY" --api-base "$API_URL" --run-id "$PAPERCLIP_RUN_ID" --json \
-      >/dev/null 2>&1 || true
-  else
-    paperclipai issue comment "$ISSUE_ID" --body "$CONTENT" \
-      --api-key "$API_KEY" --api-base "$API_URL" --json >/dev/null 2>&1 || true
-  fi
-  if [ "${DOCKWEAVE_PAPERCLIP_CLOSE:-0}" = "1" ]; then
-    paperclipai issue update "$ISSUE_ID" --status done \
-      --api-key "$API_KEY" --api-base "$API_URL" --json >/dev/null 2>&1 || true
+# Record the answer AND change the source state. Paperclip marks an issue
+# blocked ("recovery needed") when a successful run leaves the source state
+# unchanged, so the update is part of a successful run.
+if [ -n "$ISSUE_ID" ] && command -v paperclipai >/dev/null 2>&1; then
+  STATUS="${DOCKWEAVE_PAPERCLIP_STATUS:-done}"
+  if ! paperclipai issue update "$ISSUE_ID" --status "$STATUS" --comment "$CONTENT" --json >/dev/null 2>&1; then
+    echo "[dockweave-run] could not update paperclip issue $ISSUE_ID" >&2
   fi
 fi

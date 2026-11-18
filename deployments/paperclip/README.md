@@ -69,7 +69,7 @@ paperclip → dockweave-run.sh → POST /v1/chat/completions (unix socket)
   dieselbe Session treibt.
 - Der Wrapper gibt die Antwort aus; paperclip speichert sie als Run-Output.
 - Best effort: die Antwort wird zusätzlich als Kommentar am Issue abgelegt.
-  Mit `DOCKWEAVE_PAPERCLIP_CLOSE=1` wird das Issue danach auf `done` gesetzt.
+  Der Wrapper setzt das Issue danach auf `DOCKWEAVE_PAPERCLIP_STATUS` (Default `done`) und hängt die Antwort als Kommentar an – sonst markiert Paperclip den Task als `blocked`/„recovery needed" (`unchanged_source_state`).
 
 Adapter-Konfiguration des Agents:
 
