@@ -2373,6 +2373,10 @@ export class GraphComponent implements OnChanges {
     } else {
       laid = this.radialLayout(nodes);
     }
+    const sane = laid.every(n =>
+      Number.isFinite(n.position.x) && Number.isFinite(n.position.y) &&
+      Math.abs(n.position.x) < 1e7 && Math.abs(n.position.y) < 1e7);
+    if (!sane) laid = this.gridLayout(nodes);
     return laid.map(n => this.manualPositions[n.id] ? { ...n, position: this.manualPositions[n.id] } : n);
   }
 
@@ -2618,7 +2622,7 @@ export class GraphComponent implements OnChanges {
           for (let j = 0; j < n; j++) {
             if (i === j || w[i][j] === 0) continue;
             const dist = Math.hypot(x[i] - x[j], y[i] - y[j]) || 0.01;
-            b[i] += w[i][j] * (pos[j] + d[i][j] * (pos[i] - pos[j]) / dist);
+            b[i] += w[i][j] * d[i][j] * (pos[i] - pos[j]) / dist;
           }
         }
         const sol = this.solveLaplacian(w, b, n);
