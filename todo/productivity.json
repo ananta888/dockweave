@@ -441,6 +441,80 @@
         "Manuell"
       ],
       "status": "done"
+    },
+    {
+      "id": "prod-024",
+      "title": "Automatische Agentenlaufzeit",
+      "description": "Daemon-Collector schreibt pro laufendem Agenten eine Minute agent_run (presence-basiert, idempotent je Agent/Minute).",
+      "priority": "high",
+      "dependencies": [
+        "prod-011"
+      ],
+      "components": [
+        "internal/productivity",
+        "cmd/dockweaved"
+      ],
+      "acceptance": "Laufender Agent erzeugt genau ein Event pro Minute; gestoppte Agenten nicht.",
+      "tests": [
+        "Collector-Test: idempotent, nur running"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-025",
+      "title": "Broker-Usage als LLM-Events",
+      "description": "Collector liest Broker-Usage je Grant, bildet Tagesdeltas und schreibt llm-Events mit Tokens, Kosten und Requests; Snapshot im meta-Table überlebt Neustarts.",
+      "priority": "high",
+      "dependencies": [
+        "prod-024"
+      ],
+      "components": [
+        "internal/productivity"
+      ],
+      "acceptance": "Keine Doppelzählung nach Neustart; Delta 0 erzeugt kein Event.",
+      "tests": [
+        "Collector-Test"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-026",
+      "title": "Retry-Zähler",
+      "description": "tasks.attempts zählt Fokusstarts; Reports weisen Aufgaben mit Wiederholungen aus.",
+      "priority": "medium",
+      "dependencies": [
+        "prod-003"
+      ],
+      "components": [
+        "internal/model",
+        "internal/persistence",
+        "internal/api",
+        "ui/web"
+      ],
+      "acceptance": "attempts erhöht sich bei jedem Start; Report nennt tasks_with_retries.",
+      "tests": [
+        "API: attempts nach Skip+Neustart"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-027",
+      "title": "Versionierte Zielhierarchie",
+      "description": "objective_revisions speichert jede Version; API und CLI liefern die Historie.",
+      "priority": "medium",
+      "dependencies": [
+        "prod-001"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Anlegen + Statuswechsel erzeugen Revision 1 und 2.",
+      "tests": [
+        "API: Revisionen"
+      ],
+      "status": "done"
     }
   ]
 }

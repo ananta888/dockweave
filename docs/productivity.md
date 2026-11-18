@@ -110,3 +110,17 @@ The **Productivity** tab in the web app shows the daily plan, the active focus
 session with live elapsed time, task and objective creation, budget actuals, a
 deterministic review report and a rollover button. It calls the same
 `/api/v1` endpoints as the CLI.
+
+## Automatic collection and versioning
+
+- The daemon runs a collector every minute:
+  - one `agent_run` event per **running** agent and minute (presence rule,
+    idempotent per agent/minute),
+  - `llm` events from broker usage deltas per grant (tokens, cost, requests),
+    with the previous snapshot stored in `meta`, so restarts cannot double
+    count. A delta of zero writes nothing.
+- `tasks.attempts` counts focus starts; the report exposes
+  `tasks_with_retries`.
+- Every objective change is snapshotted in `objective_revisions`;
+  `GET /api/v1/objectives/{id}/revisions` and
+  `dockweave objective revisions ID` show the history.

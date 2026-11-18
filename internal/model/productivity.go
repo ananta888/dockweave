@@ -110,6 +110,7 @@ type Task struct {
 	EffortMinutes int          `json:"effort_minutes,omitempty"`
 	OrderIndex    int          `json:"order_index"`
 	BlockedBy     []string     `json:"blocked_by,omitempty"`
+	Attempts      int          `json:"attempts"`
 	CreatedAt     time.Time    `json:"created_at"`
 	UpdatedAt     time.Time    `json:"updated_at"`
 	CompletedAt   *time.Time   `json:"completed_at,omitempty"`

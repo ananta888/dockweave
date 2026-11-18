@@ -175,6 +175,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/objectives", s.listObjectives)
 	s.mux.HandleFunc("POST /api/v1/objectives", s.createObjective)
 	s.mux.HandleFunc("PATCH /api/v1/objectives/{id}", s.updateObjective)
+	s.mux.HandleFunc("GET /api/v1/objectives/{id}/revisions", s.listObjectiveRevisions)
 	s.mux.HandleFunc("GET /api/v1/tasks", s.listTasks)
 	s.mux.HandleFunc("POST /api/v1/tasks", s.createTask)
 	s.mux.HandleFunc("GET /api/v1/tasks/today", s.todayPlan)

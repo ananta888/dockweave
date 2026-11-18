@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 13
+const schemaVersion = 14
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -286,6 +286,17 @@ var migrations = []string{
 		body TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL
 	);`,
+	// 14: retry counters and versioned objective revisions.
+	`ALTER TABLE tasks ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+	CREATE TABLE IF NOT EXISTS objective_revisions (
+		id TEXT PRIMARY KEY,
+		objective_id TEXT NOT NULL,
+		revision INTEGER NOT NULL,
+		body TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		UNIQUE(objective_id, revision)
+	);
+	CREATE INDEX IF NOT EXISTS idx_objective_revisions ON objective_revisions(objective_id, revision);`,
 }
 
 // Store is the DockWeave registry.

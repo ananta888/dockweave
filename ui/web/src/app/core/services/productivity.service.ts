@@ -14,6 +14,7 @@ export interface Task {
   priority: number;
   effort_minutes?: number;
   order_index: number;
+  attempts?: number;
 }
 
 export interface FocusSession {

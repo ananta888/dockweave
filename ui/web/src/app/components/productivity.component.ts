@@ -61,6 +61,7 @@ import {
                 <span class="status">{{ t.status }}</span>
                 <span class="name">{{ t.title }}</span>
                 @if (t.objective_ids?.length) { <span class="goal">●</span> }
+                @if ((t.attempts ?? 0) > 1) { <span class="retry" title="Versuche">↻{{ t.attempts }}</span> }
                 <span class="spacer"></span>
                 <button class="small" (click)="switchTo(t); $event.stopPropagation()">Fokus</button>
                 <button class="small" (click)="markDone(t); $event.stopPropagation()">Done</button>
@@ -148,6 +149,7 @@ import {
     .status { color: #8b949e; font-size: .68rem; text-transform: uppercase; width: 82px; }
     .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .goal { color: #3fb950; }
+    .retry { color: #d29922; font-size: .68rem; }
     .spacer { flex: 1; }
     .muted { color: #8b949e; font-size: .72rem; }
     .eyebrow { color: #58a6ff; font-size: .7rem; text-transform: uppercase; margin: 0 0 .2rem; }

@@ -93,3 +93,16 @@ Der Tab **Productivity** zeigt Tagesplan, aktive Fokus-Session mit laufender
 Zeit, Anlegen von Aufgaben und Zielen, Budget-Ist, deterministischen
 Review-Report und einen Rollover-Button. Er nutzt dieselben `/api/v1`-Endpunkte
 wie die CLI.
+
+## Automatische Erfassung und Versionierung
+
+- Der Daemon sammelt jede Minute:
+  - ein `agent_run`-Event pro **laufendem** Agenten und Minute (Presence-Regel,
+    idempotent je Agent/Minute),
+  - `llm`-Events aus Broker-Usage-Deltas je Grant (Tokens, Kosten, Requests);
+    der letzte Stand liegt im `meta`-Table, damit ein Neustart nicht doppelt
+    zaehlt. Delta 0 schreibt nichts.
+- `tasks.attempts` zaehlt Fokusstarts; der Report nennt `tasks_with_retries`.
+- Jede Ziellaenderung wird in `objective_revisions` gesnapshottet;
+  `GET /api/v1/objectives/{id}/revisions` und
+  `dockweave objective revisions ID` zeigen die Historie.

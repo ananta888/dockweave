@@ -45,6 +45,7 @@ func (s *Server) createObjective(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	_ = s.Store.SaveObjectiveRevision(r.Context(), &o)
 	s.audit(r, model.EventObjectiveCreated, o.Title)
 	writeJSON(w, http.StatusCreated, o)
 }
@@ -60,6 +61,9 @@ func (s *Server) updateObjective(w http.ResponseWriter, r *http.Request) {
 	if err := s.Store.UpdateObjectiveStatus(r.Context(), r.PathValue("id"), req.Status); err != nil {
 		s.fail(w, err)
 		return
+	}
+	if o, err := s.Store.GetObjective(r.Context(), r.PathValue("id")); err == nil {
+		_ = s.Store.SaveObjectiveRevision(r.Context(), o)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": req.Status})
 }
@@ -530,7 +534,7 @@ func (s *Server) reviewReport(w http.ResponseWriter, r *http.Request) {
 	tasks, _ := s.Store.ListTasks(r.Context(), "", "", "", 0)
 	events, _ := s.Store.ListWorkEvents(r.Context(), "", 0)
 
-	var done, verified, blocked, failed int
+	var done, verified, blocked, failed, retried int
 	perObjective := map[string]float64{}
 	focusSeconds, agentSeconds := int64(0), int64(0)
 	cost := 0.0
@@ -551,6 +555,9 @@ func (s *Server) reviewReport(w http.ResponseWriter, r *http.Request) {
 			blocked++
 		case model.TaskFailed:
 			failed++
+		}
+		if t.Attempts > 1 {
+			retried++
 		}
 	}
 	for _, e := range events {
@@ -575,9 +582,10 @@ func (s *Server) reviewReport(w http.ResponseWriter, r *http.Request) {
 		"period_end": now.Format("2006-01-02"),
 		"tasks_done": done, "tasks_verified": verified,
 		"tasks_blocked": blocked, "tasks_failed": failed,
-		"human_hours": float64(focusSeconds) / 3600,
-		"agent_hours": float64(agentSeconds) / 3600,
-		"cost_usd":    cost, "hours_per_objective": perObjective,
+		"tasks_with_retries": retried,
+		"human_hours":        float64(focusSeconds) / 3600,
+		"agent_hours":        float64(agentSeconds) / 3600,
+		"cost_usd":           cost, "hours_per_objective": perObjective,
 		"generated_by": "deterministic", "llm_summary": nil,
 	})
 }
@@ -701,3 +709,13 @@ func (s *Server) pruneProductivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func persistenceErrNotFound() error { return persistence.ErrNotFound }
+
+// listObjectiveRevisions returns the version history of an objective.
+func (s *Server) listObjectiveRevisions(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Store.ObjectiveRevisions(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}

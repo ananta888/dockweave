@@ -37,6 +37,7 @@ import (
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/nativeagent"
 	"github.com/ananta888/dockweave/internal/persistence"
+	"github.com/ananta888/dockweave/internal/productivity"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/supervisor"
 	"github.com/ananta888/dockweave/internal/workspaces"
@@ -216,6 +217,12 @@ func run(cfgPath string) error {
 			"ALLOWED_ROOTS":        strings.Join(cfg.AllowedRoots, ":"),
 		},
 	}
+	// Deterministic collector: presence-based agent runtime and broker deltas.
+	collectCtx, collectCancel := context.WithCancel(context.Background())
+	defer collectCancel()
+	collector := &productivity.Collector{Store: store, Broker: apiSrv.Broker, Interval: time.Minute}
+	go collector.Run(collectCtx)
+
 	handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
 	srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}
 

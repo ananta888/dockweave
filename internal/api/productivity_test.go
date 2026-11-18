@@ -241,3 +241,51 @@ func TestPruneEndpoint(t *testing.T) {
 		t.Fatalf("prune = %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestObjectiveRevisionsAndAttempts(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+
+	rec := call(t, s, s.createObjective, http.MethodPost, "/api/v1/objectives",
+		model.Objective{Title: "v1", Kind: model.ObjectiveQuarter})
+	var obj model.Objective
+	_ = json.Unmarshal(rec.Body.Bytes(), &obj)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/objectives/"+obj.ID,
+		bytes.NewBufferString(`{"status":"achieved"}`))
+	req.SetPathValue("id", obj.ID)
+	req = req.WithContext(ContextWithPeer(context.Background(), "test", 1000, RoleAdmin))
+	rec = httptest.NewRecorder()
+	s.updateObjective(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/objectives/"+obj.ID+"/revisions", nil)
+	req.SetPathValue("id", obj.ID)
+	req = req.WithContext(ContextWithPeer(context.Background(), "test", 1000, RoleAdmin))
+	rec = httptest.NewRecorder()
+	s.listObjectiveRevisions(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revisions = %d", rec.Code)
+	}
+	var revisions []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &revisions)
+	if len(revisions) != 2 {
+		t.Fatalf("revisions = %d, want 2", len(revisions))
+	}
+
+	task := &model.Task{Title: "retry me", Day: "2026-11-18"}
+	_ = s.Store.CreateTask(ctx, task)
+	if _, err := s.Store.StartFocus(ctx, task.ID, "mira"); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = s.Store.EndFocus(ctx, "mira", false, "skip")
+	if _, err := s.Store.StartFocus(ctx, task.ID, "mira"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.Store.GetTask(ctx, task.ID)
+	if got.Attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", got.Attempts)
+	}
+}

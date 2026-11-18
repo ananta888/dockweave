@@ -138,12 +138,12 @@ func (s *Store) CreateTask(ctx context.Context, t *model.Task) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO tasks (id, title, description, notes, objective_ids,
 			assignee_kind, agent_id, workspace_id, day, status, priority, risk,
-			effort_minutes, order_index, blocked_by, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			effort_minutes, order_index, blocked_by, attempts, created_at, updated_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		t.ID, t.Title, t.Description, t.Notes, encodeJSON(t.ObjectiveIDs),
 		t.AssigneeKind, t.AgentID, t.WorkspaceID, t.Day, t.Status, t.Priority,
 		t.Risk, t.EffortMinutes, t.OrderIndex, encodeJSON(t.BlockedBy),
-		nowString(), nowString())
+		t.Attempts, nowString(), nowString())
 	if err != nil {
 		return fmt.Errorf("create task: %w", err)
 	}
@@ -157,7 +157,7 @@ func scanTask(scan func(dest ...any) error) (*model.Task, error) {
 	if err := scan(&t.ID, &t.Title, &t.Description, &t.Notes, &objectives,
 		&t.AssigneeKind, &t.AgentID, &t.WorkspaceID, &t.Day, &t.Status,
 		&t.Priority, &t.Risk, &t.EffortMinutes, &t.OrderIndex, &blocked,
-		&created, &updated, &completed); err != nil {
+		&t.Attempts, &created, &updated, &completed); err != nil {
 		return nil, err
 	}
 	t.ObjectiveIDs = decodeStrings(objectives)
@@ -169,7 +169,7 @@ func scanTask(scan func(dest ...any) error) (*model.Task, error) {
 
 const taskColumns = `id, title, description, notes, objective_ids, assignee_kind,
 	agent_id, workspace_id, day, status, priority, risk, effort_minutes,
-	order_index, blocked_by, created_at, updated_at, completed_at`
+	order_index, blocked_by, attempts, created_at, updated_at, completed_at`
 
 // GetTask returns one task or ErrNotFound.
 func (s *Store) GetTask(ctx context.Context, id string) (*model.Task, error) {
@@ -237,12 +237,12 @@ func (s *Store) UpdateTask(ctx context.Context, t *model.Task) error {
 		UPDATE tasks SET title=?, description=?, notes=?, objective_ids=?,
 			assignee_kind=?, agent_id=?, workspace_id=?, day=?, status=?,
 			priority=?, risk=?, effort_minutes=?, order_index=?, blocked_by=?,
-			updated_at=?, completed_at=?
+			attempts=?, updated_at=?, completed_at=?
 		WHERE id = ?`,
 		t.Title, t.Description, t.Notes, encodeJSON(t.ObjectiveIDs),
 		t.AssigneeKind, t.AgentID, t.WorkspaceID, t.Day, t.Status, t.Priority,
 		t.Risk, t.EffortMinutes, t.OrderIndex, encodeJSON(t.BlockedBy),
-		nowString(), completed, t.ID)
+		t.Attempts, nowString(), completed, t.ID)
 	if err != nil {
 		return fmt.Errorf("update task: %w", err)
 	}
@@ -331,7 +331,7 @@ func (s *Store) StartFocus(ctx context.Context, taskID, humanID string) (*model.
 		return nil, fmt.Errorf("start focus: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE tasks SET status = ?, attempts = attempts + 1, updated_at = ? WHERE id = ?`,
 		model.TaskInProgress, nowString(), taskID); err != nil {
 		return nil, err
 	}
@@ -796,4 +796,85 @@ func (s *Store) PruneProductivity(ctx context.Context, before time.Time) (map[st
 		return nil, err
 	}
 	return out, nil
+}
+
+// SaveObjectiveRevision stores an immutable snapshot of an objective.
+func (s *Store) SaveObjectiveRevision(ctx context.Context, o *model.Objective) error {
+	var next int
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(revision), 0) + 1 FROM objective_revisions WHERE objective_id = ?`,
+		o.ID).Scan(&next)
+	body, err := json.Marshal(o)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO objective_revisions (id, objective_id, revision, body, created_at)
+		VALUES (?,?,?,?,?)`,
+		model.NewID("orv"), o.ID, next, string(body), nowString())
+	if err != nil {
+		return fmt.Errorf("save objective revision: %w", err)
+	}
+	return nil
+}
+
+// ObjectiveRevisions returns the snapshots of one objective, oldest first.
+func (s *Store) ObjectiveRevisions(ctx context.Context, objectiveID string) ([]map[string]any, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT revision, body, created_at FROM objective_revisions
+		WHERE objective_id = ? ORDER BY revision ASC`, objectiveID)
+	if err != nil {
+		return nil, fmt.Errorf("objective revisions: %w", err)
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var rev int
+		var body, created string
+		if err := rows.Scan(&rev, &body, &created); err != nil {
+			return nil, err
+		}
+		entry := map[string]any{"revision": rev, "created_at": created}
+		var snapshot map[string]any
+		if err := json.Unmarshal([]byte(body), &snapshot); err == nil {
+			entry["objective"] = snapshot
+		}
+		out = append(out, entry)
+	}
+	return out, rows.Err()
+}
+
+// GetMeta reads a small key/value pair from the meta table.
+func (s *Store) GetMeta(ctx context.Context, key string) (string, bool) {
+	var v string
+	if err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&v); err != nil {
+		return "", false
+	}
+	return v, true
+}
+
+// SetMeta writes a small key/value pair.
+func (s *Store) SetMeta(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		key, value)
+	return err
+}
+
+// GetObjective returns a single objective.
+func (s *Store) GetObjective(ctx context.Context, id string) (*model.Objective, error) {
+	var o model.Objective
+	var created, updated string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, kind, parent_id, title, description, status, period_start, period_end, created_at, updated_at
+		FROM objectives WHERE id = ?`, id).Scan(&o.ID, &o.Kind, &o.ParentID, &o.Title, &o.Description,
+		&o.Status, &o.PeriodStart, &o.PeriodEnd, &created, &updated)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	o.CreatedAt, o.UpdatedAt = parseTime(created), parseTime(updated)
+	return &o, nil
 }

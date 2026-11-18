@@ -69,7 +69,18 @@ func objectiveCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(add, list)
+	revisions := &cobra.Command{
+		Use: "revisions ID", Short: "Show the version history of an objective", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var out []map[string]any
+			if err := client().Do(context.Background(), "GET", "/api/v1/objectives/"+args[0]+"/revisions", nil, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	}
+	cmd.AddCommand(add, list, revisions)
 	return cmd
 }
 
