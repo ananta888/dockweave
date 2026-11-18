@@ -77,6 +77,7 @@ die den Broker-Admin-Socket proxyen:
 - Grants: Credential pro Agent, Modelle und Budgets (rpm, concurrent, Tokens/Tag, USD/Tag)
 - Sessions: minten (Token wird einmal angezeigt), auflisten, widerrufen
 - letzte Broker-Requests (secret-free)
+- **Provider-Aktivierung**: schreibt einen OpenAI-kompatiblen DeepSeek-Provider (`/p/deepseek`) mit kurzlebigem `dws_`-Token in einen opencode-Agenten; der echte Key bleibt im Vault. Der Session-Refresh-Timer erneuert ihn stündlich.
 
 Secret-Werte werden nie zurückgegeben; nur das frisch gemintete `dws_`-Token
 wird bei der Erstellung einmal angezeigt.

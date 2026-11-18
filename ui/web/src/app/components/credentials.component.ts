@@ -99,6 +99,34 @@ import { BrokerRequestEntry } from '../core/models';
       </div>
 
       <section>
+        <h3>Provider aktivieren (opencode)</h3>
+        <p class="hint">Schreibt eine OpenAI-kompatible Provider-Config mit einem kurzlebigen <code>dws_</code>-Token ins Agenten-Memory. Der echte DeepSeek-Key bleibt im Vault.</p>
+        <div class="form-grid">
+          <label>Agent
+            <select [(ngModel)]="providerAgent" name="pvAgent">
+              @for (a of opencodeAgents(); track a.id) { <option [value]="a.name">{{ a.name }}</option> }
+            </select>
+          </label>
+          <label>Credential
+            <select [(ngModel)]="providerCredential" name="pvCred">
+              @for (s of secrets(); track s.name) { @if (s.provider === 'deepseek') { <option [value]="s.name">{{ s.name }}</option> } }
+            </select>
+          </label>
+          <label>Modell
+            <select [(ngModel)]="providerModel" name="pvModel">
+              <option value="deepseek-chat">deepseek-chat</option>
+              <option value="deepseek-reasoner">deepseek-reasoner</option>
+            </select>
+          </label>
+          <label>TTL <input [(ngModel)]="providerTTL" name="pvTTL" /></label>
+        </div>
+        <button class="primary" (click)="enableDeepSeek()" [disabled]="busy() || !providerAgent || !providerCredential">DeepSeek in opencode aktivieren</button>
+        @if (providerResult(); as pr) {
+          <div class="notice">Aktiviert: {{ pr.provider }}/{{ pr.model }} · Session {{ pr.session_id }} · gültig bis {{ pr.expires_at }}. Agent neu starten (oder Reload), damit OpenCode die Config lädt.</div>
+        }
+      </section>
+
+      <section>
         <h3>Sessions</h3>
         <div class="list">
           @for (s of sessions(); track s.id) {
@@ -226,7 +254,14 @@ export class CredentialsComponent implements OnInit {
   mintCredential = '';
   mintTTL = '8h';
 
+  providerAgent = '';
+  providerCredential = 'deepseek-main';
+  providerModel = 'deepseek-chat';
+  providerTTL = '8h';
+  providerResult = signal<{ provider: string; model: string; session_id: string; expires_at: string } | null>(null);
+
   readonly agents = computed(() => this.store.agents());
+  readonly opencodeAgents = computed(() => this.store.agents().filter(a => a.type === 'opencode'));
   readonly providers = computed(() => {
     const p = this.status()?.providers ?? [];
     return p.length ? p : ['deepseek', 'openai', 'openrouter', 'anthropic', 'gemini', 'opencode', 'codex-chatgpt'];
@@ -262,6 +297,7 @@ export class CredentialsComponent implements OnInit {
   private applyDefaults(): void {
     if (!this.grantAgent && this.agents().length) this.grantAgent = this.agents()[0].name;
     if (!this.mintAgent && this.agents().length) this.mintAgent = this.agents()[0].name;
+    if (!this.providerAgent && this.opencodeAgents().length) this.providerAgent = this.opencodeAgents()[0].name;
   }
 
   saveSecret(): void {
@@ -328,6 +364,25 @@ export class CredentialsComponent implements OnInit {
     this.minted.set(null);
     this.svc.mint({ agent: this.mintAgent, credential: this.mintCredential, ttl: this.mintTTL }).subscribe({
       next: m => { this.busy.set(false); this.minted.set(m); this.loadAll(); },
+      error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
+    });
+  }
+
+  enableDeepSeek(): void {
+    if (!this.providerAgent || !this.providerCredential) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.message.set('');
+    this.providerResult.set(null);
+    this.svc.enableDeepSeek(this.providerAgent, {
+      credential: this.providerCredential, model: this.providerModel, ttl: this.providerTTL,
+    }).subscribe({
+      next: r => {
+        this.busy.set(false);
+        this.providerResult.set(r);
+        this.message.set('Provider aktiviert; Agent neu starten, damit OpenCode die Config lädt.');
+        this.loadAll();
+      },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
     });
   }

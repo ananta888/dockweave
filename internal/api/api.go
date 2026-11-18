@@ -175,6 +175,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)
 	s.mux.HandleFunc("POST /api/v1/monitor/reports", s.submitReport)
+	s.mux.HandleFunc("POST /api/v1/agents/{id}/provider/deepseek", s.enableDeepSeek)
 	s.mux.HandleFunc("GET /api/v1/credentials/status", s.credentialStatus)
 	s.mux.HandleFunc("GET /api/v1/credentials/secrets", s.credentialSecrets)
 	s.mux.HandleFunc("PUT /api/v1/credentials/secrets/{name}", s.credentialPutSecret)

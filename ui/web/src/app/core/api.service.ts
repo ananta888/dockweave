@@ -134,6 +134,9 @@ export class ApiService {
   herdrPrepare(id: string, body: { credential?: string; model?: string; ttl?: string }): Observable<HerdrPrepareResult> {
     return this.req(this.http.post<HerdrPrepareResult>(`${this.base}/agents/${id}/herdr/prepare`, body));
   }
+  enableDeepSeek(id: string, body: { credential: string; model: string; ttl: string }): Observable<{ ok: boolean; provider: string; model: string; session_id: string; expires_at: string; config: string }> {
+    return this.req(this.http.post<{ ok: boolean; provider: string; model: string; session_id: string; expires_at: string; config: string }>(`${this.base}/agents/${id}/provider/deepseek`, body));
+  }
   credentialStatus(): Observable<CredentialStatus> { return this.req(this.http.get<CredentialStatus>(`${this.base}/credentials/status`)); }
   credentialSecrets(): Observable<CredentialSecret[]> { return this.req(this.http.get<CredentialSecret[]>(`${this.base}/credentials/secrets`)); }
   putCredentialSecret(name: string, provider: string, value: string): Observable<unknown> {

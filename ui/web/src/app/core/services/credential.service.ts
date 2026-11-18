@@ -30,4 +30,8 @@ export class CredentialService {
   revokeSession(id: string): Observable<unknown> { return this.api.revokeCredentialSession(id); }
 
   requests(): Observable<BrokerRequestEntry[]> { return this.api.credentialRequests(); }
+
+  enableDeepSeek(agentId: string, body: { credential: string; model: string; ttl: string }) {
+    return this.api.enableDeepSeek(agentId, body);
+  }
 }

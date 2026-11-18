@@ -74,6 +74,7 @@ endpoints that proxy the broker admin socket:
 - grants: per-agent credential, models and budgets (rpm, concurrent, tokens/day, USD/day)
 - sessions: mint (token shown once), list, revoke
 - recent broker requests (secret-free)
+- **Provider activation**: writes an OpenAI-compatible DeepSeek provider (`/p/deepseek`) with a short-lived `dws_` token into an opencode agent; the real key stays in the vault. The session refresh timer renews it hourly.
 
 Secret values are never returned by the API; only the freshly minted `dws_`
 token is shown once at creation.
