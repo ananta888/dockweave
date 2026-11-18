@@ -115,6 +115,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /paperclip/status", s.paperclipStatus)
 	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)
 	mux.HandleFunc("POST /paperclip/agents/{id}/wake", s.paperclipWake)
+	mux.HandleFunc("POST /paperclip/agents/{id}/target", s.paperclipSetTarget)
 	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
 	mux.Handle("/api/", s.proxy)
 	mux.Handle("/v1/", s.proxy) // OpenAI-compatible endpoint (proxied to daemon)

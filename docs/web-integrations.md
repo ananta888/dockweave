@@ -46,6 +46,7 @@ API: `GET/POST /api/v1/agents/{id}/herdr/{status,prompt,prepare}`.
   (`DOCKWEAVE_PAPERCLIP_URL`, default `http://127.0.0.1:3100`).
 - Quick actions via the web gateway's local CLI adapter:
   - company/agents/issues status
+- **Ziel-Agent**: assigns a DockWeave agent to the Paperclip process agent (`adapterConfig.args[0]`); applies to the next wake.
   - create a task assigned to an agent
   - wake an agent
 - API (same-origin, cookie auth):

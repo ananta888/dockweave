@@ -136,6 +136,49 @@ func (s *Server) paperclipCreateIssue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, json.RawMessage(out))
 }
 
+// paperclipSetTarget changes the DockWeave agent (model) a Paperclip process
+// agent delegates to by replacing adapterConfig.args[0].
+func (s *Server) paperclipSetTarget(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Model) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model is required"})
+		return
+	}
+	agentID := r.PathValue("id")
+	raw, err := s.runPaperclip(r.Context(), 10*time.Second, "agent", "get", agentID, "--json")
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	var agent map[string]any
+	if err := json.Unmarshal(raw, &agent); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "invalid agent json"})
+		return
+	}
+	cfg, _ := agent["adapterConfig"].(map[string]any)
+	if cfg == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "agent has no adapterConfig"})
+		return
+	}
+	args, _ := cfg["args"].([]any)
+	if len(args) == 0 {
+		args = []any{req.Model}
+	} else {
+		args[0] = req.Model
+	}
+	cfg["args"] = args
+	payload, _ := json.Marshal(map[string]any{"adapterConfig": cfg})
+	out, err := s.runPaperclip(r.Context(), 30*time.Second,
+		"agent", "update", agentID, "--payload-json", string(payload), "--json")
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, json.RawMessage(out))
+}
+
 // paperclipWake requests a heartbeat run for an agent.
 func (s *Server) paperclipWake(w http.ResponseWriter, r *http.Request) {
 	var req struct {

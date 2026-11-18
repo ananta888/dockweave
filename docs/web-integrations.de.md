@@ -48,6 +48,7 @@ API: `GET/POST /api/v1/agents/{id}/herdr/{status,prompt,prepare}`.
   (`DOCKWEAVE_PAPERCLIP_URL`, Default `http://127.0.0.1:3100`).
 - Schnellaktionen über den lokalen CLI-Adapter des Web-Gateways:
   - Status (Companies/Agents/Issues)
+- **Ziel-Agent**: weist dem Paperclip-Prozess-Agenten einen DockWeave-Agenten zu (`adapterConfig.args[0]`); gilt für den nächsten Wake.
   - Task anlegen und einem Agenten zuweisen
   - Agent wecken
 - API (same-origin, Cookie-Auth):

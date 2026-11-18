@@ -57,6 +57,12 @@ export interface PaperclipAgent {
   status?: string;
   adapterType?: string;
   lifecycleState?: string;
+  adapterConfig?: {
+    args?: string[];
+    command?: string;
+    cwd?: string;
+    timeoutSec?: number;
+  };
 }
 
 export interface PaperclipIssue {

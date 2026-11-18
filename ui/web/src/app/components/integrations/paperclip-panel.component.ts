@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { PaperclipService } from '../../core/services/paperclip.service';
+import { Store } from '../../core/store';
 import {
   PaperclipAgent, PaperclipCompany, PaperclipIssue, PaperclipStatus,
 } from '../../core/domain/integrations';
@@ -42,6 +43,20 @@ import {
             }
             @if (!agents().length) { <p class="muted">Keine Agenten.</p> }
           </div>
+
+          <h4>Ziel-Agent (DockWeave)</h4>
+          @if (primaryAgent(); as pa) {
+            <div class="target-row">
+              <span class="mono">{{ pa.name }}</span>
+              <span class="muted">→ {{ targetOf(pa) || 'nicht gesetzt' }}</span>
+              <span class="spacer"></span>
+              <select [(ngModel)]="targetModel" name="pcTarget">
+                @for (a of dockweaveAgents(); track a.id) { <option [value]="a.name">{{ a.name }}</option> }
+              </select>
+              <button class="small primary" (click)="assignTarget()" [disabled]="busy() || !targetModel">zuweisen</button>
+            </div>
+            <p class="hint">Gilt für den nächsten Wake. Der DockWeave-Agent muss laufen.</p>
+          }
 
           <h4>Task anlegen</h4>
           <label class="field">Titel <input [(ngModel)]="issueTitle" name="pcTitle" placeholder="Antworte nur mit …" /></label>
@@ -100,6 +115,8 @@ import {
     .title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .spacer { flex:1; }
     .field { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; color:#8b949e; margin:.4rem 0; }
+    .target-row { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.3rem 0; }
+    .hint { color:#8b949e; font-size:.72rem; margin:.1rem 0 .4rem; }
     .actions { display:flex; gap:.5rem; margin:.5rem 0; }
     .primary { background:#238636; border-color:#2ea043; color:#fff; }
     .small { padding:.15rem .45rem; font-size:.72rem; }
@@ -110,6 +127,7 @@ import {
 export class PaperclipPanelComponent implements OnInit {
   private readonly svc = inject(PaperclipService);
   private readonly sanitizer = inject(DomSanitizer);
+  readonly store = inject(Store);
 
   configUrl = signal('');
   status = signal<PaperclipStatus | null>(null);
@@ -120,10 +138,13 @@ export class PaperclipPanelComponent implements OnInit {
   issueTitle = '';
   issueDescription = '';
   assigneeId = '';
+  targetModel = '';
 
   readonly companies = computed<PaperclipCompany[]>(() => this.status()?.companies ?? []);
   readonly agents = computed<PaperclipAgent[]>(() => this.status()?.agents ?? []);
   readonly issues = computed<PaperclipIssue[]>(() => this.status()?.issues ?? []);
+  readonly dockweaveAgents = computed(() => this.store.agents());
+  readonly primaryAgent = computed<PaperclipAgent | null>(() => this.agents()[0] ?? null);
   readonly safeUrl = computed<SafeResourceUrl | null>(() => {
     const u = this.configUrl();
     return u ? this.sanitizer.bypassSecurityTrustResourceUrl(u) : null;
@@ -144,6 +165,7 @@ export class PaperclipPanelComponent implements OnInit {
         this.status.set(s);
         if (!this.companyId() && s.company_id) this.companyId.set(s.company_id);
         if (!this.assigneeId && s.agents?.length) this.assigneeId = s.agents[0].id;
+        if (!this.targetModel && s.agents?.length) this.targetModel = this.targetOf(s.agents[0]);
         this.busy.set(false);
       },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
@@ -172,6 +194,26 @@ export class PaperclipPanelComponent implements OnInit {
         this.message.set('Task angelegt.');
         this.issueTitle = '';
         this.issueDescription = '';
+        this.load();
+      },
+      error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
+    });
+  }
+
+  targetOf(a: PaperclipAgent | null): string {
+    return a?.adapterConfig?.args?.[0] ?? '';
+  }
+
+  assignTarget(): void {
+    const a = this.primaryAgent();
+    if (!a || !this.targetModel) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.message.set('');
+    this.svc.setTarget(a.id, this.targetModel).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.message.set(`Ziel von ${a.name} → ${this.targetModel}. Gilt für den nächsten Wake.`);
         this.load();
       },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },

@@ -31,6 +31,10 @@ export class PaperclipService {
     return this.req(this.http.post<PaperclipIssue>('/paperclip/issues', draft));
   }
 
+  setTarget(agentId: string, model: string): Observable<unknown> {
+    return this.req(this.http.post(`/paperclip/agents/${encodeURIComponent(agentId)}/target`, { model }));
+  }
+
   wake(agentId: string, companyId: string): Observable<unknown> {
     return this.req(this.http.post(`/paperclip/agents/${encodeURIComponent(agentId)}/wake`, { company_id: companyId }));
   }
