@@ -60,11 +60,6 @@ func handle(conn *net.UnixConn, cfg ServerConfig) {
 		writeResponse(conn, err)
 		return
 	}
-	defer func() {
-		for _, fd := range fds {
-			_ = unix.Close(fd)
-		}
-	}()
 	writeResponse(conn, dispatch(req, fds, cfg.StateRoot))
 }
 
@@ -80,9 +75,17 @@ func dispatch(req Request, fds []int, root string) error {
 	for i, fd := range fds {
 		p, err := resolveFD(fd, verifyIdentity)
 		if err != nil {
+			for _, open := range fds[i:] {
+				_ = unix.Close(open)
+			}
 			return err
 		}
 		paths[i] = p
+	}
+	// Close our duplicates before the syscall: an open fd on a mountpoint
+	// makes umount(2) fail with EBUSY.
+	for _, fd := range fds {
+		_ = unix.Close(fd)
 	}
 	fdPath := func(i int) string { return paths[i] }
 	need := func(n int) error {

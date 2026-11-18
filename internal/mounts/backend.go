@@ -76,11 +76,7 @@ func (h *helperBackend) Do(req mounthelper.Request, paths ...string) error {
 		}
 		fds = append(fds, fd)
 	}
-	defer func() {
-		for _, fd := range fds {
-			_ = unix.Close(fd)
-		}
-	}()
+	// Do closes the fds after sending; keep no copy.
 	return h.client.Do(context.Background(), req, fds)
 }
 

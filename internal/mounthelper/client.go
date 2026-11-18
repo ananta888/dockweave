@@ -25,7 +25,8 @@ func (c *Client) Available() bool {
 	return pathExists(c.Socket)
 }
 
-// Do sends one operation with its directory file descriptors.
+// Do sends one operation with its directory file descriptors. Ownership of the
+// fds passes to Do: they are closed before waiting for the response.
 func (c *Client) Do(ctx context.Context, req Request, fds []int) error {
 	if c == nil || c.Socket == "" {
 		return fmt.Errorf("mountd: no socket configured")
@@ -69,6 +70,11 @@ func (c *Client) Do(ctx context.Context, req Request, fds []int) error {
 			return true
 		}); err != nil {
 			return fmt.Errorf("mountd raw conn: %w", err)
+		}
+		// The helper owns duplicates of the fds; our copies must be closed
+		// before the syscall, otherwise umount(2) reports EBUSY.
+		for _, fd := range fds {
+			_ = unix.Close(fd)
 		}
 		if sendErr != nil {
 			return fmt.Errorf("mountd sendmsg: %w", sendErr)
