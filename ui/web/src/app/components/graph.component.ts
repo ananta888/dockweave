@@ -1600,19 +1600,30 @@ export class GraphComponent implements OnChanges {
     this.pendingLayout = algo;
     const gen = ++this.layoutGen;
     this.computing.set(true);
-    // Snapshot the current rendered positions as the animation start.
-    const from = new Map<string, { x: number; y: number }>();
-    for (const n of this.nodes()) from.set(n.id, { ...(this.animated.get(n.id) ?? n.position) });
-    // Yield one frame so the spinner paints, then run the layout.
-    setTimeout(() => {
-      if (gen !== this.layoutGen) { this.computing.set(false); return; } // cancelled
-      this.layoutNonce.update(v => v + 1);
-      const target = this.nodes(); // force evaluation while the spinner is visible
+    try {
+      // Snapshot the current rendered positions as the animation start.
+      const from = new Map<string, { x: number; y: number }>();
+      for (const n of this.nodes()) from.set(n.id, { ...(this.animated.get(n.id) ?? n.position) });
+      // Yield one frame so the spinner paints, then run the layout.
+      setTimeout(() => {
+        if (gen !== this.layoutGen) { this.computing.set(false); return; } // cancelled
+        try {
+          this.layoutNonce.update(v => v + 1);
+          const target = this.nodes(); // force evaluation while the spinner is visible
+          this.animateTo(from, target);
+          this.fit();
+        } catch (e) {
+          console.error('[graph] setLayout failed', e);
+        } finally {
+          this.computing.set(false);
+          this.pendingLayout = null;
+        }
+      }, 16);
+    } catch (e) {
+      console.error('[graph] setLayout snapshot failed', e);
       this.computing.set(false);
       this.pendingLayout = null;
-      this.animateTo(from, target);
-      this.fit();
-    }, 16);
+    }
   }
 
   // animatedPos is bound to every node position: during an animation it
@@ -2440,26 +2451,33 @@ export class GraphComponent implements OnChanges {
     const key = this.mode() + '|' + this.layout() + '|' + this.schema().version + '|' +
       nodes.map(n => n.kind + ':' + n.id).sort().join(',');
     let laid: GraphNode[];
-    if (algo !== 'free' && this.layoutCacheKey === key) {
-      // Structure unchanged: reuse positions so periodic data refreshes do not
-      // re-run an expensive layout.
-      laid = nodes.map(n => ({ ...n, position: this.layoutCache.get(n.id) ?? n.position }));
-    } else if (algo === 'free') {
-      laid = nodes;
-    } else if (algo === 'hierarchy') {
-      laid = this.layeredLayout(nodes);
-    } else if (algo === 'mixed') {
-      laid = this.mode() === 'organization' ? this.layeredLayout(nodes) : this.columnLayout(nodes);
-    } else if (algo === 'columns') {
-      laid = this.columnLayout(nodes);
-    } else if (algo === 'grid') {
+    try {
+      if (algo !== 'free' && this.layoutCacheKey === key) {
+        // Structure unchanged: reuse positions so periodic data refreshes do not
+        // re-run an expensive layout.
+        laid = nodes.map(n => ({ ...n, position: this.layoutCache.get(n.id) ?? n.position }));
+      } else if (algo === 'free') {
+        laid = nodes;
+      } else if (algo === 'hierarchy') {
+        laid = this.layeredLayout(nodes);
+      } else if (algo === 'mixed') {
+        laid = this.mode() === 'organization' ? this.layeredLayout(nodes) : this.columnLayout(nodes);
+      } else if (algo === 'columns') {
+        laid = this.columnLayout(nodes);
+      } else if (algo === 'grid') {
+        laid = this.gridLayout(nodes);
+      } else if (algo === 'force') {
+        laid = this.forceLayout(nodes);
+      } else if (algo === 'stress') {
+        laid = this.stressLayout(nodes);
+      } else {
+        laid = this.radialLayout(nodes);
+      }
+    } catch (e) {
+      // A layout must never break the whole graph: fall back to a grid and
+      // surface the error in the console instead of hanging.
+      console.error('[graph] layout failed, falling back to grid', e);
       laid = this.gridLayout(nodes);
-    } else if (algo === 'force') {
-      laid = this.forceLayout(nodes);
-    } else if (algo === 'stress') {
-      laid = this.stressLayout(nodes);
-    } else {
-      laid = this.radialLayout(nodes);
     }
     if (algo !== 'free') {
       this.layoutCacheKey = key;
