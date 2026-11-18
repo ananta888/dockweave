@@ -16,8 +16,8 @@ Both endpoints are served by `dockweaved` and proxied by the web gateway under
 
 ## Authentication
 
-The web gateway requires the normal `dockweave_web` session cookie (or
-`?token=…`). The daemon socket path uses the usual socket policy
+The web gateway requires the normal `dockweave_web` session cookie (a login page sets it; a
+`?token=…` query is still accepted for automation). The daemon socket path uses the usual socket policy
 (`ADMIN_UIDS`).
 
 ## Example

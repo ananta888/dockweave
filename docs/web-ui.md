@@ -12,11 +12,13 @@ Language: English · [Deutsch](web-ui.de.md)
 make web          # build the Angular app and embed it into the Go binary
 make build
 ./bin/dockweave web
-# prints: DockWeave web UI: http://127.0.0.1:8788/?token=…
+# prints: DockWeave web UI: http://127.0.0.1:8788/
+#         Login-Token: …
 ```
 
-Open the printed URL. The token is stored as an HttpOnly cookie; subsequent
-requests work without it in the URL. The gateway is **loopback-only by
+Open the printed URL and enter the Login-Token in the login page. The
+token is stored as an HttpOnly cookie; subsequent requests work without it
+in the URL or history. The gateway is **loopback-only by
 default** and runs unprivileged with your UID.
 
 Useful flags:

@@ -159,19 +159,60 @@ func newUnixProxy(socket string) *httputil.ReverseProxy {
 
 const cookieName = "dockweave_web"
 
+const loginPage = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DockWeave</title>
+<style>
+:root{color-scheme:dark}
+body{background:#0d1117;color:#c9d1d9;font:15px/1.4 system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+form{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:2rem;width:320px}
+h1{margin:0 0 .4rem;font-size:1.1rem;color:#58a6ff}
+p{color:#8b949e;font-size:.8rem;margin:.2rem 0 1rem}
+input{width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:.5rem;font-size:.9rem}
+button{margin-top:.8rem;width:100%;background:#238636;border:1px solid #2ea043;color:#fff;border-radius:5px;padding:.5rem;cursor:pointer}
+</style></head><body>
+<form method="post" action="/login">
+<h1>DockWeave</h1>
+<p>Login-Token eingeben (steht im Terminal, in dem <code>dockweave web</code> laeuft).</p>
+<input name="token" type="password" autofocus autocomplete="off" placeholder="Token">
+<button type="submit">Anmelden</button>
+</form></body></html>`
+
+func (s *Server) setCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: cookieName, Value: s.cfg.Token, Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(loginPage))
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !tokenEqual(r.FormValue("token"), s.cfg.Token) {
+		http.Error(w, "invalid token", http.StatusForbidden)
+		return
+	}
+	s.setCookie(w)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The initial navigation may carry the token; set a cookie and
-		// redirect to a clean URL so it does not stay in history.
+		// Legacy/automation: a token in the query sets the cookie and
+		// redirects to a clean URL so it does not stay in history.
 		if q := r.URL.Query().Get("token"); q != "" {
 			if !tokenEqual(q, s.cfg.Token) {
 				http.Error(w, "invalid token", http.StatusForbidden)
 				return
 			}
-			http.SetCookie(w, &http.Cookie{
-				Name: cookieName, Value: s.cfg.Token, Path: "/",
-				HttpOnly: true, SameSite: http.SameSiteStrictMode,
-			})
+			s.setCookie(w)
 			r2 := *r
 			u := *r.URL
 			u.RawQuery = ""
@@ -179,16 +220,26 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			http.Redirect(w, &r2, u.String(), http.StatusSeeOther)
 			return
 		}
+		if r.URL.Path == "/login" {
+			s.handleLogin(w, r)
+			return
+		}
 		if r.URL.Path == "/favicon.ico" {
 			next.ServeHTTP(w, r)
 			return
 		}
 		c, err := r.Cookie(cookieName)
-		if err != nil || !tokenEqual(c.Value, s.cfg.Token) {
-			http.Error(w, "token required: open the URL printed by `dockweave web`", http.StatusUnauthorized)
+		if err == nil && tokenEqual(c.Value, s.cfg.Token) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		// Browser navigation gets a login page; API/asset requests stay 401.
+		if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(loginPage))
+			return
+		}
+		http.Error(w, "token required: open the URL printed by `dockweave web`", http.StatusUnauthorized)
 	})
 }
 

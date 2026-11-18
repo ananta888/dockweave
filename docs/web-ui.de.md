@@ -12,11 +12,13 @@ Sprache: Deutsch · [English](web-ui.md)
 make web          # Angular bauen und in das Go-Binary einbetten
 make build
 ./bin/dockweave web
-# gibt aus: DockWeave web UI: http://127.0.0.1:8788/?token=…
+# gibt aus: DockWeave web UI: http://127.0.0.1:8788/
+#            Login-Token: …
 ```
 
-Die ausgegebene URL öffnen. Das Token wird als HttpOnly-Cookie gespeichert;
-weitere Requests brauchen es nicht mehr in der URL. Das Gateway lauscht
+Die ausgegebene URL öffnen und den Login-Token auf der Anmeldeseite eingeben.
+Das Token wird als HttpOnly-Cookie gespeichert; weitere Requests brauchen es
+nicht mehr in URL oder Verlauf. Das Gateway lauscht
 standardmäßig **nur auf Loopback** und läuft unprivilegiert mit deiner UID.
 
 Flags:

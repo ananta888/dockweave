@@ -110,8 +110,9 @@ func webCmd() *cobra.Command {
 			if host != "" && host != "127.0.0.1" && host != "::1" && host != "localhost" {
 				fmt.Fprintf(os.Stderr, "warning: web UI is listening on %s, not loopback\n", ln.Addr())
 			}
-			url := fmt.Sprintf("http://%s/?token=%s", ln.Addr(), token)
+			url := fmt.Sprintf("http://%s/", ln.Addr())
 			fmt.Printf("DockWeave web UI: %s\n", url)
+			fmt.Printf("Login-Token: %s\n", token)
 			var mcpSrv *http.Server
 			if mcpListen != "" {
 				mcpLn, err := net.Listen("tcp", mcpListen)

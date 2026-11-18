@@ -47,11 +47,37 @@ func TestTokenAuthAndProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// No token -> 401.
+	// No token on "/" -> login page (200), never a token in the URL.
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("no-token / status = %d, want 200 (login page)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Login-Token") {
+		t.Fatalf("login page missing: %q", rec.Body.String())
+	}
+
+	// No token on an API path -> 401.
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/agents", nil))
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("no-token status = %d, want 401", rec.Code)
+		t.Fatalf("no-token api status = %d, want 401", rec.Code)
+	}
+
+	// POST /login with a bad token -> 403.
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=wrong")))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("bad login status = %d, want 403", rec.Code)
+	}
+
+	// POST /login with the right token -> cookie + redirect.
+	rec = httptest.NewRecorder()
+	reqLogin := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=secret"))
+	reqLogin.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(rec, reqLogin)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("login status = %d, want 303", rec.Code)
 	}
 
 	// Token query -> cookie + redirect.
