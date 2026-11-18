@@ -136,7 +136,10 @@ interface GraphEdge {
 
       <div class="graph-body" [class.drop-target]="draggingPalette()" (dragover)="onDragOver($event)" (drop)="onPaletteDrop($event)">
         @if (computing()) {
-          <div class="layout-spinner"><span class="spinner"></span> Layout wird berechnet …</div>
+          <div class="layout-spinner">
+            <span class="spinner"></span> Layout wird berechnet …
+            <button class="spinner-cancel" (click)="cancelLayout()">Abbrechen</button>
+          </div>
         }
         @if (connectingSource(); as src) {
           <div class="connect-banner">
@@ -765,7 +768,9 @@ interface GraphEdge {
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
     f-canvas { background:#0b0e14; }
     .graph-minimap { position:absolute; right:12px; bottom:12px; width:190px; height:130px; background:#0d1117; border:1px solid #30363d; border-radius:8px; overflow:hidden; z-index:10; }
-    .layout-spinner { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:50; display:flex; align-items:center; gap:.5rem; background:#161b22ee; border:1px solid #30363d; border-radius:999px; padding:.35rem .8rem; color:#c9d1d9; font-size:.75rem; pointer-events:none; }
+    .layout-spinner { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:50; display:flex; align-items:center; gap:.6rem; background:#161b22f2; border:1px solid #30363d; border-radius:10px; padding:.7rem 1rem; color:#c9d1d9; font-size:.78rem; box-shadow:0 8px 30px #000a; }
+    .spinner-cancel { background:#21262d; border:1px solid #30363d; color:#c9d1d9; border-radius:5px; padding:.25rem .6rem; font-size:.72rem; cursor:pointer; }
+    .spinner-cancel:hover { background:#30363d; }
     .spinner { width:12px; height:12px; border:2px solid #30363d; border-top-color:#58a6ff; border-radius:50%; animation:spin .7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .gw-node { position:relative; width:250px; padding:.6rem .7rem; border-radius:9px; background:#161b22; border:1px solid #30363d; color:#c9d1d9; cursor:pointer; box-shadow:0 4px 16px #0008; box-sizing:border-box; }
@@ -908,6 +913,9 @@ export class GraphComponent implements OnChanges {
   customEdges = signal<CustomEdge[]>(this.loadCustomEdges());
   layoutNonce = signal(0);
   readonly computing = signal(false);
+  private layoutGen = 0;
+  private pendingLayout: LayoutAlgorithm | null = null;
+  private previousLayout: LayoutAlgorithm = 'mixed';
   private layoutCacheKey = '';
   private layoutCache = new Map<string, { x: number; y: number }>();
   schemaJson = '';
@@ -1584,15 +1592,31 @@ export class GraphComponent implements OnChanges {
   }
 
   setLayout(algo: LayoutAlgorithm): void {
+    this.previousLayout = this.layout();
     this.layout.set(algo);
+    this.pendingLayout = algo;
+    const gen = ++this.layoutGen;
     this.computing.set(true);
     // Yield one frame so the spinner paints, then run the layout.
     setTimeout(() => {
+      if (gen !== this.layoutGen) return; // cancelled in the meantime
       this.layoutNonce.update(v => v + 1);
       void this.nodes(); // force evaluation while the spinner is visible
       this.computing.set(false);
+      this.pendingLayout = null;
       this.fit();
     }, 16);
+  }
+
+  cancelLayout(): void {
+    this.layoutGen++; // invalidate any pending layout run
+    if (this.pendingLayout) {
+      this.layout.set(this.previousLayout);
+      this.layoutNonce.update(v => v + 1);
+    }
+    this.pendingLayout = null;
+    this.computing.set(false);
+    this.fit();
   }
 
   cleanup(): void {
