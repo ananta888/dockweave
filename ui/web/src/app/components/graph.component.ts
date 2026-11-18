@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
 import { GraphService } from '../core/services/graph.service';
+import { PaperclipService } from '../core/services/paperclip.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
@@ -113,6 +114,9 @@ interface GraphEdge {
         <span class="muted">{{ mode() === 'organization' ? 'units · roles · agents' : 'agents · workspaces · memory · credentials · knowledge' }}</span>
         @if (gateCount() > 0) {
           <span class="muted" title="Deterministische Gates aus dem Graph-Dokument">Gates: {{ gateCount() }}</span>
+        }
+        @if (openReviews() > 0) {
+          <span class="muted" title="Offene Review-Issues in Paperclip">offene Reviews: {{ openReviews() }}</span>
         }
         <span class="spacer"></span>
         <select class="small-select" [ngModel]="layout()" (ngModelChange)="setLayout($event)">
@@ -965,12 +969,20 @@ export class GraphComponent implements OnChanges {
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly graphService = inject(GraphService);
+  private readonly paperclip = inject(PaperclipService);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
+  readonly paperclipIssues = signal<{ identifier?: string; title?: string; status?: string }[]>([]);
+  readonly openReviews = computed(() => this.paperclipIssues()
+    .filter(i => /review/i.test(i.title || '') && i.status !== 'done' && i.status !== 'cancelled').length);
 
   constructor() {
     // The gateway is the shared source of truth; localStorage stays as a
     // fallback when the gateway has no document yet.
+    this.paperclip.status().subscribe({
+      next: (st) => this.paperclipIssues.set(st?.issues || []),
+      error: () => { /* paperclip offline */ },
+    });
     this.graphService.load().subscribe({
       next: (res) => {
         const doc = (res?.saved ? res.body : null) as Record<string, unknown> | null;
