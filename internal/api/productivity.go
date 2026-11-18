@@ -719,3 +719,34 @@ func (s *Server) listObjectiveRevisions(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusOK, list)
 }
+
+// submitAudit appends an application-level authentication event to the
+// hash-chained audit log. Only iss + sub (and the event name) are stored;
+// profile data or raw tokens are rejected here.
+func (s *Server) submitAudit(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Event string `json:"event"`
+		Iss   string `json:"iss"`
+		Sub   string `json:"sub"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	if req.Event == "" || req.Iss == "" || req.Sub == "" {
+		writeErr(w, http.StatusBadRequest, "invalid", errors.New("event, iss and sub are required"))
+		return
+	}
+	msg := fmt.Sprintf("%s iss=%s sub=%s", req.Event, req.Iss, req.Sub)
+	if err := s.Store.AppendEvent(r.Context(), &model.Event{
+		ID:        model.NewID("evt"),
+		Type:      model.EventAuthOIDC,
+		Actor:     "gateway",
+		Message:   msg,
+		Timestamp: time.Now().UTC(),
+	}); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"status": "recorded"})
+}

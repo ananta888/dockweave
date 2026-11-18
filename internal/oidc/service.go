@@ -18,8 +18,9 @@ type Service struct {
 	cfg   Config
 	now   func() time.Time
 
-	mu     sync.Mutex
-	states map[string]stateEntry
+	mu      sync.Mutex
+	states  map[string]stateEntry
+	auditor func(event string, p Principal)
 }
 
 type stateEntry struct {
@@ -42,6 +43,10 @@ func NewService(prov Provider, store SessionStore, cfg Config) *Service {
 		now: time.Now, states: map[string]stateEntry{},
 	}
 }
+
+// SetAuditor installs a callback invoked on successful login and on logout.
+// The callback receives only the event name and the minimal principal.
+func (s *Service) SetAuditor(fn func(event string, p Principal)) { s.auditor = fn }
 
 func randomHex(n int) (string, error) {
 	b := make([]byte, n)
@@ -125,11 +130,19 @@ func (s *Service) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session", http.StatusInternalServerError)
 		return
 	}
+	if s.auditor != nil {
+		s.auditor("login", session.Principal)
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // Logout clears the session and redirects to the IdP end-session endpoint.
 func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
+	if s.auditor != nil {
+		if p, err := s.Principal(r); err == nil {
+			s.auditor("logout", *p)
+		}
+	}
 	s.store.Delete(w)
 	state, _ := randomHex(8)
 	http.Redirect(w, r, s.prov.EndSessionURL(state), http.StatusSeeOther)

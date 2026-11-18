@@ -29,6 +29,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/ananta888/dockweave/internal/oidc"
+	"github.com/ananta888/dockweave/pkg/sdk"
 )
 
 //go:embed all:dist
@@ -153,6 +154,9 @@ func New(cfg Config) (*Server, error) {
 		}
 		store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
 		s.oidcSvc = oidc.NewService(prov, store, *cfg.OIDC)
+		s.oidcSvc.SetAuditor(func(event string, p oidc.Principal) {
+			s.auditOIDC(event, p)
+		})
 	}
 	s.handler = s.securityHeaders(s.auth(s.routes()))
 	return s, nil
@@ -168,6 +172,22 @@ func (s *Server) MCPHandler() http.Handler {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
+}
+
+// auditOIDC records an OIDC event: structured log plus a best-effort,
+// tamper-resistant daemon audit entry. Only iss + sub are ever stored.
+func (s *Server) auditOIDC(event string, p oidc.Principal) {
+	if s.cfg.Logger != nil {
+		s.cfg.Logger.Info("oidc", "event", event, "iss", p.Issuer, "sub", p.Subject)
+	}
+	if s.cfg.DaemonSocket == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cl := sdk.New(s.cfg.DaemonSocket)
+	_ = cl.Do(ctx, "POST", "/api/v1/audit",
+		map[string]string{"event": event, "iss": p.Issuer, "sub": p.Subject}, nil)
 }
 
 func (s *Server) routes() http.Handler {

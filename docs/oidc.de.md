@@ -40,6 +40,15 @@ Zufallsschlüssel (Session überlebt dann keinen Gateway-Neustart).
 - `internal/oidc/session.go` – `SessionStore`-Port + AES-GCM-Cookie-Adapter.
 - `internal/oidc/service.go` – Anwendungsdienst für den Login-Fluss.
 
+## Audit
+
+Erfolgreiche Anmeldung und Abmeldung werden doppelt erfasst: als strukturierte
+Logzeile (`slog`, nur Event + `iss` + `sub`) und als best-effort, hash-verkettetes
+Daemon-Event (`POST /api/v1/audit`, Typ `auth.oidc`) zur Manipulationssicherheit.
+Profile-Claims und Raw-Tokens werden nie geschrieben. Damit das Daemon-Event
+angenommen wird, muss die Gateway-UID in `ADMIN_UIDS` stehen, z. B.
+`ADMIN_UIDS=0:1000:<gateway-uid>`.
+
 ## Sicherheit
 
 Nur `iss` + `sub` und Rollen werden behalten; Profile-Claims werden nie in

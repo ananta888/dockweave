@@ -290,6 +290,7 @@ const (
 	EventRecovery       EventType = "recovery"
 	EventSecurityDeny   EventType = "security.denied"
 	EventConflict       EventType = "monitor.conflict"
+	EventAuthOIDC       EventType = "auth.oidc"
 
 	// Productivity layer audit events (goal and focus changes).
 	EventObjectiveCreated  EventType = "objective.created"

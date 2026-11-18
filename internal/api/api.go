@@ -198,6 +198,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/budgets/actuals", s.budgetActuals)
 	s.mux.HandleFunc("GET /api/v1/reviews/report", s.reviewReport)
 	s.mux.HandleFunc("GET /api/v1/export/productivity", s.exportProductivity)
+	s.mux.HandleFunc("POST /api/v1/audit", s.submitAudit)
 	s.mux.HandleFunc("POST /api/v1/tasks/rollover", s.rolloverTasks)
 	s.mux.HandleFunc("POST /api/v1/focus/switch", s.switchFocus)
 	s.mux.HandleFunc("POST /api/v1/productivity/prune", s.pruneProductivity)

@@ -53,6 +53,18 @@ mapped to the `admin`/`monitor` capabilities.
 - `internal/oidc/service.go` – the application service that orchestrates the
   flow (state/nonce/PKCE, callback, logout).
 
+## Audit
+
+Successful login and logout are recorded twice:
+
+- a structured log line (`slog`, event + `iss` + `sub` only), and
+- a best-effort, hash-chained daemon event (`POST /api/v1/audit`, type
+  `auth.oidc`) for tamper resistance.
+
+Profile claims and raw tokens are never written to either channel. For the
+daemon event to be accepted, the gateway's uid must be in `ADMIN_UIDS`
+(`/etc/dockweave/dockweaved.conf`), e.g. `ADMIN_UIDS=0:1000:<gateway-uid>`.
+
 ## Security notes
 
 - Only `iss` + `sub` and the mapped roles are retained; profile claims are

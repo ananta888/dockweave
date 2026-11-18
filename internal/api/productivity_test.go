@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -287,5 +288,33 @@ func TestObjectiveRevisionsAndAttempts(t *testing.T) {
 	got, _ := s.Store.GetTask(ctx, task.ID)
 	if got.Attempts != 2 {
 		t.Fatalf("attempts = %d, want 2", got.Attempts)
+	}
+}
+
+func TestSubmitAudit(t *testing.T) {
+	s := testServer(t)
+	rec := call(t, s, s.submitAudit, http.MethodPost, "/api/v1/audit",
+		map[string]string{"event": "login", "iss": "https://idp", "sub": "user-1"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("audit = %d: %s", rec.Code, rec.Body.String())
+	}
+	events, err := s.Store.ListEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range events {
+		if e.Type == model.EventAuthOIDC && strings.Contains(e.Message, "sub=user-1") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("auth.oidc event not recorded")
+	}
+
+	// Missing fields are rejected.
+	rec = call(t, s, s.submitAudit, http.MethodPost, "/api/v1/audit", map[string]string{"event": "login"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing fields = %d, want 400", rec.Code)
 	}
 }

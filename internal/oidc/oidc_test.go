@@ -136,6 +136,41 @@ func TestServiceLoginFlow(t *testing.T) {
 	}
 }
 
+func TestServiceAuditor(t *testing.T) {
+	var cfg Config
+	cfg.SessionTTL = time.Hour
+	svc := NewService(fakeProvider{}, testStore(), cfg)
+	var events []string
+	var principals []Principal
+	svc.SetAuditor(func(e string, p Principal) {
+		events = append(events, e)
+		principals = append(principals, p)
+	})
+
+	rec := httptest.NewRecorder()
+	svc.BeginLogin(rec, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
+	state, _ := url.Parse(rec.Header().Get("Location"))
+	stateVal := state.Query().Get("state")
+
+	rec = httptest.NewRecorder()
+	svc.HandleCallback(rec, httptest.NewRequest(http.MethodGet, "/oauth/callback?state="+stateVal+"&code=abc", nil))
+	if len(events) != 1 || events[0] != "login" {
+		t.Fatalf("login audit = %v", events)
+	}
+	if principals[0].Subject != "user-1" {
+		t.Fatalf("principal = %+v", principals[0])
+	}
+
+	cookie := rec.Result().Cookies()[0]
+	req := httptest.NewRequest(http.MethodGet, "/oauth/logout", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	svc.Logout(rec, req)
+	if len(events) != 2 || events[1] != "logout" {
+		t.Fatalf("logout audit = %v", events)
+	}
+}
+
 // TestProviderAgainstMockIssuer runs discovery, exchange and verification
 // against an in-process OIDC server with a real signed id_token.
 func TestProviderAgainstMockIssuer(t *testing.T) {
