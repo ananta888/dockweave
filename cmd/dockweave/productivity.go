@@ -367,7 +367,35 @@ func budgetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(set, list)
+	actuals := &cobra.Command{
+		Use: "actuals", Short: "Show target vs measured values",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var out struct {
+				Budgets []struct {
+					Scope    string  `json:"scope"`
+					Kind     string  `json:"kind"`
+					Period   string  `json:"period"`
+					Target   float64 `json:"target"`
+					Actual   float64 `json:"actual"`
+					Exceeded bool    `json:"exceeded"`
+				} `json:"budgets"`
+				Verified int `json:"verified_results"`
+			}
+			if err := client().Do(context.Background(), "GET", "/api/v1/budgets/actuals", nil, &out); err != nil {
+				return err
+			}
+			for _, b := range out.Budgets {
+				over := ""
+				if b.Exceeded {
+					over = "OVER"
+				}
+				fmt.Printf("%-8s %-12s %-8s %8.2f / %-8.2f %s\n", b.Scope, b.Kind, b.Period, b.Actual, b.Target, over)
+			}
+			fmt.Printf("verified results: %d\n", out.Verified)
+			return nil
+		},
+	}
+	cmd.AddCommand(set, list, actuals)
 	return cmd
 }
 
@@ -415,5 +443,157 @@ func reviewCmd() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(add, list)
+	return cmd
+}
+
+func workEventCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "event", Short: "Record and inspect work measurements"}
+	add := &cobra.Command{
+		Use: "add", Short: "Add a measured event",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			kind, _ := cmd.Flags().GetString("kind")
+			task, _ := cmd.Flags().GetString("task")
+			agent, _ := cmd.Flags().GetString("agent")
+			human, _ := cmd.Flags().GetString("human")
+			seconds, _ := cmd.Flags().GetInt64("seconds")
+			key, _ := cmd.Flags().GetString("idempotency-key")
+			source, _ := cmd.Flags().GetString("source")
+			e := model.WorkEvent{
+				Kind: model.WorkEventKind(kind), TaskID: task, AgentID: agent,
+				HumanID: human, DurationSeconds: seconds, Source: source,
+				IdempotencyKey: key, StartedAt: time.Now().UTC(),
+			}
+			e.EndedAt = func() *time.Time { t := e.StartedAt.Add(time.Duration(seconds) * time.Second); return &t }()
+			var out map[string]any
+			if err := client().Do(context.Background(), "POST", "/api/v1/work-events", e, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	}
+	add.Flags().String("kind", "agent_run", "human_focus|agent_run|container|wait|llm|tool")
+	add.Flags().String("task", "", "task id")
+	add.Flags().String("agent", "", "agent id")
+	add.Flags().String("human", "", "human id")
+	add.Flags().Int64("seconds", 0, "duration in seconds")
+	add.Flags().String("source", "cli", "measurement source")
+	add.Flags().String("idempotency-key", "", "dedupe key")
+
+	list := &cobra.Command{
+		Use: "list", Short: "List measured events",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			task, _ := cmd.Flags().GetString("task")
+			var out []*model.WorkEvent
+			if err := client().Do(context.Background(), "GET", "/api/v1/work-events?task="+task, nil, &out); err != nil {
+				return err
+			}
+			for _, e := range out {
+				fmt.Printf("%s %-12s %5ds %-8s %s\n", e.StartedAt.Format("01-02 15:04"), e.Kind, e.DurationSeconds, e.AgentID, e.TaskID)
+			}
+			return nil
+		},
+	}
+	list.Flags().String("task", "", "filter by task")
+
+	derived := &cobra.Command{
+		Use: "derived", Short: "Container runtime derived from the audit log",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			since, _ := cmd.Flags().GetString("since")
+			path := "/api/v1/work-events/derived"
+			if since != "" {
+				path += "?since=" + since
+			}
+			var out struct {
+				Events []*model.WorkEvent `json:"events"`
+				Note   string             `json:"note"`
+			}
+			if err := client().Do(context.Background(), "GET", path, nil, &out); err != nil {
+				return err
+			}
+			for _, e := range out.Events {
+				fmt.Printf("%-22s %6.0fmin %s\n", e.AgentID, float64(e.DurationSeconds)/60, e.Meta["state"])
+			}
+			fmt.Println(out.Note)
+			return nil
+		},
+	}
+	derived.Flags().String("since", "", "RFC3339 start (default 7d)")
+
+	cmd.AddCommand(add, list, derived)
+	return cmd
+}
+
+func suggestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "suggest", Short: "Deterministic priority suggestion for a day",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			day, _ := cmd.Flags().GetString("day")
+			if day == "today" {
+				day = time.Now().Format("2006-01-02")
+			}
+			var out struct {
+				Day         string `json:"day"`
+				Suggestions []struct {
+					TaskID  string   `json:"task_id"`
+					Title   string   `json:"title"`
+					Score   float64  `json:"score"`
+					Reasons []string `json:"reasons"`
+					Blocked bool     `json:"blocked"`
+				} `json:"suggestions"`
+			}
+			if err := client().Do(context.Background(), "GET", "/api/v1/tasks/suggest?day="+day, nil, &out); err != nil {
+				return err
+			}
+			for _, s := range out.Suggestions {
+				fmt.Printf("%6.1f  %-40s %s\n", s.Score, s.Title, strings.Join(s.Reasons, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().String("day", "today", "day")
+	return cmd
+}
+
+func calendarCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "log", Short: "Calendar logbook of measured work",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			start, _ := cmd.Flags().GetString("start")
+			end, _ := cmd.Flags().GetString("end")
+			var out struct {
+				Days map[string][]*model.WorkEvent `json:"days"`
+			}
+			path := "/api/v1/calendar?start=" + start + "&end=" + end
+			if err := client().Do(context.Background(), "GET", path, nil, &out); err != nil {
+				return err
+			}
+			for day, events := range out.Days {
+				fmt.Println(day)
+				for _, e := range events {
+					fmt.Printf("  %s %-12s %6.0fmin %s\n", e.StartedAt.Format("15:04"), e.Kind, float64(e.DurationSeconds)/60, e.TaskID)
+				}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().String("start", "", "start day YYYY-MM-DD")
+	cmd.Flags().String("end", "", "end day YYYY-MM-DD")
+	return cmd
+}
+
+func exportCmd() *cobra.Command {
+	cmd := &cobra.Command{Use: "export", Short: "Export versioned contracts"}
+	cmd.AddCommand(&cobra.Command{
+		Use: "productivity", Short: "Export goals, tasks, events, evidence, budgets, reviews",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var out map[string]any
+			if err := client().Do(context.Background(), "GET", "/api/v1/export/productivity", nil, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	})
 	return cmd
 }

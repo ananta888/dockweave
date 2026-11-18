@@ -8,9 +8,17 @@
       "description": "Optionale Hierarchie vision|year|quarter|month|week|project|operative mit Parent, Zeitraum und Status; operative Aufgaben ohne Ziel bleiben erlaubt.",
       "priority": "critical",
       "dependencies": [],
-      "components": ["internal/model", "internal/persistence", "internal/api", "cmd/dockweave"],
+      "components": [
+        "internal/model",
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Objectives anlegen/listen/status ändern; ungültige Kinds/Status werden abgelehnt; Mehrfachzuordnung von Aufgaben erzeugt keine doppelte Zeitbuchung.",
-      "tests": ["Unit: Validierung", "API: POST/GET/PATCH"],
+      "tests": [
+        "Unit: Validierung",
+        "API: POST/GET/PATCH"
+      ],
       "status": "done"
     },
     {
@@ -18,10 +26,20 @@
       "title": "Daily-Queue (Tasks)",
       "description": "Persistente Tageswarteschlange: Tag statt Uhrzeit, Priorität, Aufwand, Risiko, Reihenfolge, Blocked-By, Mensch/Agent getrennt.",
       "priority": "critical",
-      "dependencies": ["prod-001"],
-      "components": ["internal/model", "internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-001"
+      ],
+      "components": [
+        "internal/model",
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Tasks CRUD; Filter nach Tag/Status/Assignee; Reihenfolge stabil (order_index, priority).",
-      "tests": ["Unit: Task-Validierung", "Persistence: Today-Plan-Reihenfolge"],
+      "tests": [
+        "Unit: Task-Validierung",
+        "Persistence: Today-Plan-Reihenfolge"
+      ],
       "status": "done"
     },
     {
@@ -29,10 +47,19 @@
       "title": "Focus-Session mit Einzel-Limit",
       "description": "Genau eine aktive/pausierte Session pro menschlicher Identität; Start/Pause/Resume/Complete/Skip; überlebt Neustarts durch DB-Persistenz.",
       "priority": "critical",
-      "dependencies": ["prod-002"],
-      "components": ["internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-002"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Zweite Session liefert 409; Complete setzt Task done und schreibt human_focus-Event; Skip lässt Task offen.",
-      "tests": ["Persistence: Lifecycle + Konflikt", "API: 409 bei zweiter Session"],
+      "tests": [
+        "Persistence: Lifecycle + Konflikt",
+        "API: 409 bei zweiter Session"
+      ],
       "status": "done"
     },
     {
@@ -40,10 +67,19 @@
       "title": "Arbeitszeit- und Kostenevents",
       "description": "Work-Events für human_focus, agent_run, container, wait, llm, tool; idempotent über idempotency_key; Dauer und Quelle getrennt.",
       "priority": "high",
-      "dependencies": ["prod-003"],
-      "components": ["internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-003"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Doppelte Events werden nicht gespeichert; unbekannte Messwerte bleiben explizit unknown statt geschätzt.",
-      "tests": ["Persistence: Idempotenz", "API: 201 vs 200"],
+      "tests": [
+        "Persistence: Idempotenz",
+        "API: 201 vs 200"
+      ],
       "status": "done"
     },
     {
@@ -51,10 +87,19 @@
       "title": "Evidence Engine",
       "description": "Nachweise (commit, PR, Test, Build, Security, Review, Artefakt, Akzeptanz) mit verified-Flag; nur verifizierte, bestandene Nachweise heben done auf verified.",
       "priority": "high",
-      "dependencies": ["prod-002"],
-      "components": ["internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-002"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Agentenaussage allein genügt nie; verified=false hebt nicht an; idempotente Nachweise.",
-      "tests": ["Persistence: done→verified nur mit verified+passed", "API: Duplikat 200"],
+      "tests": [
+        "Persistence: done→verified nur mit verified+passed",
+        "API: Duplikat 200"
+      ],
       "status": "done"
     },
     {
@@ -62,10 +107,20 @@
       "title": "Input-Budgets",
       "description": "Konfigurierbare Sollwerte je Scope (objective|workspace|agent|global) für human_hours, agent_hours, tokens, cost_usd und Periode.",
       "priority": "medium",
-      "dependencies": ["prod-004"],
-      "components": ["internal/model", "internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-004"
+      ],
+      "components": [
+        "internal/model",
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Upsert pro (scope, scope_id, kind, period); Ist-Werte separat aus Work-Events ableitbar.",
-      "tests": ["Unit: Budget-Validierung", "API: POST/GET"],
+      "tests": [
+        "Unit: Budget-Validierung",
+        "API: POST/GET"
+      ],
       "status": "done"
     },
     {
@@ -73,10 +128,19 @@
       "title": "Reviews (weekly/monthly)",
       "description": "Reflexions-Snapshots als JSON mit Zeitraum; manuelle und später optionale KI-Erzeugung.",
       "priority": "medium",
-      "dependencies": ["prod-004", "prod-005"],
-      "components": ["internal/persistence", "internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-004",
+        "prod-005"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Review anlegen/listen; Body ist versionierbares JSON.",
-      "tests": ["Persistence: Create/List"],
+      "tests": [
+        "Persistence: Create/List"
+      ],
       "status": "done"
     },
     {
@@ -84,10 +148,21 @@
       "title": "CLI-Integration",
       "description": "dockweave objective/task/focus/plan/evidence/budget/review als Thin Client über die Daemon-API.",
       "priority": "high",
-      "dependencies": ["prod-001", "prod-002", "prod-003", "prod-005"],
-      "components": ["cmd/dockweave", "pkg/sdk"],
+      "dependencies": [
+        "prod-001",
+        "prod-002",
+        "prod-003",
+        "prod-005"
+      ],
+      "components": [
+        "cmd/dockweave",
+        "pkg/sdk"
+      ],
       "acceptance": "Alle Befehle laufen gegen den Daemon; --json liefert maschinenlesbare Ausgabe.",
-      "tests": ["Manuell + Build", "CLI-Hilfe vollständig"],
+      "tests": [
+        "Manuell + Build",
+        "CLI-Hilfe vollständig"
+      ],
       "status": "done"
     },
     {
@@ -95,10 +170,16 @@
       "title": "API-Integration",
       "description": "Versionierte REST-Endpunkte /api/v1/{objectives,tasks,focus,work-events,evidence,budgets,reviews}; strukturierte Fehler; 409 bei Fokus-Konflikt.",
       "priority": "high",
-      "dependencies": ["prod-003"],
-      "components": ["internal/api"],
+      "dependencies": [
+        "prod-003"
+      ],
+      "components": [
+        "internal/api"
+      ],
       "acceptance": "Handler-Tests grün; keine Secrets in Antworten; Rechteprüfung über bestehende Middleware.",
-      "tests": ["go test ./internal/api"],
+      "tests": [
+        "go test ./internal/api"
+      ],
       "status": "done"
     },
     {
@@ -106,88 +187,148 @@
       "title": "TUI-Fokusansicht",
       "description": "Eigener TUI-Tab: aktuelle Aufgabe, Ziel, investierte Zeit, Agentenstatus, Tasten für Start/Pause/Done/Skip.",
       "priority": "high",
-      "dependencies": ["prod-003", "prod-008"],
-      "components": ["ui/tui"],
+      "dependencies": [
+        "prod-003",
+        "prod-008"
+      ],
+      "components": [
+        "ui/tui"
+      ],
       "acceptance": "Fokus-Tab zeigt dieselbe Session wie die CLI; Tasten lösen API-Aufrufe aus.",
-      "tests": ["TUI-Unit: Rendering", "Manuell"],
-      "status": "pending"
+      "tests": [
+        "TUI-Unit: Rendering",
+        "Manuell"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-011",
       "title": "Agenten-Zeit aus Monitor/Supervisor",
       "description": "Bestehende Monitor-/Supervisor-Ereignisse in work_events (agent_run/container/llm/tool) überführen; keine doppelte Zählung.",
       "priority": "high",
-      "dependencies": ["prod-004"],
-      "components": ["internal/monitor", "internal/supervisor", "internal/persistence"],
+      "dependencies": [
+        "prod-004"
+      ],
+      "components": [
+        "internal/monitor",
+        "internal/supervisor",
+        "internal/persistence"
+      ],
       "acceptance": "Agentenlaufzeit und Containerlaufzeit getrennt; Summe der Agentenstunden wird nicht als verstrichene Zeit interpretiert.",
-      "tests": ["Integration: Event-Ingestion idempotent"],
-      "status": "pending"
+      "tests": [
+        "Integration: Event-Ingestion idempotent"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-012",
       "title": "Budget-Ist-Berechnung",
       "description": "Soll/Ist je Budget aus work_events aggregieren; Qualität und Kosten pro verifiziertem Ergebnis ausweisen.",
       "priority": "medium",
-      "dependencies": ["prod-006", "prod-011"],
-      "components": ["internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-006",
+        "prod-011"
+      ],
+      "components": [
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Kein Fortschritt aus Stunden/Token allein; Ausgabe nennt verifizierte Ergebnisse separat.",
-      "tests": ["Unit: Aggregation"],
-      "status": "pending"
+      "tests": [
+        "Unit: Aggregation"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-013",
       "title": "Wochen-/Monatsreview-Report",
       "description": "Deterministischer Report: erreichte Ziele, investierte Zeit, nicht zielgerichtete Arbeit, Kosten, Fehlversuche, Engpässe.",
       "priority": "medium",
-      "dependencies": ["prod-007", "prod-012"],
-      "components": ["internal/api", "cmd/dockweave"],
+      "dependencies": [
+        "prod-007",
+        "prod-012"
+      ],
+      "components": [
+        "internal/api",
+        "cmd/dockweave"
+      ],
       "acceptance": "Report ohne LLM erzeugbar; optionale KI-Zusammenfassung nur ergänzend und gekennzeichnet.",
-      "tests": ["Unit: Report-Aggregate"],
-      "status": "pending"
+      "tests": [
+        "Unit: Report-Aggregate"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-014",
       "title": "Kalender-Logbuch",
       "description": "Chronologische Sicht tatsächlicher Arbeit nach Tag/Woche/Monat/Projekt/Quest/Mensch/Agent, inkl. Zeitzonen und Pausenkorrektur.",
       "priority": "medium",
-      "dependencies": ["prod-004"],
-      "components": ["internal/api", "ui/web"],
+      "dependencies": [
+        "prod-004"
+      ],
+      "components": [
+        "internal/api",
+        "ui/web"
+      ],
       "acceptance": "Parallele Ausführungen überlappen korrekt; korrigierte Intervalle ersetzen Originale.",
-      "tests": ["Unit: Zeitzonen/DST"],
-      "status": "pending"
+      "tests": [
+        "Unit: Zeitzonen/DST"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-015",
       "title": "Automatische Priorisierung (optional)",
       "description": "Regelbasierte Empfehlung aus Zielbeitrag, Dringlichkeit, Abhängigkeiten, Risiko, Aufwand; jede Empfehlung mit Begründung.",
       "priority": "low",
-      "dependencies": ["prod-002"],
-      "components": ["internal/api"],
+      "dependencies": [
+        "prod-002"
+      ],
+      "components": [
+        "internal/api"
+      ],
       "acceptance": "Rein deterministisch; keine Änderung von Agentenrechten; Begründung im Response.",
-      "tests": ["Unit: Ranking"],
-      "status": "pending"
+      "tests": [
+        "Unit: Ranking"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-016",
       "title": "JSON-Verträge für Ananta",
       "description": "Versionierte Schemas für StrategicObjective, Quest, TaskReference, FocusSession, WorkEvent, InputBudget, ExecutionEvidence, ReviewSnapshot.",
       "priority": "low",
-      "dependencies": ["prod-001", "prod-007"],
-      "components": ["docs/api", "pkg/sdk"],
+      "dependencies": [
+        "prod-001",
+        "prod-007"
+      ],
+      "components": [
+        "docs/api",
+        "pkg/sdk"
+      ],
       "acceptance": "Export nur explizit autorisiert; Verträge erzeugen keine Ausführungsrechte.",
-      "tests": ["Schema-Validierung"],
-      "status": "pending"
+      "tests": [
+        "Schema-Validierung"
+      ],
+      "status": "done"
     },
     {
       "id": "prod-017",
       "title": "Sicherheits- und Datenschutzprüfung",
       "description": "Keine Secrets in Events/Reviews, keine zusätzlichen Grants, Zielinformationen nur für autorisierte Agenten, Aufbewahrung konfigurierbar.",
       "priority": "critical",
-      "dependencies": ["prod-009"],
-      "components": ["internal/api", "docs"],
+      "dependencies": [
+        "prod-009"
+      ],
+      "components": [
+        "internal/api",
+        "docs"
+      ],
       "acceptance": "Threat-Model-Ergänzung; Tests für unautorisierte Lesezugriffe.",
-      "tests": ["go test ./internal/api -run Auth"],
-      "status": "pending"
+      "tests": [
+        "go test ./internal/api -run Auth"
+      ],
+      "status": "done"
     }
   ]
 }

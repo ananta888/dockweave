@@ -58,3 +58,20 @@ dockweave evidence add tk_123 --kind test --ref "go test ./..." --verified
 Siehe `todo/productivity.json`: TUI-Fokus-Tab, Übernahme der Monitor-/Supervisor-
 Events, Budget-Ist-Werte, Kalender-Logbuch, optionale Priorisierung,
 Ananta-Verträge.
+
+## Reports, Ranking und Export (implementiert)
+
+- `GET /api/v1/work-events/derived` leitet Containerlaufzeit aus dem Audit-Log
+  ab (`agent.started`/`agent.stopped`); nichts wird doppelt gespeichert.
+- `POST /api/v1/work-events/batch` nimmt Monitor-Messungen idempotent an.
+- `GET /api/v1/budgets/actuals` vergleicht Soll und Ist und weist verifizierte
+  Ergebnisse separat aus.
+- `GET /api/v1/tasks/suggest?day=` rankt deterministisch mit Begruendung.
+- `GET /api/v1/calendar` liefert ein Logbuch je Tag, filterbar nach Mensch/Agent.
+- `GET /api/v1/reviews/report` erzeugt den Wochen-/Monatsreport ohne LLM.
+- `GET /api/v1/export/productivity` liefert das versionierte Vertragsbundle
+  (`docs/api/productivity.schema.json`); Export ist nur lesend.
+- TUI-Tab **Focus**: aktuelle Session, investierte Zeit, Queue, Tasten
+  `s/p/c/d/x` fuer Start/Pause/Weiter/Fertig/Ueberspringen.
+- Secret-artige Keys (`token`, `secret`, `password`, `api_key`, ...) werden in
+  Event-Metadaten und Evidence-Payloads abgelehnt.

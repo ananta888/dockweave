@@ -225,6 +225,18 @@ type WorkEvent struct {
 	CreatedAt       time.Time         `json:"created_at"`
 }
 
+// LooksSensitive reports whether a key name suggests a credential or secret.
+// Events and evidence must never carry those values.
+func LooksSensitive(key string) bool {
+	k := strings.ToLower(key)
+	for _, needle := range []string{"secret", "password", "passwd", "token", "api_key", "apikey", "private_key", "credential"} {
+		if strings.Contains(k, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // Validate checks a work event.
 func (e *WorkEvent) Validate() error {
 	switch e.Kind {
@@ -237,6 +249,11 @@ func (e *WorkEvent) Validate() error {
 	}
 	if e.StartedAt.IsZero() {
 		return errors.New("started_at is required")
+	}
+	for k := range e.Meta {
+		if LooksSensitive(k) {
+			return fmt.Errorf("work event meta must not contain %q", k)
+		}
 	}
 	return nil
 }
@@ -297,6 +314,11 @@ func (e *Evidence) Validate() error {
 	}
 	if e.TaskID == "" {
 		return errors.New("evidence needs a task_id")
+	}
+	for k := range e.Payload {
+		if LooksSensitive(k) {
+			return fmt.Errorf("evidence payload must not contain %q", k)
+		}
 	}
 	return nil
 }

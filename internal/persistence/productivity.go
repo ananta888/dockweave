@@ -693,3 +693,55 @@ func (s *Store) TodayPlan(ctx context.Context, day, humanID string) (*model.Toda
 	}
 	return plan, nil
 }
+
+// AgentRuntimeIntervals derives container runtime per agent from the audit
+// log (started/stopped events). Nothing is stored, so nothing can be counted
+// twice; an open interval ends at `now` and is marked as running.
+func (s *Store) AgentRuntimeIntervals(ctx context.Context, since time.Time) ([]*model.WorkEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT type, agent_id, ts FROM events
+		WHERE agent_id != '' AND ts >= ? AND type IN ('agent.started','agent.stopped')
+		ORDER BY ts ASC, type ASC`, since.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return nil, fmt.Errorf("read runtime events: %w", err)
+	}
+	defer rows.Close()
+
+	type open struct{ start time.Time }
+	active := map[string]*open{}
+	var out []*model.WorkEvent
+	now := time.Now().UTC()
+
+	for rows.Next() {
+		var typ, agent, ts string
+		if err := rows.Scan(&typ, &agent, &ts); err != nil {
+			return nil, err
+		}
+		t := parseTime(ts)
+		switch typ {
+		case "agent.started":
+			active[agent] = &open{start: t}
+		case "agent.stopped":
+			if o, ok := active[agent]; ok {
+				out = append(out, runtimeEvent(agent, o.start, t, "stopped"))
+				delete(active, agent)
+			}
+		}
+	}
+	for agent, o := range active {
+		out = append(out, runtimeEvent(agent, o.start, now, "running"))
+	}
+	return out, rows.Err()
+}
+
+func runtimeEvent(agent string, start, end time.Time, state string) *model.WorkEvent {
+	d := end.Sub(start)
+	if d < 0 {
+		d = 0
+	}
+	return &model.WorkEvent{
+		ID: model.NewID("ev"), Kind: model.EventContainer, AgentID: agent,
+		StartedAt: start, EndedAt: &end, DurationSeconds: int64(d.Seconds()),
+		Source: "derived:audit", Meta: map[string]string{"state": state},
+	}
+}

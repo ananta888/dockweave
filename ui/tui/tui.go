@@ -38,10 +38,11 @@ const (
 	tabMounts
 	tabEvents
 	tabSetup
+	tabFocus
 	tabCount
 )
 
-var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events", "Setup"}
+var tabNames = []string{"Dashboard", "Agents", "Workspaces", "Mounts", "Events", "Setup", "Focus"}
 
 type dataMsg struct {
 	agents       []*model.Agent
@@ -55,6 +56,7 @@ type dataMsg struct {
 	paths        map[string]sdk.AgentPathsInfo // agent id -> folder assignments
 	broker       *sdk.BrokerStatus
 	brokerGrants []sdk.BrokerGrant
+	plan         *model.TodayPlan
 	err          error
 }
 
@@ -271,6 +273,10 @@ func (m *modelTUI) refresh() tea.Cmd {
 		if bs, err := m.client.BrokerStatus(ctx); err == nil {
 			d.broker = bs
 		}
+		var plan model.TodayPlan
+		if err := m.client.Do(ctx, "GET", "/api/v1/tasks/today?human=local", nil, &plan); err == nil {
+			d.plan = &plan
+		}
 		if bg, err := m.client.BrokerGrants(ctx, ""); err == nil {
 			d.brokerGrants = bg
 		}
@@ -337,6 +343,24 @@ func (m *modelTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case key.Matches(msg, m.keys.Refresh):
 			return m, m.refresh()
+		case m.tab == tabFocus && !m.menubar && msg.String() == "j":
+			if m.cursor < len(m.focusTasks())-1 {
+				m.cursor++
+			}
+		case m.tab == tabFocus && !m.menubar && msg.String() == "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case m.tab == tabFocus && !m.menubar && msg.String() == "s":
+			return m, m.focusCommand("start")
+		case m.tab == tabFocus && !m.menubar && msg.String() == "p":
+			return m, m.focusCommand("pause")
+		case m.tab == tabFocus && !m.menubar && msg.String() == "c":
+			return m, m.focusCommand("resume")
+		case m.tab == tabFocus && !m.menubar && msg.String() == "d":
+			return m, m.focusCommand("complete")
+		case m.tab == tabFocus && !m.menubar && msg.String() == "x":
+			return m, m.focusCommand("skip")
 		case key.Matches(msg, m.keys.CursorUp) && m.tab == tabAgents && !m.menubar:
 			if m.cursor > 0 {
 				m.cursor--
@@ -715,6 +739,8 @@ func (m *modelTUI) viewContent() string {
 		b.WriteString(m.viewEvents())
 	case tabSetup:
 		b.WriteString(m.viewSetup())
+	case tabFocus:
+		b.WriteString(m.viewFocus())
 	}
 	return b.String()
 }
@@ -1050,4 +1076,96 @@ func lastElem(p string) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+// focusTasks returns the open human tasks of the current daily plan.
+func (m *modelTUI) focusTasks() []*model.Task {
+	if m.data.plan == nil {
+		return nil
+	}
+	out := make([]*model.Task, 0, len(m.data.plan.Tasks))
+	for _, t := range m.data.plan.Tasks {
+		if t.AssigneeKind != model.AssigneeHuman || t.IsFinished() {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// focusAction calls one focus endpoint and refreshes the view.
+func (m *modelTUI) focusCommand(action string) tea.Cmd {
+	tasks := m.focusTasks()
+	taskID := ""
+	if m.cursor >= 0 && m.cursor < len(tasks) {
+		taskID = tasks[m.cursor].ID
+	}
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		path := "/api/v1/focus/" + action + "?human=local"
+		var body any
+		if action == "start" {
+			if taskID == "" {
+				return tickMsg(time.Now())
+			}
+			body = map[string]string{"task_id": taskID, "human": "local"}
+		}
+		_ = client.Do(ctx, "POST", path, body, nil)
+		return tickMsg(time.Now())
+	}
+}
+
+// viewFocus renders the single-task focus mode.
+func (m *modelTUI) viewFocus() string {
+	var b strings.Builder
+	plan := m.data.plan
+	if plan == nil {
+		b.WriteString(dimStyle.Render("no daily plan yet - add a task with: dockweave task add \"...\" --day today") + "\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "%s  ·  agents active: %d\n", plan.Day, plan.ActiveAgent)
+	b.WriteString(strings.Repeat("─", 72) + "\n")
+
+	focus := plan.Focus
+	if focus == nil {
+		b.WriteString(dimStyle.Render("no focus session") + "\n\n")
+	} else {
+		var task *model.Task
+		for _, t := range plan.Tasks {
+			if t.ID == focus.TaskID {
+				task = t
+			}
+		}
+		title := focus.TaskID
+		goals := ""
+		if task != nil {
+			title = task.Title
+			if len(task.ObjectiveIDs) > 0 {
+				goals = "  [" + strings.Join(task.ObjectiveIDs, ", ") + "]"
+			}
+		}
+		fmt.Fprintf(&b, "%s  %s  %s%s\n", focus.Status, focus.Elapsed(time.Now()).Round(time.Second), title, goals)
+		b.WriteString(strings.Repeat("─", 72) + "\n\n")
+	}
+
+	if len(m.focusTasks()) == 0 {
+		b.WriteString(dimStyle.Render("nothing queued for today") + "\n")
+		return b.String()
+	}
+	for i, t := range m.focusTasks() {
+		mark := " "
+		if i == m.cursor {
+			mark = ">"
+		}
+		goals := ""
+		if len(t.ObjectiveIDs) > 0 {
+			goals = " *"
+		}
+		fmt.Fprintf(&b, "%s [%d] %-10s p%-3d %s%s\n", mark, i+1, t.Status, t.Priority, t.Title, goals)
+	}
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("s start · p pause · c continue · d done · x skip · j/k select") + "\n")
+	return b.String()
 }

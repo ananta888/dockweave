@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/persistence"
@@ -123,3 +124,66 @@ func TestAPITodayPlanAndBudget(t *testing.T) {
 		t.Fatalf("list budgets = %d", rec.Code)
 	}
 }
+
+func TestAPISecretKeysAreRejected(t *testing.T) {
+	s := testServer(t)
+	task := &model.Task{Title: "x", Day: "2026-11-18"}
+	_ = s.Store.CreateTask(context.Background(), task)
+
+	rec := call(t, s, s.createWorkEvent, http.MethodPost, "/api/v1/work-events",
+		model.WorkEvent{
+			Kind: model.EventLLM, StartedAt: timeNow(), DurationSeconds: 3,
+			Meta: map[string]string{"api_key": "sk-should-not-be-stored"},
+		})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("event with secret = %d, want 400", rec.Code)
+	}
+
+	rec = call(t, s, s.createEvidence, http.MethodPost, "/api/v1/evidence",
+		model.Evidence{
+			TaskID: task.ID, Kind: model.EvidenceTest, Status: model.EvidencePassed,
+			Payload: map[string]string{"token": "dws_leak"},
+		})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("evidence with secret = %d, want 400", rec.Code)
+	}
+}
+
+func TestDerivedSuggestCalendarAndReport(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	task := &model.Task{Title: "rank me", Day: "2026-11-18", Priority: 80, EffortMinutes: 20}
+	_ = s.Store.CreateTask(ctx, task)
+	_, _ = s.Store.AddWorkEvent(ctx, &model.WorkEvent{
+		Kind: model.EventHumanFocus, StartedAt: timeNow(), DurationSeconds: 600,
+		IdempotencyKey: "focus:test",
+	})
+
+	for name, h := range map[string]http.HandlerFunc{
+		"derived":  s.derivedWorkEvents,
+		"suggest":  s.suggestTasks,
+		"calendar": s.calendarLog,
+		"report":   s.reviewReport,
+		"export":   s.exportProductivity,
+	} {
+		method := http.MethodGet
+		rec := call(t, s, h, method, "/api/v1/"+name, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s = %d: %s", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := call(t, s, s.suggestTasks, http.MethodGet, "/api/v1/tasks/suggest?day=2026-11-18", nil)
+	var out struct {
+		Suggestions []struct {
+			TaskID  string   `json:"task_id"`
+			Reasons []string `json:"reasons"`
+		} `json:"suggestions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out.Suggestions) != 1 || len(out.Suggestions[0].Reasons) == 0 {
+		t.Fatalf("suggestions = %+v", out.Suggestions)
+	}
+}
+
+func timeNow() time.Time { return time.Now().UTC() }

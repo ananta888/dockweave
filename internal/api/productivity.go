@@ -2,7 +2,10 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,4 +289,332 @@ func (s *Server) createReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, rv)
+}
+
+// batchWorkEvents ingests monitor/provider measurements idempotently.
+func (s *Server) batchWorkEvents(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Events []model.WorkEvent `json:"events"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	inserted, duplicates := 0, 0
+	for i := range req.Events {
+		ok, err := s.Store.AddWorkEvent(r.Context(), &req.Events[i])
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", err)
+			return
+		}
+		if ok {
+			inserted++
+		} else {
+			duplicates++
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]int{"inserted": inserted, "duplicates": duplicates})
+}
+
+// derivedWorkEvents returns container runtime computed from the audit log.
+func (s *Server) derivedWorkEvents(w http.ResponseWriter, r *http.Request) {
+	since := time.Now().Add(-7 * 24 * time.Hour)
+	if v := r.URL.Query().Get("since"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			since = t
+		}
+	}
+	list, err := s.Store.AgentRuntimeIntervals(r.Context(), since)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"source": "derived:audit", "since": since, "events": list,
+		"note": "container runtime only; agent and LLM time need an external source",
+	})
+}
+
+func budgetPeriodStart(period string, now time.Time) time.Time {
+	switch period {
+	case "weekly":
+		wd := int(now.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -(wd - 1))
+	case "monthly":
+		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	default:
+		return time.Time{}
+	}
+}
+
+// budgetActuals compares targets with measured work events.
+func (s *Server) budgetActuals(w http.ResponseWriter, r *http.Request) {
+	budgets, err := s.Store.ListBudgets(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	events, err := s.Store.ListWorkEvents(r.Context(), "", 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	verified, _ := s.Store.ListTasks(r.Context(), "", string(model.TaskVerified), "", 0)
+
+	type actual struct {
+		ID       string  `json:"id"`
+		Scope    string  `json:"scope"`
+		ScopeID  string  `json:"scope_id,omitempty"`
+		Kind     string  `json:"kind"`
+		Period   string  `json:"period"`
+		Target   float64 `json:"target"`
+		Actual   float64 `json:"actual"`
+		Unit     string  `json:"unit"`
+		Exceeded bool    `json:"exceeded"`
+	}
+	out := make([]actual, 0, len(budgets))
+	for _, b := range budgets {
+		start := budgetPeriodStart(b.Period, time.Now())
+		var sum float64
+		for _, e := range events {
+			if !start.IsZero() && e.StartedAt.Before(start) {
+				continue
+			}
+			switch b.Kind {
+			case model.BudgetHumanHours:
+				if e.Kind == model.EventHumanFocus {
+					sum += float64(e.DurationSeconds) / 3600
+				}
+			case model.BudgetAgentHours:
+				if e.Kind == model.EventAgentRun {
+					sum += float64(e.DurationSeconds) / 3600
+				}
+			case model.BudgetTokens:
+				if e.Kind == model.EventLLM {
+					if v, err := strconv.ParseFloat(e.Meta["tokens"], 64); err == nil {
+						sum += v
+					}
+				}
+			case model.BudgetCostUSD:
+				if v, err := strconv.ParseFloat(e.Meta["cost_usd"], 64); err == nil {
+					sum += v
+				}
+			}
+		}
+		out = append(out, actual{
+			ID: b.ID, Scope: b.Scope, ScopeID: b.ScopeID, Kind: string(b.Kind),
+			Period: b.Period, Target: b.Target, Actual: sum, Unit: string(b.Kind),
+			Exceeded: b.Target > 0 && sum > b.Target,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"budgets": out, "verified_results": len(verified),
+		"note": "hours and tokens are inputs, not progress",
+	})
+}
+
+// suggestTasks ranks the queue deterministically and explains each decision.
+func (s *Server) suggestTasks(w http.ResponseWriter, r *http.Request) {
+	day := r.URL.Query().Get("day")
+	if day == "" {
+		day = today()
+	}
+	tasks, err := s.Store.ListTasks(r.Context(), day, "", string(model.AssigneeHuman), 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	byID := map[string]*model.Task{}
+	all, _ := s.Store.ListTasks(r.Context(), "", "", "", 0)
+	for _, t := range all {
+		byID[t.ID] = t
+	}
+
+	type suggestion struct {
+		TaskID  string   `json:"task_id"`
+		Title   string   `json:"title"`
+		Score   float64  `json:"score"`
+		Reasons []string `json:"reasons"`
+		Blocked bool     `json:"blocked"`
+	}
+	out := make([]suggestion, 0, len(tasks))
+	for _, t := range tasks {
+		if t.IsFinished() {
+			continue
+		}
+		score := float64(t.Priority) * 0.5
+		reasons := []string{fmt.Sprintf("priority %d", t.Priority)}
+		if len(t.ObjectiveIDs) > 0 {
+			score += 10
+			reasons = append(reasons, "contributes to an objective")
+		}
+		if t.EffortMinutes > 0 && t.EffortMinutes <= 30 {
+			score += 5
+			reasons = append(reasons, "small scope")
+		}
+		blocked := false
+		for _, id := range t.BlockedBy {
+			if b, ok := byID[id]; ok && !b.IsFinished() {
+				blocked = true
+				break
+			}
+		}
+		if blocked {
+			score -= 100
+			reasons = append(reasons, "blocked by an open task")
+		}
+		out = append(out, suggestion{TaskID: t.ID, Title: t.Title, Score: score, Reasons: reasons, Blocked: blocked})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	writeJSON(w, http.StatusOK, map[string]any{"day": day, "suggestions": out})
+}
+
+// calendarLog returns work events grouped by day (logbook, not a plan).
+func (s *Server) calendarLog(w http.ResponseWriter, r *http.Request) {
+	events, err := s.Store.ListWorkEvents(r.Context(), "", 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	start, end := r.URL.Query().Get("start"), r.URL.Query().Get("end")
+	agent, human := r.URL.Query().Get("agent"), r.URL.Query().Get("human")
+	days := map[string][]*model.WorkEvent{}
+	for _, e := range events {
+		day := e.StartedAt.Local().Format("2006-01-02")
+		if start != "" && day < start {
+			continue
+		}
+		if end != "" && day > end {
+			continue
+		}
+		if agent != "" && e.AgentID != agent {
+			continue
+		}
+		if human != "" && e.HumanID != human {
+			continue
+		}
+		days[day] = append(days[day], e)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"days": days, "source": "work_events"})
+}
+
+// reviewReport builds the deterministic weekly/monthly reflection.
+func (s *Server) reviewReport(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		kind = "weekly"
+	}
+	now := time.Now()
+	var start time.Time
+	if kind == "monthly" {
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	} else {
+		start = budgetPeriodStart("weekly", now)
+	}
+	if v := r.URL.Query().Get("start"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			start = t
+		}
+	}
+	tasks, _ := s.Store.ListTasks(r.Context(), "", "", "", 0)
+	events, _ := s.Store.ListWorkEvents(r.Context(), "", 0)
+
+	var done, verified, blocked, failed int
+	perObjective := map[string]float64{}
+	focusSeconds, agentSeconds := int64(0), int64(0)
+	cost := 0.0
+	byObjective := map[string]string{}
+	for _, t := range tasks {
+		for _, o := range t.ObjectiveIDs {
+			byObjective[t.ID] = o
+		}
+		if t.UpdatedAt.Before(start) {
+			continue
+		}
+		switch t.Status {
+		case model.TaskDone:
+			done++
+		case model.TaskVerified:
+			verified++
+		case model.TaskBlocked:
+			blocked++
+		case model.TaskFailed:
+			failed++
+		}
+	}
+	for _, e := range events {
+		if e.StartedAt.Before(start) {
+			continue
+		}
+		if e.Kind == model.EventHumanFocus {
+			focusSeconds += e.DurationSeconds
+		}
+		if e.Kind == model.EventAgentRun {
+			agentSeconds += e.DurationSeconds
+		}
+		if v, err := strconv.ParseFloat(e.Meta["cost_usd"], 64); err == nil {
+			cost += v
+		}
+		if o := byObjective[e.TaskID]; o != "" {
+			perObjective[o] += float64(e.DurationSeconds) / 3600
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"kind": kind, "period_start": start.Format("2006-01-02"),
+		"period_end": now.Format("2006-01-02"),
+		"tasks_done": done, "tasks_verified": verified,
+		"tasks_blocked": blocked, "tasks_failed": failed,
+		"human_hours": float64(focusSeconds) / 3600,
+		"agent_hours": float64(agentSeconds) / 3600,
+		"cost_usd":    cost, "hours_per_objective": perObjective,
+		"generated_by": "deterministic", "llm_summary": nil,
+	})
+}
+
+// exportProductivity returns the versioned, platform-neutral contract bundle.
+// Export is explicit and read-only: it never creates grants or execution
+// rights.
+func (s *Server) exportProductivity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	objectives, err := s.Store.ListObjectives(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	tasks, err := s.Store.ListTasks(ctx, "", "", "", 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	events, err := s.Store.ListWorkEvents(ctx, "", 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	budgets, err := s.Store.ListBudgets(ctx)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	reviews, err := s.Store.ListReviews(ctx, 0)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	var evidence []*model.Evidence
+	for _, t := range tasks {
+		if list, err := s.Store.ListEvidence(ctx, t.ID); err == nil {
+			evidence = append(evidence, list...)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"schema":  "https://dockweave.local/schema/productivity/v1.json",
+		"version": 1, "exported_at": time.Now().UTC(),
+		"objectives": objectives, "tasks": tasks, "work_events": events,
+		"evidence": evidence, "budgets": budgets, "reviews": reviews,
+		"note": "read-only export; grants no execution rights",
+	})
 }

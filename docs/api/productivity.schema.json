@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dockweave.local/schema/productivity/v1.json",
+  "title": "DockWeave productivity contracts",
+  "version": 1,
+  "description": "Platform-neutral exchange contracts. Export requires explicit authorization and never grants execution rights.",
+  "$defs": {
+    "StrategicObjective": {
+      "type": "object",
+      "required": ["id", "kind", "title", "status"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["vision", "year", "quarter", "month", "week", "project", "operative"] },
+        "parent_id": { "type": "string" },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "status": { "enum": ["active", "paused", "achieved", "dropped", "archived"] },
+        "period_start": { "type": "string", "format": "date" },
+        "period_end": { "type": "string", "format": "date" }
+      }
+    },
+    "Quest": {
+      "description": "A quarter objective plus its input budgets and milestones.",
+      "type": "object",
+      "required": ["objective", "budgets"],
+      "properties": {
+        "objective": { "$ref": "#/$defs/StrategicObjective" },
+        "budgets": { "type": "array", "items": { "$ref": "#/$defs/InputBudget" } },
+        "milestones": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "TaskReference": {
+      "type": "object",
+      "required": ["id", "title", "status", "assignee_kind"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "enum": ["backlog", "todo", "in_progress", "done", "partial", "failed", "blocked", "verified", "cancelled"] },
+        "assignee_kind": { "enum": ["human", "agent"] },
+        "agent_id": { "type": "string" },
+        "day": { "type": "string", "format": "date" },
+        "objective_ids": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "FocusSession": {
+      "type": "object",
+      "required": ["id", "task_id", "human_id", "status", "started_at"],
+      "properties": {
+        "id": { "type": "string" },
+        "task_id": { "type": "string" },
+        "human_id": { "type": "string" },
+        "status": { "enum": ["active", "paused", "completed", "skipped"] },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "paused_seconds": { "type": "integer", "minimum": 0 },
+        "notes": { "type": "string" }
+      }
+    },
+    "WorkEvent": {
+      "type": "object",
+      "required": ["id", "kind", "started_at", "duration_seconds"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["human_focus", "agent_run", "container", "wait", "llm", "tool"] },
+        "task_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "human_id": { "type": "string" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "duration_seconds": { "type": "integer", "minimum": 0 },
+        "source": { "type": "string" },
+        "meta": { "type": "object", "additionalProperties": { "type": "string" } },
+        "idempotency_key": { "type": "string" }
+      }
+    },
+    "InputBudget": {
+      "type": "object",
+      "required": ["scope", "kind", "period", "target"],
+      "properties": {
+        "scope": { "enum": ["objective", "workspace", "agent", "global"] },
+        "scope_id": { "type": "string" },
+        "kind": { "enum": ["human_hours", "agent_hours", "tokens", "cost_usd"] },
+        "period": { "enum": ["weekly", "monthly", "total"] },
+        "target": { "type": "number", "minimum": 0 }
+      }
+    },
+    "ExecutionEvidence": {
+      "type": "object",
+      "required": ["id", "task_id", "kind", "status", "verified"],
+      "properties": {
+        "id": { "type": "string" },
+        "task_id": { "type": "string" },
+        "kind": { "enum": ["commit", "pull_request", "file", "test", "build", "security", "review", "artifact", "acceptance"] },
+        "status": { "enum": ["passed", "failed", "unknown"] },
+        "ref": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "payload": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "ReviewSnapshot": {
+      "type": "object",
+      "required": ["id", "kind", "period_start", "period_end", "body"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["weekly", "monthly"] },
+        "period_start": { "type": "string", "format": "date" },
+        "period_end": { "type": "string", "format": "date" },
+        "body": { "type": "object" }
+      }
+    }
+  }
+}

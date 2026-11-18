@@ -71,3 +71,22 @@ dockweave review add --kind weekly --start 2026-11-11 --end 2026-11-18 --body '{
 
 See `todo/productivity.json`: TUI focus tab, ingestion of monitor/supervisor
 events, budget actuals, calendar logbook, optional ranking, Ananta contracts.
+
+## Reporting, ranking and export (implemented)
+
+- `GET /api/v1/work-events/derived` derives container runtime from the audit
+  log (`agent.started`/`agent.stopped`). Nothing is stored twice.
+- `POST /api/v1/work-events/batch` ingests monitor measurements idempotently.
+- `GET /api/v1/budgets/actuals` compares targets with measured events and
+  reports verified results separately.
+- `GET /api/v1/tasks/suggest?day=` ranks the queue deterministically and
+  explains every score.
+- `GET /api/v1/calendar` returns a logbook grouped by day, filterable by human
+  and agent.
+- `GET /api/v1/reviews/report` builds the weekly/monthly report without an LLM.
+- `GET /api/v1/export/productivity` returns the versioned contract bundle
+  (`docs/api/productivity.schema.json`); export is read-only.
+- TUI tab **Focus**: current session, invested time, queue, keys
+  `s/p/c/d/x` for start/pause/continue/done/skip.
+- Secret-looking keys (`token`, `secret`, `password`, `api_key`, ...) are
+  rejected in event metadata and evidence payloads.
