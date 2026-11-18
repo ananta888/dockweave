@@ -62,6 +62,10 @@ BK="/home/$(id -un "${SUDO_USER:-root}")/.local/share/dockweave/broker"
 if [ -d "$BK" ]; then
   chgrp dockweave "$BK" || true
   chmod 0750 "$BK" || true
+  # The broker lives under the user's private ~/.local/share (0700); the
+  # daemon needs traverse (+x) on that ancestor, not read.
+  SHARE="$(dirname "$(dirname "$BK")")"
+  chmod o+x "$SHARE" 2>/dev/null || true
 fi
 
 echo "== 6/6 Homes durchlassbar machen + Neustart =="
