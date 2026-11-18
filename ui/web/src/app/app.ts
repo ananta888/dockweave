@@ -12,15 +12,18 @@ import { DirPickerComponent } from './components/dir-picker.component';
 import { GraphComponent } from './components/graph.component';
 import { AgentTypesComponent } from './components/agent-types.component';
 import { SkillsComponent } from './components/skills.component';
+import { IntegrationsComponent } from './components/integrations/integrations.component';
+import { RuntimePresetsService } from './core/services/runtime-presets.service';
+import { RuntimeKind } from './core/domain/integrations';
 import { figureSvg } from './core/figures';
 import { UiBridgeService } from './core/ui-bridge.service';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills' | 'integrations';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent, IntegrationsComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -29,6 +32,8 @@ export class App implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly uiBridge = inject(UiBridgeService);
+  private readonly presets = inject(RuntimePresetsService);
+  readonly runtimePresets = this.presets.presets();
   private uiSub?: Subscription;
   uiHint = signal<{ text: string; severity: string; x: number; y: number } | null>(null);
   private hintTimer?: ReturnType<typeof setTimeout>;
@@ -53,7 +58,7 @@ export class App implements OnInit, OnDestroy {
   newAgent = {
     name: '', type: 'opencode', image: 'node:22-bookworm',
     exec: 'exec "$HOME/.dockweave/opencode-native.sh"',
-    env_file: '', profile: '', uid: 1000, gid: 1000,
+    runtime: 'docker', env_file: '', profile: '', uid: 1000, gid: 1000,
   };
 
   constructor() {
@@ -185,14 +190,28 @@ export class App implements OnInit, OnDestroy {
     });
   }
 
+  onRuntimeChange(runtime: string): void {
+    this.newAgent.runtime = runtime;
+    const preset = this.presets.get(runtime as RuntimeKind);
+    if (!preset) return;
+    if (preset.image) this.newAgent.image = preset.image;
+    if (preset.command) this.newAgent.exec = preset.command;
+    if (preset.agentType) this.newAgent.type = preset.agentType;
+  }
+
   create(): void {
     const f = this.newAgent;
     if (!f.name.trim() || !f.image.trim()) return;
     this.creating.set(true);
     this.createError.set('');
+    const command = !f.exec.trim()
+      ? []
+      : f.runtime === 'herdr'
+        ? f.exec.trim().split(/\s+/)
+        : ['sh', '-c', f.exec.trim()];
     const spec = {
       name: f.name.trim(), type: f.type, image: f.image.trim(),
-      command: f.exec.trim() ? ['sh', '-c', f.exec.trim()] : [],
+      command, runtime: f.runtime,
       env_file: f.env_file.trim(), uid: f.uid, gid: f.gid,
       agent_ro: true, network_mode: 'bridge', network_profile: f.profile,
     };

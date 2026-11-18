@@ -26,13 +26,15 @@ import (
 
 func webCmd() *cobra.Command {
 	var (
-		listen      string
-		webDir      string
-		termSocket  string
-		open        bool
-		browseRoots string
-		mcpListen   string
-		mcpToken    string
+		listen       string
+		webDir       string
+		termSocket   string
+		open         bool
+		browseRoots  string
+		mcpListen    string
+		mcpToken     string
+		paperclipURL string
+		paperclipCLI string
 	)
 	c := &cobra.Command{
 		Use:   "web",
@@ -92,6 +94,8 @@ func webCmd() *cobra.Command {
 				Token:        token,
 				BrowseRoots:  roots,
 				MCPToken:     mcpToken,
+				PaperclipURL: paperclipURL,
+				PaperclipCLI: paperclipCLI,
 			})
 			if err != nil {
 				fail(err)
@@ -152,6 +156,10 @@ func webCmd() *cobra.Command {
 		"optional TCP listen address for the UI MCP server, e.g. 0.0.0.0:8791")
 	f.StringVar(&mcpToken, "mcp-token", envOr("DOCKWEAVE_UI_MCP_TOKEN", ""),
 		"UI MCP bearer token (default: random when --mcp-listen is set)")
+	f.StringVar(&paperclipURL, "paperclip-url", envOr("DOCKWEAVE_PAPERCLIP_URL", "http://127.0.0.1:3100"),
+		"Paperclip UI URL embedded by the frontend")
+	f.StringVar(&paperclipCLI, "paperclip-cli", envOr("DOCKWEAVE_PAPERCLIP_CLI", ""),
+		"paperclipai binary used by the local adapter (default: autodetect)")
 	return c
 }
 

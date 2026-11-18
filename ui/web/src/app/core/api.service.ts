@@ -6,6 +6,7 @@ import {
   AgentMCP, AgentSkill, AgentTypeMCP, AgentTypeSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
   MountState, ProviderStatus, Workspace, SkillCatalog, SkillCatalogEntry,
 } from './models';
+import { HerdrStatus, HerdrPrepareResult } from './domain/integrations';
 
 export interface AgentSpec {
   name: string;
@@ -125,6 +126,13 @@ export class ApiService {
   addSkill(agent: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.post<AgentSkill>(`${this.base}/agents/${agent}/skills`, sk)); }
   updateSkill(agent: string, id: string, sk: Partial<AgentSkill>): Observable<AgentSkill> { return this.req(this.http.patch<AgentSkill>(`${this.base}/agents/${agent}/skills/${id}`, sk)); }
   deleteSkill(agent: string, id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/agents/${agent}/skills/${id}`)); }
+  herdrStatus(id: string): Observable<HerdrStatus> { return this.req(this.http.get<HerdrStatus>(`${this.base}/agents/${id}/herdr/status`)); }
+  herdrPrompt(id: string, prompt: string): Observable<{ content: string }> {
+    return this.req(this.http.post<{ content: string }>(`${this.base}/agents/${id}/herdr/prompt`, { prompt }));
+  }
+  herdrPrepare(id: string, body: { credential?: string; model?: string; ttl?: string }): Observable<HerdrPrepareResult> {
+    return this.req(this.http.post<HerdrPrepareResult>(`${this.base}/agents/${id}/herdr/prepare`, body));
+  }
   getSkillCatalog(): Observable<SkillCatalog> { return this.req(this.http.get<SkillCatalog>(`${this.base}/skills/catalog`)); }
   installCatalogSkill(repo: string, path: string, ref: string): Observable<SkillCatalogEntry> { return this.req(this.http.post<SkillCatalogEntry>(`${this.base}/skills/install`, { repo, path, ref })); }
   deleteCatalogSkill(name: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/skills/${encodeURIComponent(name)}`)); }

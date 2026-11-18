@@ -43,6 +43,7 @@
         <button [class.active]="view() === 'workspaces'" (click)="view.set('workspaces')">Workspaces</button>
         <button [class.active]="view() === 'types'" (click)="view.set('types')">Agent Types</button>
         <button [class.active]="view() === 'skills'" (click)="view.set('skills')">Skills</button>
+        <button [class.active]="view() === 'integrations'" (click)="view.set('integrations')">Integrations</button>
       </nav>
       <span class="spacer"></span>
       @if (store.selected(); as a) {
@@ -129,6 +130,9 @@
         }
         @case ('skills') {
           <dw-skills />
+        }
+        @case ('integrations') {
+          <dw-integrations />
         }
         @case ('workspaces') {
           <div class="workspaces">
@@ -225,20 +229,25 @@
         <h2>New agent</h2>
         <label>Name <input [(ngModel)]="newAgent.name" name="nname" placeholder="opencode-01" /></label>
         <div class="two">
+          <label>Runtime
+            <select [(ngModel)]="newAgent.runtime" (ngModelChange)="onRuntimeChange($event)" name="nruntime">
+              @for (p of runtimePresets; track p.id) { <option [value]="p.id">{{ p.label }}</option> }
+            </select>
+          </label>
+          <label>Image <input [(ngModel)]="newAgent.image" name="nimage" /></label>
+        </div>
+        <div class="two">
           <label>Type
             <select [(ngModel)]="newAgent.type" name="ntype">
               @for (t of ['codex','opencode','claude','antigravity','gemini','custom']; track t) { <option [value]="t">{{ t }}</option> }
             </select>
           </label>
-          <label>Image <input [(ngModel)]="newAgent.image" name="nimage" /></label>
+          <label>UID <input type="number" [(ngModel)]="newAgent.uid" name="nuid" /></label>
         </div>
-        <label>Harness command (sh -c)
+        <label>Harness command ({{ newAgent.runtime === 'herdr' ? 'argv, z. B. codex --flag' : 'sh -c' }})
           <textarea rows="3" [(ngModel)]="newAgent.exec" name="nexec"></textarea>
         </label>
-        <div class="two">
-          <label>UID <input type="number" [(ngModel)]="newAgent.uid" name="nuid" /></label>
-          <label>GID <input type="number" [(ngModel)]="newAgent.gid" name="ngid" /></label>
-        </div>
+        <label>GID <input type="number" [(ngModel)]="newAgent.gid" name="ngid" /></label>
         <div class="two">
           <label>Env file (optional) <input [(ngModel)]="newAgent.env_file" name="nenv" placeholder="/path/agent.env" /></label>
           <label>Egress profile

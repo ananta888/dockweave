@@ -45,6 +45,10 @@ type Config struct {
 	BrowseRoots []string
 	// MCPToken enables the UI MCP endpoint when non-empty.
 	MCPToken string
+	// PaperclipURL is the original Paperclip UI embedded by the frontend.
+	PaperclipURL string
+	// PaperclipCLI overrides the paperclipai binary used by the local adapter.
+	PaperclipCLI string
 }
 
 // Server is the browser-facing HTTP handler.
@@ -107,6 +111,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
+	mux.HandleFunc("GET /paperclip/config", s.paperclipConfig)
+	mux.HandleFunc("GET /paperclip/status", s.paperclipStatus)
+	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)
+	mux.HandleFunc("POST /paperclip/agents/{id}/wake", s.paperclipWake)
 	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
 	mux.Handle("/api/", s.proxy)
 	mux.Handle("/v1/", s.proxy) // OpenAI-compatible endpoint (proxied to daemon)
