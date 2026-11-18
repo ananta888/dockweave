@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -263,6 +264,9 @@ func writeResponse(conn *net.UnixConn, err error) {
 	resp := Response{OK: err == nil}
 	if err != nil {
 		resp.Error = err.Error()
+		if errno, ok := err.(syscall.Errno); ok {
+			resp.Errno = int(errno)
+		}
 	}
 	b, _ := json.Marshal(resp)
 	_, _ = conn.Write(append(b, '\n'))

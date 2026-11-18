@@ -512,6 +512,10 @@ func (m *Manager) unmount(target string, force bool) error {
 		if errors.Is(err, unix.EBUSY) && !force {
 			return ErrBusy
 		}
+		// A mount that is already gone is not an error.
+		if errors.Is(err, unix.ENOENT) || errors.Is(err, unix.EINVAL) {
+			return nil
+		}
 		return fmt.Errorf("unmount %q: %w", target, err)
 	}
 	return nil

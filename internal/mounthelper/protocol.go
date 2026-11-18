@@ -10,6 +10,7 @@ package mounthelper
 import (
 	"encoding/json"
 	"fmt"
+	"syscall"
 )
 
 // Request is one privileged mount operation.
@@ -24,6 +25,7 @@ type Request struct {
 type Response struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+	Errno int    `json:"errno,omitempty"`
 }
 
 // Operations.
@@ -51,6 +53,9 @@ func decodeResponse(raw []byte) error {
 		return fmt.Errorf("mountd: invalid response: %w", err)
 	}
 	if !resp.OK {
+		if resp.Errno != 0 {
+			return syscall.Errno(resp.Errno)
+		}
 		if resp.Error == "" {
 			resp.Error = "unknown error"
 		}
