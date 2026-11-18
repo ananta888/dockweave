@@ -13,7 +13,8 @@ import (
 // go-oidc/oauth2 specifics so the flow can be tested with a fake.
 type Provider interface {
 	AuthURL(state, nonce, codeChallenge string) (string, error)
-	Exchange(ctx context.Context, code, codeVerifier string) (*Principal, error)
+	// Exchange verifies the id_token and binds it to the expected nonce.
+	Exchange(ctx context.Context, code, codeVerifier, nonce string) (*Principal, error)
 	EndSessionURL(state string) string
 }
 
@@ -71,7 +72,7 @@ func (p *idpProvider) AuthURL(state, nonce, codeChallenge string) (string, error
 	), nil
 }
 
-func (p *idpProvider) Exchange(ctx context.Context, code, codeVerifier string) (*Principal, error) {
+func (p *idpProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (*Principal, error) {
 	tok, err := p.oauth.Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrTokenExchange, err)
@@ -83,6 +84,9 @@ func (p *idpProvider) Exchange(ctx context.Context, code, codeVerifier string) (
 	idToken, err := p.verifier.Verify(ctx, rawID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidID, err)
+	}
+	if nonce != "" && idToken.Nonce != nonce {
+		return nil, fmt.Errorf("%w: nonce mismatch", ErrInvalidID)
 	}
 	var claims idClaims
 	if err := idToken.Claims(&claims); err != nil {

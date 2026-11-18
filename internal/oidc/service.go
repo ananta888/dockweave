@@ -109,7 +109,7 @@ func (s *Service) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Nonce binding is enforced by the provider's id_token verification.
-	principal, err := s.prov.Exchange(context.Background(), code, entry.verifier)
+	principal, err := s.prov.Exchange(context.Background(), code, entry.verifier, entry.nonce)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

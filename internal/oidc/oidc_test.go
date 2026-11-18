@@ -82,7 +82,7 @@ type fakeProvider struct{}
 func (fakeProvider) AuthURL(state, nonce, challenge string) (string, error) {
 	return "http://idp/auth?state=" + state + "&code_challenge=" + challenge, nil
 }
-func (fakeProvider) Exchange(context.Context, string, string) (*Principal, error) {
+func (fakeProvider) Exchange(context.Context, string, string, string) (*Principal, error) {
 	return &Principal{Issuer: "https://idp", Subject: "user-1", Roles: []string{"admin"}}, nil
 }
 func (fakeProvider) EndSessionURL(state string) string { return "http://idp/logout" }
@@ -199,19 +199,24 @@ func TestProviderAgainstMockIssuer(t *testing.T) {
 		t.Fatalf("auth url = %q", authURL)
 	}
 
-	p, err := prov.Exchange(context.Background(), "code-1", "verifier-1")
+	p, err := prov.Exchange(context.Background(), "code-1", "verifier-1", "nonce-1")
 	if err != nil {
 		t.Fatalf("exchange: %v", err)
 	}
 	if p.Subject != "user-1" || !p.HasRole(RoleAdmin) {
 		t.Fatalf("principal = %+v", p)
 	}
+
+	// Wrong nonce is rejected.
+	if _, err := prov.Exchange(context.Background(), "code-1", "verifier-1", "wrong"); err == nil {
+		t.Fatal("nonce mismatch accepted")
+	}
 }
 
 func idTokenPayload(iss, aud string) []byte {
 	now := time.Now().Unix()
 	return []byte(`{"iss":"` + iss + `","sub":"user-1","aud":"` + aud + `","iat":` +
-		itoa(now) + `,"exp":` + itoa(now+3600) + `,"groups":["dockweave-admin"]}`)
+		itoa(now) + `,"exp":` + itoa(now+3600) + `,"nonce":"nonce-1","groups":["dockweave-admin"]}`)
 }
 
 func itoa(n int64) string {

@@ -12,7 +12,8 @@ Authorization-code with PKCE and nonce:
    for 10 minutes, and redirects to the IdP.
 2. The IdP redirects back to `/oauth/callback` with `code` and `state`.
 3. The code is exchanged, the `id_token` is verified (signature, `iss`, `aud`,
-   `exp`), and only `iss` + `sub` plus the mapped roles are kept.
+   `exp`) and its `nonce` is bound to the login attempt, and only `iss` +
+   `sub` plus the mapped roles are kept.
 4. An AES-GCM sealed session cookie (`dockweave_oidc`, HttpOnly, SameSite=Lax)
    is set and the browser is redirected to the app root.
 5. `/oauth/logout` clears the session and redirects to the IdP end-session
