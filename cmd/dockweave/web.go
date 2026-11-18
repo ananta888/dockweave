@@ -26,15 +26,16 @@ import (
 
 func webCmd() *cobra.Command {
 	var (
-		listen       string
-		webDir       string
-		termSocket   string
-		open         bool
-		browseRoots  string
-		mcpListen    string
-		mcpToken     string
-		paperclipURL string
-		paperclipCLI string
+		listen           string
+		webDir           string
+		termSocket       string
+		open             bool
+		browseRoots      string
+		mcpListen        string
+		mcpToken         string
+		paperclipURL     string
+		paperclipCLI     string
+		paperclipWrapper string
 	)
 	c := &cobra.Command{
 		Use:   "web",
@@ -88,14 +89,15 @@ func webCmd() *cobra.Command {
 				}
 			}
 			srv, err := webui.New(webui.Config{
-				DaemonSocket: socketPath,
-				TermSocket:   termSocket,
-				WebDir:       dir,
-				Token:        token,
-				BrowseRoots:  roots,
-				MCPToken:     mcpToken,
-				PaperclipURL: paperclipURL,
-				PaperclipCLI: paperclipCLI,
+				DaemonSocket:     socketPath,
+				TermSocket:       termSocket,
+				WebDir:           dir,
+				Token:            token,
+				BrowseRoots:      roots,
+				MCPToken:         mcpToken,
+				PaperclipURL:     paperclipURL,
+				PaperclipCLI:     paperclipCLI,
+				PaperclipWrapper: paperclipWrapper,
 			})
 			if err != nil {
 				fail(err)
@@ -160,6 +162,8 @@ func webCmd() *cobra.Command {
 		"Paperclip UI URL embedded by the frontend")
 	f.StringVar(&paperclipCLI, "paperclip-cli", envOr("DOCKWEAVE_PAPERCLIP_CLI", ""),
 		"paperclipai binary used by the local adapter (default: autodetect)")
+	f.StringVar(&paperclipWrapper, "paperclip-wrapper", envOr("DOCKWEAVE_PAPERCLIP_WRAPPER", ""),
+		"process-adapter wrapper for generated paperclip agents (default: deployments/paperclip/dockweave-run.sh)")
 	return c
 }
 

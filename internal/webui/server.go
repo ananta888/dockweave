@@ -49,6 +49,8 @@ type Config struct {
 	PaperclipURL string
 	// PaperclipCLI overrides the paperclipai binary used by the local adapter.
 	PaperclipCLI string
+	// PaperclipWrapper is the process-adapter command for generated agents.
+	PaperclipWrapper string
 }
 
 // Server is the browser-facing HTTP handler.
@@ -116,6 +118,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)
 	mux.HandleFunc("POST /paperclip/agents/{id}/wake", s.paperclipWake)
 	mux.HandleFunc("POST /paperclip/agents/{id}/target", s.paperclipSetTarget)
+	mux.HandleFunc("POST /paperclip/agents", s.paperclipEnsureAgent)
+	mux.HandleFunc("POST /paperclip/sync", s.paperclipSync)
 	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
 	mux.Handle("/api/", s.proxy)
 	mux.Handle("/v1/", s.proxy) // OpenAI-compatible endpoint (proxied to daemon)

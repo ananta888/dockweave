@@ -61,6 +61,99 @@ func (s *Server) runPaperclip(ctx context.Context, timeout time.Duration, args .
 	return stdout.Bytes(), nil
 }
 
+// paperclipAdapter returns the wrapper command and cwd for newly created
+// process agents.
+func (s *Server) paperclipAdapter() (string, string) {
+	cwd, _ := os.Getwd()
+	command := s.cfg.PaperclipWrapper
+	if command == "" {
+		command = filepath.Join(cwd, "deployments", "paperclip", "dockweave-run.sh")
+	}
+	return command, cwd
+}
+
+// ensurePaperclipAgent creates (or updates) a paperclip process agent named
+// DW-<dockweaveAgent> whose adapter target is that DockWeave agent.
+func (s *Server) ensurePaperclipAgent(ctx context.Context, companyID, dockweaveAgent string) (string, []byte, error) {
+	name := "DW-" + dockweaveAgent
+	command, cwd := s.paperclipAdapter()
+	cfg := map[string]any{
+		"command": command, "args": []string{dockweaveAgent},
+		"cwd": cwd, "timeoutSec": 300,
+	}
+	raw, err := s.runPaperclip(ctx, 10*time.Second, "agent", "list", "--company-id", companyID, "--json")
+	if err == nil {
+		var list []map[string]any
+		if json.Unmarshal(raw, &list) == nil {
+			for _, a := range list {
+				if a["name"] == name {
+					id, _ := a["id"].(string)
+					payload, _ := json.Marshal(map[string]any{"adapterConfig": cfg})
+					out, err := s.runPaperclip(ctx, 30*time.Second,
+						"agent", "update", id, "--payload-json", string(payload), "--json")
+					return "updated", out, err
+				}
+			}
+		}
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"name": name, "adapterType": "process", "adapterConfig": cfg,
+	})
+	out, err := s.runPaperclip(ctx, 30*time.Second,
+		"agent", "create", "--company-id", companyID, "--payload-json", string(payload), "--json")
+	return "created", out, err
+}
+
+func (s *Server) paperclipEnsureAgent(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CompanyID string `json:"company_id"`
+		Agent     string `json:"agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CompanyID == "" || strings.TrimSpace(req.Agent) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "company_id and agent are required"})
+		return
+	}
+	action, out, err := s.ensurePaperclipAgent(r.Context(), req.CompanyID, req.Agent)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"action": action, "agent": json.RawMessage(out),
+	})
+}
+
+func (s *Server) paperclipSync(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CompanyID string   `json:"company_id"`
+		Agents    []string `json:"agents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.CompanyID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "company_id is required"})
+		return
+	}
+	created, updated := []string{}, []string{}
+	var errs []map[string]string
+	for _, a := range req.Agents {
+		if strings.TrimSpace(a) == "" {
+			continue
+		}
+		action, _, err := s.ensurePaperclipAgent(r.Context(), req.CompanyID, a)
+		if err != nil {
+			errs = append(errs, map[string]string{"agent": a, "error": err.Error()})
+			continue
+		}
+		if action == "created" {
+			created = append(created, "DW-"+a)
+		} else {
+			updated = append(updated, "DW-"+a)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"created": created, "updated": updated, "errors": errs,
+	})
+}
+
 // paperclipConfig returns the URL of the original Paperclip UI for the iframe.
 func (s *Server) paperclipConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"url": s.cfg.PaperclipURL})

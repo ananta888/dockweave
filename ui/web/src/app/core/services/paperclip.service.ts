@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
-  PaperclipConfig, PaperclipIssue, PaperclipIssueDraft, PaperclipStatus,
+  PaperclipAgent, PaperclipConfig, PaperclipIssue, PaperclipIssueDraft, PaperclipStatus,
 } from '../domain/integrations';
 
 // The DockWeave web gateway adapts the local Paperclip CLI under /paperclip.
@@ -29,6 +29,14 @@ export class PaperclipService {
 
   createIssue(draft: PaperclipIssueDraft): Observable<PaperclipIssue> {
     return this.req(this.http.post<PaperclipIssue>('/paperclip/issues', draft));
+  }
+
+  ensureAgent(companyId: string, agent: string): Observable<{ action: string; agent: PaperclipAgent }> {
+    return this.req(this.http.post<{ action: string; agent: PaperclipAgent }>('/paperclip/agents', { company_id: companyId, agent }));
+  }
+
+  sync(companyId: string, agents: string[]): Observable<{ created: string[]; updated: string[]; errors: { agent: string; error: string }[] }> {
+    return this.req(this.http.post<{ created: string[]; updated: string[]; errors: { agent: string; error: string }[] }>('/paperclip/sync', { company_id: companyId, agents }));
   }
 
   setTarget(agentId: string, model: string): Observable<unknown> {

@@ -60,6 +60,14 @@ API: `GET/POST /api/v1/agents/{id}/herdr/{status,prompt,prepare}`.
 Das Panel ist ein Adapter: die Original-UI bleibt die Quelle der Wahrheit, die
 Schnellaktionen sind Komfort.
 
+### DockWeave-Agenten als Paperclip-Assignees
+
+Das Panel listet DockWeave-Agenten und legt je Agent einen Paperclip-Prozess-
+Agenten `DW-<name>` an (`adapterConfig.args = ["<name>"]`). Paperclips
+**Choose assignee** wählt damit 1:1 den DockWeave-Agenten. **Alle
+synchronisieren** erledigt das für alle laufenden DockWeave-Agenten; bestehende
+`DW-*`-Agenten werden aktualisiert.
+
 ## Hinweise
 
 - `herdr prepare` benötigt `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf`, damit der Daemon die Session minten kann.

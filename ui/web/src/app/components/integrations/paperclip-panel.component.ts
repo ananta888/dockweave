@@ -44,6 +44,25 @@ import {
             @if (!agents().length) { <p class="muted">Keine Agenten.</p> }
           </div>
 
+          <h4>DockWeave-Agenten → Paperclip</h4>
+          <div class="actions">
+            <button class="small primary" (click)="syncAll()" [disabled]="busy() || !companyId()">Alle synchronisieren</button>
+            <span class="muted">legt <code>DW-&lt;name&gt;</code> an bzw. aktualisiert es</span>
+          </div>
+          <div class="list">
+            @for (a of dockweaveAgents(); track a.id) {
+              <div class="row">
+                <span class="mono">{{ a.name }}</span>
+                <span class="muted">{{ a.type }} · {{ a.state }}</span>
+                <span class="spacer"></span>
+                @if (paperclipAgentFor(a.name); as pa) { <span class="badge">{{ pa.name }}</span> }
+                <button class="small" (click)="ensureTarget(a.name)" [disabled]="busy()">
+                  {{ paperclipAgentFor(a.name) ? 'aktualisieren' : 'anlegen' }}
+                </button>
+              </div>
+            }
+          </div>
+
           <h4>Ziel-Agent (DockWeave)</h4>
           @if (primaryAgent(); as pa) {
             <div class="target-row">
@@ -116,6 +135,8 @@ import {
     .spacer { flex:1; }
     .field { display:flex; flex-direction:column; gap:.2rem; font-size:.72rem; color:#8b949e; margin:.4rem 0; }
     .target-row { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin:.3rem 0; }
+    .badge { padding:.05rem .35rem; border-radius:4px; background:#1f6feb33; color:#58a6ff; border:1px solid #1f6feb; font-size:.65rem; }
+    code { font-size:.72rem; }
     .hint { color:#8b949e; font-size:.72rem; margin:.1rem 0 .4rem; }
     .actions { display:flex; gap:.5rem; margin:.5rem 0; }
     .primary { background:#238636; border-color:#2ea043; color:#fff; }
@@ -194,6 +215,42 @@ export class PaperclipPanelComponent implements OnInit {
         this.message.set('Task angelegt.');
         this.issueTitle = '';
         this.issueDescription = '';
+        this.load();
+      },
+      error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
+    });
+  }
+
+  paperclipAgentFor(dockweaveName: string): PaperclipAgent | undefined {
+    return this.agents().find(a => a.adapterConfig?.args?.[0] === dockweaveName);
+  }
+
+  ensureTarget(dockweaveName: string): void {
+    if (!this.companyId()) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.message.set('');
+    this.svc.ensureAgent(this.companyId(), dockweaveName).subscribe({
+      next: r => {
+        this.busy.set(false);
+        this.message.set(`${r.action === 'created' ? 'Angelegt' : 'Aktualisiert'}: DW-${dockweaveName}.`);
+        this.load();
+      },
+      error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
+    });
+  }
+
+  syncAll(): void {
+    const agents = this.dockweaveAgents().filter(a => a.state === 'running').map(a => a.name);
+    if (!this.companyId() || !agents.length) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.message.set('');
+    this.svc.sync(this.companyId(), agents).subscribe({
+      next: r => {
+        this.busy.set(false);
+        const errs = r.errors?.length ? `, ${r.errors.length} Fehler` : '';
+        this.message.set(`Sync: ${r.created.length} angelegt, ${r.updated.length} aktualisiert${errs}.`);
         this.load();
       },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
