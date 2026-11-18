@@ -422,6 +422,25 @@
         "Manuell"
       ],
       "status": "done"
+    },
+    {
+      "id": "prod-023",
+      "title": "Angular-Panel Productivity",
+      "description": "Tab in der Angular-App: Tagesplan, Fokussteuerung, Aufgaben/Objekte anlegen, Budget-Ist, Review-Report, Rollover.",
+      "priority": "high",
+      "dependencies": [
+        "prod-008",
+        "prod-012"
+      ],
+      "components": [
+        "ui/web"
+      ],
+      "acceptance": "Tab laedt Tagesplan und Fokus, alle Aktionen rufen die API auf, Build gruen.",
+      "tests": [
+        "UI-Build",
+        "Manuell"
+      ],
+      "status": "done"
     }
   ]
 }

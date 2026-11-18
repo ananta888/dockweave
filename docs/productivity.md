@@ -103,3 +103,10 @@ events, budget actuals, calendar logbook, optional ranking, Ananta contracts.
   `task.created`, `task.updated`, `focus.started`, `budget.updated`,
   `review.created`, `productivity.pruned`).
 - `dockweave evidence git TASK` attaches the current HEAD commit idempotently.
+
+## Angular UI
+
+The **Productivity** tab in the web app shows the daily plan, the active focus
+session with live elapsed time, task and objective creation, budget actuals, a
+deterministic review report and a rollover button. It calls the same
+`/api/v1` endpoints as the CLI.

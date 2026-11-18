@@ -86,3 +86,10 @@ Ananta-Verträge.
   (nach `started_at`), Nachweise, Reviews und geschlossene Fokus-Sessions.
 - Jede Aenderung schreibt ein hash-verkettetes Audit-Event.
 - `dockweave evidence git TASK` haengt den aktuellen HEAD-Commit idempotent an.
+
+## Angular-Oberflaeche
+
+Der Tab **Productivity** zeigt Tagesplan, aktive Fokus-Session mit laufender
+Zeit, Anlegen von Aufgaben und Zielen, Budget-Ist, deterministischen
+Review-Report und einen Rollover-Button. Er nutzt dieselben `/api/v1`-Endpunkte
+wie die CLI.
