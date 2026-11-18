@@ -360,6 +360,12 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 
 func (s *Server) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The OIDC routes handle their own security and must be reachable
+		// without a session (the login redirect, callback and logout).
+		if strings.HasPrefix(r.URL.Path, "/oauth/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		// Legacy/automation: a token in the query sets the cookie and
 		// redirects to a clean URL so it does not stay in history.
 		if q := r.URL.Query().Get("token"); q != "" {

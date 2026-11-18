@@ -22,4 +22,4 @@ echo "  DOCKWEAVE_OIDC_ADMIN_GROUPS=dockweave-admin \\"
 echo "  DOCKWEAVE_OIDC_MONITOR_GROUPS=dockweave-monitor \\"
 echo "  dockweave web --listen 127.0.0.1:8790"
 echo
-echo "Demo-User: admin/admin (dockweave-admin) · monitor/monitor (dockweave-monitor)"
+echo "Demo-User: krusty/krusty (Hauptadmin, dockweave-admin) · user/user (Standard) · monitor/monitor (dockweave-monitor)"

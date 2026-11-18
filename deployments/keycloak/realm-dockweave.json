@@ -20,7 +20,10 @@
         "http://127.0.0.1:8790/oauth/callback",
         "http://localhost:8790/oauth/callback"
       ],
-      "webOrigins": ["http://127.0.0.1:8790", "http://localhost:8790"],
+      "webOrigins": [
+        "http://127.0.0.1:8790",
+        "http://localhost:8790"
+      ],
       "secret": "dockweave-dev-secret",
       "protocolMappers": [
         {
@@ -40,20 +43,52 @@
     }
   ],
   "groups": [
-    { "name": "dockweave-admin" },
-    { "name": "dockweave-monitor" }
+    {
+      "name": "dockweave-admin"
+    },
+    {
+      "name": "dockweave-monitor"
+    }
   ],
-  "defaultRoles": ["offline_access", "uma_authorization", "default-roles-dockweave"],
+  "defaultRoles": [
+    "offline_access",
+    "uma_authorization",
+    "default-roles-dockweave"
+  ],
   "users": [
     {
-      "username": "admin",
+      "username": "krusty",
       "enabled": true,
-      "email": "admin@dockweave.local",
+      "email": "krusty@dockweave.local",
+      "emailVerified": true,
+      "firstName": "Krusty",
+      "lastName": "Hauptadmin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "krusty",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "dockweave-admin"
+      ]
+    },
+    {
+      "username": "user",
+      "enabled": true,
+      "email": "user@dockweave.local",
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "admin", "temporary": false }
+        {
+          "type": "password",
+          "value": "user",
+          "temporary": false
+        }
       ],
-      "groups": ["dockweave-admin"]
+      "groups": [],
+      "firstName": "Standard",
+      "lastName": "User"
     },
     {
       "username": "monitor",
@@ -61,9 +96,17 @@
       "email": "monitor@dockweave.local",
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "monitor", "temporary": false }
+        {
+          "type": "password",
+          "value": "monitor",
+          "temporary": false
+        }
       ],
-      "groups": ["dockweave-monitor"]
+      "groups": [
+        "dockweave-monitor"
+      ],
+      "firstName": "Monitor",
+      "lastName": "User"
     }
   ]
 }

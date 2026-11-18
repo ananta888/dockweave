@@ -32,7 +32,8 @@ A ready-to-run Keycloak with a `dockweave` realm is included:
 
 It starts Keycloak on `127.0.0.1:8080`, imports the `dockweave` realm (client
 `dockweave`, groups `dockweave-admin`/`dockweave-monitor`, demo users
-`admin`/`admin` and `monitor`/`monitor`) and prints the exact `dockweave web`
+`krusty`/`krusty` (Hauptadmin),
+`user`/`user` (standard) and `monitor`/`monitor`) and prints the exact `dockweave web`
 OIDC settings. Files live in `deployments/keycloak/` (`docker-compose.yml`,
 `realm-dockweave.json`). Change the dev client secret before any real use.
 
