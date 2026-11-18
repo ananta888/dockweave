@@ -61,48 +61,26 @@ func handle(conn *net.UnixConn, cfg ServerConfig) {
 		writeResponse(conn, err)
 		return
 	}
+	// FDs are consumed by dispatch; each op closes what it opened.
+	defer closeAll(fds)
 	writeResponse(conn, dispatch(req, fds, cfg.StateRoot))
 }
 
+// dispatch performs the syscall. Bind/remount/move/setattr are fd-based
+// (open_tree/move_mount/mount_setattr); unmount and propagation need a path
+// and are resolved from the fd with a state-root check.
 func dispatch(req Request, fds []int, root string) error {
-	// Resolve each fd to its path, but only after proving that the path still
-	// refers to the same inode as the fd (no swap between check and syscall).
-	// Only `bind` targets a fresh directory, where the inode check is
-	// meaningful. Everything else (move, unmount, remount, propagation,
-	// setattr) operates on an existing mount whose O_PATH fd can report the
-	// covered inode while stat() reports the mounted root.
-	verifyIdentity := req.Op == OpBind
-	paths := make([]string, len(fds))
-	for i, fd := range fds {
-		p, err := resolveFD(fd, verifyIdentity)
-		if err != nil {
-			for _, open := range fds[i:] {
-				_ = unix.Close(open)
-			}
-			return err
-		}
-		paths[i] = p
-	}
-	// Close our duplicates before the syscall: an open fd on a mountpoint
-	// makes umount(2) fail with EBUSY.
-	for _, fd := range fds {
-		_ = unix.Close(fd)
-	}
-	fdPath := func(i int) string { return paths[i] }
 	need := func(n int) error {
 		if len(fds) < n {
 			return fmt.Errorf("op %s needs %d fds, got %d", req.Op, n, len(fds))
 		}
 		return nil
 	}
-	checkTarget := func(i int) error {
-		target := fdPath(i)
-		cleanRoot := filepath.Clean(root)
-		if !strings.HasPrefix(filepath.Clean(target), cleanRoot+string(filepath.Separator)) && filepath.Clean(target) != cleanRoot {
-			return fmt.Errorf("target %q is outside the state root", target)
-		}
-		return nil
+	rec := uint(0)
+	if req.Recursive {
+		rec = unix.AT_RECURSIVE
 	}
+	nosymfollow := req.Flags&unix.MS_NOSYMFOLLOW != 0
 
 	switch req.Op {
 	case OpPing:
@@ -111,78 +89,112 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		if err := checkTarget(1); err != nil {
-			return err
+		tree, err := unix.OpenTree(fds[0], "",
+			uint(unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC|unix.AT_EMPTY_PATH)|rec)
+		if err != nil {
+			return fmt.Errorf("open_tree source: %w", err)
 		}
-		return unix.Mount(fdPath(0), fdPath(1), "none", req.Flags|unix.MS_BIND, "")
+		defer unix.Close(tree)
+		if req.RO || nosymfollow {
+			var attr unix.MountAttr
+			if req.RO {
+				attr.Attr_set |= unix.MOUNT_ATTR_RDONLY
+			}
+			if nosymfollow {
+				attr.Attr_set |= unix.MOUNT_ATTR_NOSYMFOLLOW
+			}
+			if err := unix.MountSetattr(tree, "", uint(unix.AT_EMPTY_PATH)|rec, &attr); err != nil {
+				return fmt.Errorf("setattr source: %w", err)
+			}
+		}
+		if err := unix.MoveMount(tree, "", fds[1], "", unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+			return fmt.Errorf("move_mount: %w", err)
+		}
+		return nil
 	case OpRemount:
 		if err := need(1); err != nil {
 			return err
 		}
-		if err := checkTarget(0); err != nil {
-			return err
+		var attr unix.MountAttr
+		if req.Flags&unix.MS_RDONLY != 0 {
+			attr.Attr_set |= unix.MOUNT_ATTR_RDONLY
 		}
-		return unix.Mount("none", fdPath(0), "", req.Flags|unix.MS_REMOUNT, "")
+		if nosymfollow {
+			attr.Attr_set |= unix.MOUNT_ATTR_NOSYMFOLLOW
+		}
+		if attr.Attr_set == 0 {
+			return fmt.Errorf("remount without attribute change")
+		}
+		return unix.MountSetattr(fds[0], "", uint(unix.AT_EMPTY_PATH)|rec, &attr)
 	case OpMove:
 		if err := need(2); err != nil {
 			return err
 		}
-		if err := checkTarget(1); err != nil {
-			return err
-		}
-		return unix.Mount(fdPath(0), fdPath(1), "", unix.MS_MOVE, "")
-	case OpUnmount:
-		if err := need(1); err != nil {
-			return err
-		}
-		if err := checkTarget(0); err != nil {
-			return err
-		}
-		return unix.Unmount(fdPath(0), int(req.Flags))
-	case OpPropagation:
-		if err := need(1); err != nil {
-			return err
-		}
-		if err := checkTarget(0); err != nil {
-			return err
-		}
-		return unix.Mount("none", fdPath(0), "", req.Flags, "")
+		return unix.MoveMount(fds[0], "", fds[1], "", unix.MOVE_MOUNT_F_EMPTY_PATH)
 	case OpSetReadonly:
 		if err := need(1); err != nil {
 			return err
 		}
-		if err := checkTarget(0); err != nil {
+		attr := &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY}
+		return unix.MountSetattr(fds[0], "", unix.AT_EMPTY_PATH|rec, attr)
+	case OpUnmount:
+		if err := need(1); err != nil {
 			return err
 		}
-		flags := 0
-		if req.Recursive {
-			flags = unix.AT_RECURSIVE
+		target, err := resolvePath(fds[0], root)
+		if err != nil {
+			return err
 		}
-		attr := &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY}
-		return unix.MountSetattr(unix.AT_FDCWD, fdPath(0), uint(flags), attr)
+		_ = unix.Close(fds[0]) // close before umount, else EBUSY
+		fds[0] = -1
+		return unix.Unmount(target, int(req.Flags))
+	case OpPropagation:
+		if err := need(1); err != nil {
+			return err
+		}
+		target, err := resolvePath(fds[0], root)
+		if err != nil {
+			return err
+		}
+		return unix.Mount("none", target, "", req.Flags, "")
+	case OpChown:
+		if err := need(1); err != nil {
+			return err
+		}
+		target, err := resolvePath(fds[0], root)
+		if err != nil {
+			return err
+		}
+		return filepath.WalkDir(target, func(p string, _ os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			return os.Lchown(p, req.UID, req.GID)
+		})
 	default:
 		return fmt.Errorf("unknown op %q", req.Op)
 	}
 }
 
-func resolveFD(fd int, verifyIdentity bool) (string, error) {
+func closeAll(fds []int) {
+	for _, fd := range fds {
+		if fd >= 0 {
+			_ = unix.Close(fd)
+		}
+	}
+}
+
+// resolvePath returns the path an fd refers to, after checking it lies below
+// the state root. Used only for the two ops that have no fd-based syscall.
+func resolvePath(fd int, root string) (string, error) {
 	link := fmt.Sprintf("/proc/self/fd/%d", fd)
 	target, err := os.Readlink(link)
 	if err != nil {
 		return "", fmt.Errorf("resolve fd %d: %w", fd, err)
 	}
-	var fdStat, pathStat unix.Stat_t
-	if err := unix.Fstat(fd, &fdStat); err != nil {
-		return "", fmt.Errorf("fstat fd %d: %w", fd, err)
-	}
-	if !verifyIdentity {
-		return target, nil
-	}
-	if err := unix.Stat(target, &pathStat); err != nil {
-		return "", fmt.Errorf("stat target %q: %w", target, err)
-	}
-	if fdStat.Dev != pathStat.Dev || fdStat.Ino != pathStat.Ino {
-		return "", fmt.Errorf("target %q changed identity", target)
+	cleanRoot := filepath.Clean(root)
+	if !strings.HasPrefix(filepath.Clean(target), cleanRoot+string(filepath.Separator)) && filepath.Clean(target) != cleanRoot {
+		return "", fmt.Errorf("target %q is outside the state root", target)
 	}
 	return target, nil
 }
@@ -225,7 +237,7 @@ func recvRequest(conn *net.UnixConn) ([]int, Request, error) {
 	if err := raw.Read(func(fd uintptr) bool {
 		n, oobn, _, _, recvErr = unix.Recvmsg(int(fd), buf, oob, 0)
 		if recvErr == unix.EAGAIN || recvErr == unix.EWOULDBLOCK {
-			return false // wait until the socket is readable
+			return false
 		}
 		return true
 	}); err != nil {

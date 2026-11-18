@@ -9,7 +9,7 @@ that only accepts directory file descriptors.
 | Process | User | Privileges | Responsibility |
 |---|---|---|---|
 | `dockweaved` | `dockweave` (+ `docker` group) | none beyond a normal user | API, DB, Docker, sessions |
-| `dockweave-mountd` | root | `CAP_SYS_ADMIN`, `CAP_DAC_READ_SEARCH` | `mount`, `mount_setattr`, `umount` on received fds |
+| `dockweave-mountd` | root | `CAP_SYS_ADMIN` only | `mount`, `mount_setattr`, `umount` on received fds |
 
 ## Protocol
 
@@ -53,11 +53,12 @@ The units harden both processes (`NoNewPrivileges`,
 capabilities; only the helper has `CAP_SYS_ADMIN`. The helper unit must **not**
 use `ProtectSystem`, `PrivateTmp` or similar options: they create a private
 mount namespace, and mounts made there would never reach the host or the
-containers.
+containers. The daemon runs as the dedicated `dockweave` user; `--uid` in the
+helper unit must match that uid.
 
-`CAP_DAC_READ_SEARCH` is needed because the helper resolves received fds to
-paths (e.g. probe directories created with mode 0700) and must be able to
-traverse them; it grants read/search only, no write bypass.
+Mounts use `open_tree`/`move_mount`/`mount_setattr` with `AT_EMPTY_PATH`, so
+no path resolution is needed for bind/remount/move/setattr. Only `umount` and
+propagation resolve a path, from the received fd, with a state-root check.
 
 ## Without the helper
 

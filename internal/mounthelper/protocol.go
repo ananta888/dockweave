@@ -19,6 +19,8 @@ type Request struct {
 	Flags     uintptr `json:"flags,omitempty"`
 	Recursive bool    `json:"recursive,omitempty"`
 	RO        bool    `json:"ro,omitempty"`
+	UID       int     `json:"uid,omitempty"`
+	GID       int     `json:"gid,omitempty"`
 }
 
 // Response is the helper's answer.
@@ -37,6 +39,7 @@ const (
 	OpUnmount     = "unmount"
 	OpPropagation = "propagation"
 	OpSetReadonly = "set_readonly"
+	OpChown       = "chown"
 )
 
 func encode(req Request) ([]byte, error) {

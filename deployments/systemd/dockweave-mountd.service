@@ -12,13 +12,13 @@ RuntimeDirectoryMode=0770
 # not unlink it.
 RuntimeDirectoryPreserve=yes
 Group=dockweave
-ExecStart=/usr/local/bin/dockweave-mountd --socket /run/dockweave/mountd.sock --root /var/lib/dockweave --uid 1000
+ExecStart=/usr/local/bin/dockweave-mountd --socket /run/dockweave/mountd.sock --root /var/lib/dockweave --uid 1001
 Restart=on-failure
 RestartSec=2
 
 # The helper only performs mount(2)/mount_setattr on fds it receives.
-CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
-AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_SYS_ADMIN
+AmbientCapabilities=CAP_SYS_ADMIN
 NoNewPrivileges=yes
 # No ProtectSystem/PrivateTmp/ProtectKernel*: those create a private mount
 # namespace, and mounts made there would never reach the host or the

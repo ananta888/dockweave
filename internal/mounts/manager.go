@@ -203,14 +203,11 @@ func (m *Manager) ValidateSource(path string) (string, error) {
 // at creation time, before workspace grants can have mounted foreign host
 // directories beneath the tree.
 func (m *Manager) ChownAgentTree(agentID string, uid, gid int) error {
-	for _, dir := range []string{m.AgentDir(agentID), m.MemoryDir(agentID), m.WorkspaceTree(agentID)} {
-		err := filepath.Walk(dir, func(p string, _ os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			return os.Chown(p, uid, gid)
-		})
-		if err != nil {
+	// The workspace tree stays owned by the daemon: it only holds the
+	// mountpoints. The agent install and memory are handed to the container
+	// identity. With the unprivileged daemon this runs through the helper.
+	for _, dir := range []string{m.AgentDir(agentID), m.MemoryDir(agentID)} {
+		if err := m.sys.ChownTree(dir, uid, gid); err != nil {
 			return fmt.Errorf("chown %s to %d:%d: %w", dir, uid, gid, err)
 		}
 	}
@@ -581,6 +578,9 @@ func (m *Manager) PropagationProbe() error {
 	if err != nil {
 		return fmt.Errorf("probe dir: %w", err)
 	}
+	// The helper resolves paths without CAP_DAC_OVERRIDE, so the probe
+	// directory must be traversable by it.
+	_ = os.Chmod(tmp, 0o755)
 	defer os.RemoveAll(tmp)
 	if err := m.sys.Bind(tmp, tmp, unix.MS_BIND); err != nil {
 		return fmt.Errorf("bind mount failed (need CAP_SYS_ADMIN, not rootless docker): %w", err)

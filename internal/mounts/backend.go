@@ -3,6 +3,8 @@ package mounts
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"golang.org/x/sys/unix"
 
@@ -19,6 +21,7 @@ type backend interface {
 	Unmount(dst string, flags int) error
 	Propagation(dst string, flags uintptr) error
 	SetReadonly(dst string, recursive bool) error
+	ChownTree(path string, uid, gid int) error
 }
 
 type directBackend struct{}
@@ -49,6 +52,15 @@ func (directBackend) SetReadonly(dst string, recursive bool) error {
 		flags = unix.AT_RECURSIVE
 	}
 	return unix.MountSetattr(unix.AT_FDCWD, dst, uint(flags), &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY})
+}
+
+func (directBackend) ChownTree(path string, uid, gid int) error {
+	return filepath.Walk(path, func(p string, _ os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(p, uid, gid)
+	})
 }
 
 // helperBackend passes O_PATH directory fds to the privileged helper.
@@ -102,6 +114,10 @@ func (h *helperBackend) Propagation(dst string, flags uintptr) error {
 
 func (h *helperBackend) SetReadonly(dst string, recursive bool) error {
 	return h.Do(mounthelper.Request{Op: mounthelper.OpSetReadonly, Recursive: recursive}, dst)
+}
+
+func (h *helperBackend) ChownTree(path string, uid, gid int) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpChown, UID: uid, GID: gid}, path)
 }
 
 // pickBackend returns the helper backend when a socket is configured and
