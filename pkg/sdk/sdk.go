@@ -795,3 +795,9 @@ func (c *Client) ImportTypeDefaults(ctx context.Context, agentType string) (map[
 	var out map[string]int
 	return out, c.do(ctx, "POST", "/api/v1/agent-types/"+agentType+"/import", map[string]string{}, &out)
 }
+
+// Do performs an arbitrary versioned API call. It is used by newer CLI
+// commands that do not need a typed wrapper yet.
+func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
+	return c.do(ctx, method, path, body, out)
+}

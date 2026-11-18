@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 11
+const schemaVersion = 13
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -190,6 +190,101 @@ var migrations = []string{
 		id TEXT PRIMARY KEY,
 		body TEXT NOT NULL,
 		updated_at TEXT NOT NULL
+	);`,
+	// 13: productivity layer (objectives, daily tasks, focus, events, evidence).
+	`CREATE TABLE IF NOT EXISTS objectives (
+		id TEXT PRIMARY KEY,
+		kind TEXT NOT NULL,
+		parent_id TEXT NOT NULL DEFAULT '',
+		title TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active',
+		period_start TEXT NOT NULL DEFAULT '',
+		period_end TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_objectives_parent ON objectives(parent_id);
+	CREATE TABLE IF NOT EXISTS tasks (
+		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		notes TEXT NOT NULL DEFAULT '',
+		objective_ids TEXT NOT NULL DEFAULT '[]',
+		assignee_kind TEXT NOT NULL DEFAULT 'human',
+		agent_id TEXT NOT NULL DEFAULT '',
+		workspace_id TEXT NOT NULL DEFAULT '',
+		day TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'todo',
+		priority INTEGER NOT NULL DEFAULT 0,
+		risk TEXT NOT NULL DEFAULT '',
+		effort_minutes INTEGER NOT NULL DEFAULT 0,
+		order_index INTEGER NOT NULL DEFAULT 0,
+		blocked_by TEXT NOT NULL DEFAULT '[]',
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		completed_at TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_tasks_day ON tasks(day, order_index);
+	CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+	CREATE TABLE IF NOT EXISTS focus_sessions (
+		id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL,
+		human_id TEXT NOT NULL,
+		status TEXT NOT NULL,
+		started_at TEXT NOT NULL,
+		ended_at TEXT,
+		paused_seconds INTEGER NOT NULL DEFAULT 0,
+		notes TEXT NOT NULL DEFAULT ''
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_focus_one_active
+		ON focus_sessions(human_id) WHERE status IN ('active','paused');
+	CREATE TABLE IF NOT EXISTS work_events (
+		id TEXT PRIMARY KEY,
+		kind TEXT NOT NULL,
+		task_id TEXT NOT NULL DEFAULT '',
+		objective_ids TEXT NOT NULL DEFAULT '[]',
+		agent_id TEXT NOT NULL DEFAULT '',
+		human_id TEXT NOT NULL DEFAULT '',
+		started_at TEXT NOT NULL,
+		ended_at TEXT,
+		duration_seconds INTEGER NOT NULL DEFAULT 0,
+		source TEXT NOT NULL DEFAULT '',
+		meta TEXT NOT NULL DEFAULT '{}',
+		idempotency_key TEXT UNIQUE,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_work_events_task ON work_events(task_id, started_at);
+	CREATE TABLE IF NOT EXISTS evidence (
+		id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'unknown',
+		ref TEXT NOT NULL DEFAULT '',
+		verified INTEGER NOT NULL DEFAULT 0,
+		payload TEXT NOT NULL DEFAULT '{}',
+		idempotency_key TEXT UNIQUE,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_evidence_task ON evidence(task_id);
+	CREATE TABLE IF NOT EXISTS input_budgets (
+		id TEXT PRIMARY KEY,
+		scope TEXT NOT NULL,
+		scope_id TEXT NOT NULL DEFAULT '',
+		kind TEXT NOT NULL,
+		period TEXT NOT NULL,
+		target REAL NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(scope, scope_id, kind, period)
+	);
+	CREATE TABLE IF NOT EXISTS reviews (
+		id TEXT PRIMARY KEY,
+		kind TEXT NOT NULL,
+		period_start TEXT NOT NULL,
+		period_end TEXT NOT NULL,
+		body TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL
 	);`,
 }
 
