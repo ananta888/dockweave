@@ -2354,30 +2354,57 @@ export class GraphComponent implements OnChanges {
     this.scheduleGraphSave();
   }
 
-  portsForId(nodeId: string, type?: 'in' | 'out'): GraphPort[] {
-    const node = this.nodes().find(n => n.id === nodeId);
-    if (!node) return [];
-    const all = this.portsFor(node);
-    return type ? all.filter(p => p.type === type) : all;
+  // Derive a node kind from its deterministic id prefix, without touching the
+  // `nodes` computed. Needed because port construction is called from the edge
+  // builders, which are themselves called from the layout inside `nodes` — a
+  // lookup through this.nodes() there would create a circular dependency.
+  private kindOfId(id: string): NodeKind | null {
+    if (id === 'org-root') return 'org';
+    if (id === 'knowledge') return 'knowledge';
+    if (id.startsWith('unit-')) return 'unit';
+    if (id.startsWith('agent-')) return 'agent';
+    if (id.startsWith('workspace-')) return 'workspace';
+    if (id.startsWith('memory-')) return 'memory';
+    if (id.startsWith('credential-')) return 'credential';
+    if (id.startsWith('mcp-')) return 'mcp';
+    if (id.startsWith('skill-')) return 'skill';
+    if (id.startsWith('connector-')) {
+      const c = this.connectors().find(x => 'connector-' + x.id === id);
+      if (c) return (c.kind === 'custom' ? 'custom' : c.kind) as NodeKind;
+      return 'custom';
+    }
+    if (id.startsWith('ghost-')) return 'ghost';
+    return null;
   }
 
-  portsFor(node: GraphNode): GraphPort[] {
-    if (node.kind === 'ghost') return [];
-    const spec = this.schema().nodePorts[node.kind] ?? DEFAULT_GRAPH_SCHEMA.nodePorts[node.kind];
+  private buildPorts(id: string, kind: NodeKind): GraphPort[] {
+    if (kind === 'ghost') return [];
+    const spec = this.schema().nodePorts[kind] ?? DEFAULT_GRAPH_SCHEMA.nodePorts[kind];
     if (!spec) return [];
     const out: GraphPort[] = [];
     for (const side of this.sides) {
       const counts = spec[side];
       for (let i = 0; i < counts.inputs; i++) {
         const pos = this.portPosition(side, i, counts.inputs);
-        out.push({ id: `${node.id}:in:${side}:${i}`, type: 'in', side, ...pos });
+        out.push({ id: `${id}:in:${side}:${i}`, type: 'in', side, ...pos });
       }
       for (let i = 0; i < counts.outputs; i++) {
         const pos = this.portPosition(side, i, counts.outputs);
-        out.push({ id: `${node.id}:out:${side}:${i}`, type: 'out', side, ...pos });
+        out.push({ id: `${id}:out:${side}:${i}`, type: 'out', side, ...pos });
       }
     }
     return out;
+  }
+
+  portsForId(nodeId: string, type?: 'in' | 'out'): GraphPort[] {
+    const kind = this.kindOfId(nodeId);
+    if (!kind) return [];
+    const all = this.buildPorts(nodeId, kind);
+    return type ? all.filter(p => p.type === type) : all;
+  }
+
+  portsFor(node: GraphNode): GraphPort[] {
+    return this.buildPorts(node.id, node.kind);
   }
 
   private portPosition(side: Side, index: number, count: number): { left: number; top: number } {
