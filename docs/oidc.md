@@ -22,6 +22,25 @@ Authorization-code with PKCE and nonce:
 The daemon API remains unchanged: it still authorizes by `SO_PEERCRED`. The
 OIDC principal is only used at the web gateway.
 
+## Bundled Keycloak (standard)
+
+A ready-to-run Keycloak with a `dockweave` realm is included:
+
+```bash
+./scripts/keycloak-up.sh
+```
+
+It starts Keycloak on `127.0.0.1:8080`, imports the `dockweave` realm (client
+`dockweave`, groups `dockweave-admin`/`dockweave-monitor`, demo users
+`admin`/`admin` and `monitor`/`monitor`) and prints the exact `dockweave web`
+OIDC settings. Files live in `deployments/keycloak/` (`docker-compose.yml`,
+`realm-dockweave.json`). Change the dev client secret before any real use.
+
+Because DockWeave only needs an issuer URL, the same flags work with any IdP
+(Keycloak, Zitadel, Authentik, Dex). Keycloak can itself act as an identity
+broker to federate external IdPs; that is configured in the Keycloak admin
+console, not in DockWeave.
+
 ## Configuration
 
 ```bash

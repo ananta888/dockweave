@@ -1,0 +1,69 @@
+{
+  "realm": "dockweave",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": true,
+  "accessTokenLifespan": 3600,
+  "clients": [
+    {
+      "clientId": "dockweave",
+      "name": "DockWeave Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8790/oauth/callback",
+        "http://localhost:8790/oauth/callback"
+      ],
+      "webOrigins": ["http://127.0.0.1:8790", "http://localhost:8790"],
+      "secret": "dockweave-dev-secret",
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        }
+      ]
+    }
+  ],
+  "groups": [
+    { "name": "dockweave-admin" },
+    { "name": "dockweave-monitor" }
+  ],
+  "defaultRoles": ["offline_access", "uma_authorization", "default-roles-dockweave"],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@dockweave.local",
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "admin", "temporary": false }
+      ],
+      "groups": ["dockweave-admin"]
+    },
+    {
+      "username": "monitor",
+      "enabled": true,
+      "email": "monitor@dockweave.local",
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "monitor", "temporary": false }
+      ],
+      "groups": ["dockweave-monitor"]
+    }
+  ]
+}

@@ -17,6 +17,24 @@ Session-Cookie (`dockweave_oidc`, HttpOnly, SameSite=Lax) wird gesetzt.
 Die Daemon-API bleibt unverändert (`SO_PEERCRED`); der OIDC-Principal wirkt
 nur am Web-Gateway.
 
+## Mitgeliefertes Keycloak (Standard)
+
+Ein startfertiges Keycloak mit `dockweave`-Realm liegt bei:
+
+```bash
+./scripts/keycloak-up.sh
+```
+
+Es startet Keycloak auf `127.0.0.1:8080`, importiert das `dockweave`-Realm
+(Client `dockweave`, Gruppen `dockweave-admin`/`dockweave-monitor`,
+Demo-User `admin`/`admin` und `monitor`/`monitor`) und druckt die passenden
+`dockweave web`-OIDC-Einstellungen. Dateien unter `deployments/keycloak/`.
+Vor echter Nutzung das Dev-Client-Secret ändern.
+
+DockWeave braucht nur eine Issuer-URL, daher funktionieren dieselben Flags
+mit jedem IdP. Keycloak kann selbst als Identity-Broker externe IdPs
+federieren; das wird in der Keycloak-Admin-Console konfiguriert.
+
 ## Konfiguration
 
 ```bash
