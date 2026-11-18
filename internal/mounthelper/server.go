@@ -71,9 +71,14 @@ func handle(conn *net.UnixConn, cfg ServerConfig) {
 func dispatch(req Request, fds []int, root string) error {
 	// Resolve each fd to its path, but only after proving that the path still
 	// refers to the same inode as the fd (no swap between check and syscall).
+	// Bind and move create a new mount, so the target must still be the
+	// inode we validated. Operations on an existing mount (unmount, remount,
+	// propagation, setattr) may legitimately see the mounted root instead of
+	// the covered directory, so they skip the identity check.
+	verifyIdentity := req.Op == OpBind || req.Op == OpMove
 	paths := make([]string, len(fds))
 	for i, fd := range fds {
-		p, err := resolveFD(fd)
+		p, err := resolveFD(fd, verifyIdentity)
 		if err != nil {
 			return err
 		}
@@ -156,7 +161,7 @@ func dispatch(req Request, fds []int, root string) error {
 	}
 }
 
-func resolveFD(fd int) (string, error) {
+func resolveFD(fd int, verifyIdentity bool) (string, error) {
 	link := fmt.Sprintf("/proc/self/fd/%d", fd)
 	target, err := os.Readlink(link)
 	if err != nil {
@@ -165,6 +170,9 @@ func resolveFD(fd int) (string, error) {
 	var fdStat, pathStat unix.Stat_t
 	if err := unix.Fstat(fd, &fdStat); err != nil {
 		return "", fmt.Errorf("fstat fd %d: %w", fd, err)
+	}
+	if !verifyIdentity {
+		return target, nil
 	}
 	if err := unix.Stat(target, &pathStat); err != nil {
 		return "", fmt.Errorf("stat target %q: %w", target, err)
