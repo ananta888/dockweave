@@ -29,7 +29,10 @@ One JSON line plus optional fds via `SCM_RIGHTS` over
 - `remount`, `unmount`, `propagation`, `set_readonly`: one fd (target)
 - Targets must lie below `--root` (`/var/lib/dockweave`); the helper verifies
   this with `readlink(/proc/self/fd/N)` before the syscall.
-- The socket is `0660`; `--uid` restricts the client.
+- The socket is `0660` in group `dockweave`; `--uid` restricts the client. The
+mountd unit runs with `Group=dockweave` and `RuntimeDirectoryMode=0770` so the
+unprivileged daemon (member of `dockweave`) can create its own socket in the
+same runtime directory.
 
 ## Deployment
 
