@@ -29,7 +29,7 @@ func TestStreamAgent(t *testing.T) {
 	req := httptest.NewRequest("POST", "/v1/chat/completions", nil)
 	rec := httptest.NewRecorder()
 
-	s.streamAgent(rec, req, "chatcmpl-x", 1, "demo", "opencode", "ag_1", "hi")
+	s.streamAgent(rec, req, "chatcmpl-x", 1, "demo", "opencode", "", "ag_1", "hi")
 
 	body := rec.Body.String()
 	for _, want := range []string{
@@ -52,7 +52,7 @@ func TestStreamAgentError(t *testing.T) {
 	fs := &fakeSessions{err: agentsession.ErrNoResponse}
 	s := &Server{Sessions: fs}
 	rec := httptest.NewRecorder()
-	s.streamAgent(rec, httptest.NewRequest("POST", "/v1/chat/completions", nil), "id", 1, "m", "opencode", "a", "hi")
+	s.streamAgent(rec, httptest.NewRequest("POST", "/v1/chat/completions", nil), "id", 1, "m", "opencode", "", "a", "hi")
 
 	body := rec.Body.String()
 	if !strings.Contains(body, "agent_error") || !strings.Contains(body, "data: [DONE]") {

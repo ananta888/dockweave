@@ -37,7 +37,10 @@ func New(docker *dockerclient.Client, find func(ctx context.Context, idOrName st
 // Prompt sends a prompt through the harness's native API. It returns
 // ErrUnsupported for harness types without an adapter; callers should fall
 // back to the TUI session driver in that case.
-func (m *Manager) Prompt(ctx context.Context, agentType, idOrName, prompt string) (string, error) {
+func (m *Manager) Prompt(ctx context.Context, agentType, runtime, idOrName, prompt string) (string, error) {
+	if runtime == "herdr" {
+		return m.promptHerdr(ctx, idOrName, prompt)
+	}
 	switch agentType {
 	case "opencode":
 		return m.promptOpenCode(ctx, idOrName, prompt)
