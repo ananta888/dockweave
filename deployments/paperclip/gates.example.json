@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "review": { "required": true, "issue_match": "review" },
+  "human_approval": { "required": true },
+  "gates": [
+    {
+      "id": "build",
+      "when": "after_run",
+      "command": "npm run build",
+      "cwd": ".",
+      "timeout_sec": 300
+    }
+  ]
+}

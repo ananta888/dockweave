@@ -33,6 +33,7 @@ if [ "$MODE" = "orchestrate" ] && [ -z "${PAPERCLIP_PROCESS_TIMEOUT:-}" ] && [ -
 fi
 ROLES_FILE="${DOCKWEAVE_PAPERCLIP_ROLES:-$HOME/.config/dockweave/paperclip-roles.json}"
 WORKSPACE="${DOCKWEAVE_PAPERCLIP_WORKSPACE:-/workspace/crystal-run}"
+HOST_WORKSPACE="${DOCKWEAVE_HOST_WORKSPACE:-/home/krusty/projects/crystal-run}"
 # Absolute CLI path: the process adapter's PATH is not the login shell PATH.
 PAPERCLIPAI="${PAPERCLIPAI_BIN:-$(command -v paperclipai 2>/dev/null || echo /home/krusty/.local/bin/paperclipai)}"
 export PAPERCLIPAI_BIN="$PAPERCLIPAI"
@@ -161,6 +162,13 @@ HELPER_DIR="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
 export PAPERCLIPAI_BIN="$PAPERCLIPAI"
 
 if [ "$MODE" = "orchestrate" ] && [ -n "$ISSUE_ID" ] && [ -f "$ROLES_FILE" ]; then
+  # A woken Lead may just be confirming an accepted gate: close and stop.
+  PRE=$(python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true)
+  if printf '%s' "$PRE" | grep -q '^PARENT'; then
+    echo "[dockweave-run] $PRE" >&2
+    exit 0
+  fi
+
   # Extract the JSON work breakdown from the answer and create child issues.
   PLAN=$(printf '%s' "$CONTENT" | python3 "$HELPER_DIR/plan-extract.py" 2>/dev/null || true)
   if [ -n "$PLAN" ]; then
@@ -184,6 +192,7 @@ print("%s\t%s\t%s" % (d.get("companyId") or "", d.get("goalId") or "", d.get("pr
       "$PAPERCLIPAI" issue update "$ISSUE_ID" --status in_progress --comment "$SUMMARY" --json >/dev/null 2>&1 || true
       echo "[dockweave-run] delegated child issues:" >&2
       printf '%s\n' "$CHILDREN" >&2
+      python3 "$HELPER_DIR/wake-ready.py" "$COMPANY" "$ISSUE_ID" 2>/dev/null || true
       exit 0
     fi
     echo "[dockweave-run] plan found but no child issue could be created" >&2
@@ -191,6 +200,7 @@ print("%s\t%s\t%s" % (d.get("companyId") or "", d.get("goalId") or "", d.get("pr
   else
     echo "[dockweave-run] no JSON plan in the Lead answer" >&2
   fi
+  python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true
 fi
 
 # Record the answer AND change the source state. Paperclip marks an issue
@@ -207,9 +217,75 @@ mapping = {"DONE": "done", "BLOCKED": "blocked",
 print(mapping.get(hits[-1], "in_progress") if hits else "in_progress")' 2>/dev/null)
     [ -n "$STATUS" ] || STATUS=in_progress
   fi
-  if ! "$PAPERCLIPAI" issue update "$ISSUE_ID" --status "$STATUS" --comment "$CONTENT" --json >/dev/null 2>&1; then
+
+  VERDICT=$(printf '%s' "$CONTENT" | python3 -c 'import re,sys
+m = re.findall(r"VERDICT:\s*(PASS|FAIL)", sys.stdin.read().upper())
+print(m[-1] if m else "")' 2>/dev/null)
+
+  NOTE=""
+
+  # Deterministic gate: a self-reported DONE only counts if the project gate passes.
+  if [ "$MODE" != "orchestrate" ] && [ "$STATUS" = "done" ]; then
+    GATE_JSON=$(python3 "$HELPER_DIR/gates.py" run "$HOST_WORKSPACE" 2>/dev/null || true)
+    GATE_OK=$(printf '%s' "$GATE_JSON" | python3 -c 'import json,sys
+try:
+    print("yes" if json.load(sys.stdin).get("ok") else "no")
+except Exception:
+    print("unknown")' 2>/dev/null)
+    if [ "$GATE_OK" = "no" ]; then
+      STATUS=in_progress
+      NOTE=$(printf '%s' "$GATE_JSON" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print(""); sys.exit(0)
+lines = ["", "Gate fehlgeschlagen - STATUS: DONE wird nicht akzeptiert."]
+for r in d.get("results", []):
+    if r.get("ok"):
+        continue
+    lines.append("")
+    lines.append("### Gate %s (exit %s)" % (r.get("id"), r.get("exit")))
+    lines.append("```")
+    lines.append(r.get("output") or "")
+    lines.append("```")
+print("\n".join(lines))' 2>/dev/null)
+      echo "[dockweave-run] gate failed -> in_progress" >&2
+    fi
+  fi
+
+  # Reviewer verdict drives the review gate and rework.
+  if [ "$VERDICT" = "FAIL" ]; then
+    STATUS=in_progress
+    REASON=$(printf '%s' "$CONTENT" | python3 -c 'import re,sys
+raw = sys.stdin.read()
+m = re.search(r"REASON:\s*(.+)", raw, re.I)
+print(m.group(1).strip() if m else "Review FAIL")' 2>/dev/null)
+    REWORK=$(python3 "$HELPER_DIR/paperclip-gate.py" rework "$ISSUE_ID" "$REASON" 2>/dev/null || true)
+    echo "[dockweave-run] review FAIL: $REWORK" >&2
+    NOTE="$NOTE\n\nRework: $REWORK"
+  fi
+
+  COMMENT="$CONTENT"
+  [ -n "$NOTE" ] && COMMENT="$CONTENT$NOTE"
+
+  if ! "$PAPERCLIPAI" issue update "$ISSUE_ID" --status "$STATUS" --comment "$COMMENT" --json >/dev/null 2>&1; then
     echo "[dockweave-run] could not update paperclip issue $ISSUE_ID" >&2
   fi
-  # Close the parent Lead issue when every child is finished.
-  python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" 2>/dev/null || true
+
+  # Unblock dependents, then close the parent if every gate agrees.
+  ISSUE_JSON=$("$PAPERCLIPAI" issue get "$ISSUE_ID" --json 2>/dev/null || true)
+  PARENT_ID=$(printf '%s' "$ISSUE_JSON" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("parentId") or "")
+except Exception:
+    print("")' 2>/dev/null)
+  COMPANY_ID=$(printf '%s' "$ISSUE_JSON" | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin).get("companyId") or "")
+except Exception:
+    print("")' 2>/dev/null)
+  if [ -n "$PARENT_ID" ] && [ -n "$COMPANY_ID" ]; then
+    python3 "$HELPER_DIR/wake-ready.py" "$COMPANY_ID" "$PARENT_ID" 2>/dev/null || true
+    python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true
+  fi
 fi
