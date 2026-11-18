@@ -442,7 +442,27 @@ func reviewCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(add, list)
+	report := &cobra.Command{
+		Use: "report", Short: "Deterministic weekly/monthly report",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			kind, _ := cmd.Flags().GetString("kind")
+			start, _ := cmd.Flags().GetString("start")
+			path := "/api/v1/reviews/report?kind=" + kind
+			if start != "" {
+				path += "&start=" + start
+			}
+			var out map[string]any
+			if err := client().Do(context.Background(), "GET", path, nil, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	}
+	report.Flags().String("kind", "weekly", "weekly|monthly")
+	report.Flags().String("start", "", "period start YYYY-MM-DD")
+
+	cmd.AddCommand(add, list, report)
 	return cmd
 }
 

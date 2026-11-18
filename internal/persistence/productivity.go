@@ -447,6 +447,7 @@ func (s *Store) AddWorkEvent(ctx context.Context, e *model.WorkEvent) (bool, err
 	if e.ID == "" {
 		e.ID = model.NewID("ev")
 	}
+	e.CreatedAt = time.Now().UTC()
 	var ended any
 	if e.EndedAt != nil {
 		ended = e.EndedAt.UTC().Format(time.RFC3339Nano)
@@ -518,6 +519,7 @@ func (s *Store) AddEvidence(ctx context.Context, e *model.Evidence) (bool, error
 	if e.ID == "" {
 		e.ID = model.NewID("evd")
 	}
+	e.CreatedAt = time.Now().UTC()
 	var key any
 	if e.IdempotencyKey != "" {
 		key = e.IdempotencyKey
