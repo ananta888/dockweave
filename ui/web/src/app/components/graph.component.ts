@@ -2991,8 +2991,8 @@ export class GraphComponent implements OnChanges {
   private buildOrgEdges(): GraphEdge[] {
     const edges: GraphEdge[] = [];
     const units = [...new Set(this.agents.map(a => this.effective(a).org_unit || 'Unassigned'))];
-    for (const u of units) {
-      const orgOut = this.pickPort('org-root', 'out', 'bottom');
+    units.forEach((u, ui) => {
+      const orgOut = this.pickPortAt('org-root', 'out', 'bottom', ui);
       const unitIn = this.pickPort(`unit-${slug(u)}`, 'in', 'top');
       if (orgOut && unitIn) {
         edges.push({ id: `org-unit-${slug(u)}`, source: 'org-root', target: `unit-${slug(u)}`, sourcePort: orgOut.id, targetPort: unitIn.id, label: 'unit', kind: 'org', sourceSide: orgOut.side, targetSide: unitIn.side, type: 'segment' });
@@ -3008,7 +3008,7 @@ export class GraphComponent implements OnChanges {
           label: a.role || 'member', kind: 'unit', sourceSide: out.side, targetSide: inn.side, type: 'segment',
         });
       });
-    }
+    });
     return edges;
   }
 

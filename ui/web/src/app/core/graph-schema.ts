@@ -64,8 +64,8 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
   $schema: 'https://dockweave.local/schema/agent-graph/v1.json',
   version: 1,
   nodePorts: {
-    org: ports(port(0, 0), port(0, 0), port(0, 0), port(0, 2)),
-    unit: ports(port(0, 0), port(0, 0), port(1, 0), port(0, 4)),
+    org: ports(port(0, 0), port(0, 0), port(0, 0), port(0, 12)),
+    unit: ports(port(0, 0), port(0, 0), port(1, 0), port(0, 12)),
     agent: ports(port(1, 1), port(1, 1), port(1, 0), port(0, 1)),
     workspace: ports(port(0, 1), port(1, 0), port(0, 0), port(0, 0)),
     memory: ports(port(1, 0), port(0, 0), port(0, 0), port(0, 0)),
