@@ -8,6 +8,9 @@ Before=dockweaved.service
 Type=simple
 RuntimeDirectory=dockweave
 RuntimeDirectoryMode=0770
+# The daemon keeps its socket in the same directory; a helper restart must
+# not unlink it.
+RuntimeDirectoryPreserve=yes
 Group=dockweave
 ExecStart=/usr/local/bin/dockweave-mountd --socket /run/dockweave/mountd.sock --root /var/lib/dockweave --uid 1000
 Restart=on-failure
