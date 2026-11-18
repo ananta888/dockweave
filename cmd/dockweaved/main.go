@@ -182,15 +182,18 @@ func run(cfgPath string) error {
 	apiSrv.AllowedRoots = cfg.AllowedRoots
 	apiSrv.Root = cfg.Root
 	apiSrv.KnowledgeDir = cfg.KnowledgeDir
-	apiSrv.Sessions = agentsession.New(agentsession.Config{
+	sessions := agentsession.New(agentsession.Config{
 		Docker: docker,
 		FindContainer: func(ctx context.Context, idOrName string) (string, error) {
 			return lookup.ContainerID(ctx, idOrName)
 		},
 	})
-	apiSrv.Native = nativeagent.New(docker, func(ctx context.Context, idOrName string) (string, error) {
+	apiSrv.Sessions = sessions
+	native := nativeagent.New(docker, func(ctx context.Context, idOrName string) (string, error) {
 		return lookup.ContainerID(ctx, idOrName)
 	})
+	native.TypePrompt = sessions.TypePrompt
+	apiSrv.Native = native
 	if skills, err := skillcatalog.New(filepath.Join(cfg.Root, "skills")); err != nil {
 		log.Printf("skill catalog disabled: %v", err)
 	} else {

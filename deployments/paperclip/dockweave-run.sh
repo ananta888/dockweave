@@ -1,30 +1,31 @@
 #!/bin/sh
 # dockweave-run — paperclip process-adapter entrypoint for DockWeave.
 #
-# paperclip's `process` adapter is low-level: it launches this command with
-# the PAPERCLIP_* context injected (agent/company/run id, API URL + key), but
-# does NOT pass the task via env or stdin. This wrapper therefore:
+# Default mode (MODEL): the task is sent to the DockWeave OpenAI-compatible
+# endpoint over the daemon's unix socket. The endpoint drives the live agent
+# (native backend where available, TUI otherwise), so paperclip tasks are
+# visible in the agent's TUI and return clean structured text.
 #
-#   1. fetches the agent's assigned task (first inbox issue) from the
-#      paperclip API using the injected agent key, then
-#   2. runs the harness INSIDE the DockWeave container (`docker exec -i`),
-#      which stays the security boundary.
+# Legacy mode (container starting with "dockweave-"): the old `docker exec`
+# one-shot path is kept for backwards compatibility.
 #
-# Usage (set as adapterConfig):
+# paperclip's `process` adapter injects PAPERCLIP_* (agent/company/run id,
+# API URL + key) but does not pass the task; this wrapper fetches the first
+# assigned inbox item.
+#
+# Adapter config:
 #   command: /path/to/dockweave-run.sh
-#   args:    ["<dockweave-container>", "<codex|opencode|echo>", "<harness-bin-path>"]
-#
-# The harness runs INSIDE the DockWeave container (the security boundary) and
-# is the same binary DockWeave already launches (e.g. /memory/.local/bin/codex
-# or /memory/.local/bin/opencode). For a real LLM run the harness needs valid
-# credentials; `echo` is a deterministic fallback for wiring tests.
+#   args:    ["demo-opencode"]                     # DockWeave model/agent
+#   or args: ["dockweave-<cid>", "opencode", "/memory/.local/bin/opencode"]
 set -u
 
-CONTAINER="${1:-${DOCKWEAVE_CONTAINER:-}}"
+MODEL_OR_CONTAINER="${1:-${DOCKWEAVE_MODEL:-demo-opencode}}"
 KIND="${2:-codex}"
 HARNESS_BIN="${3:-/memory/.local/bin/codex}"
 API_URL="${PAPERCLIP_API_URL:-http://127.0.0.1:3100}"
 API_KEY="${PAPERCLIP_API_KEY:-}"
+SOCKET="${DOCKWEAVE_SOCKET:-/run/dockweave/dockweaved.sock}"
+TIMEOUT="${PAPERCLIP_PROCESS_TIMEOUT:-${DOCKWEAVE_TIMEOUT:-240}}"
 
 # 1. Fetch the assigned task (first inbox item via the heartbeat inbox).
 TASK=""
@@ -49,17 +50,48 @@ fi
 
 echo "[dockweave-run] task: $TASK" >&2
 
-# 2. Run the harness inside the DockWeave container.
-case "$KIND" in
-  codex)
-    [ -n "$CONTAINER" ] && printf '%s' "$TASK" | docker exec -i "$CONTAINER" "$HARNESS_BIN" exec \
-      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox
-    ;;
-  opencode)
-    [ -n "$CONTAINER" ] && printf '%s' "$TASK" | docker exec -i "$CONTAINER" "$HARNESS_BIN" run
-    ;;
-  *)
-    printf '%s' "$TASK" | docker exec -i "$CONTAINER" \
-      sh -c 'read p; echo "harness@$(hostname) processed: $p"'
+case "$MODEL_OR_CONTAINER" in
+  dockweave-*)
+    # Legacy one-shot docker exec path.
+    case "$KIND" in
+      codex)
+        printf '%s' "$TASK" | docker exec -i "$MODEL_OR_CONTAINER" "$HARNESS_BIN" exec \
+          --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox
+        ;;
+      opencode)
+        printf '%s' "$TASK" | docker exec -i "$MODEL_OR_CONTAINER" "$HARNESS_BIN" run
+        ;;
+      *)
+        printf '%s' "$TASK" | docker exec -i "$MODEL_OR_CONTAINER" \
+          sh -c 'read p; echo "harness@$(hostname) processed: $p"'
+        ;;
+    esac
+    exit $?
     ;;
 esac
+
+# 2. Send the task through the DockWeave endpoint (unix socket, no token).
+BODY=$(python3 -c 'import json,sys; print(json.dumps({
+  "model": sys.argv[1],
+  "messages": [{"role": "user", "content": sys.argv[2]}]
+}))' "$MODEL_OR_CONTAINER" "$TASK") || exit 1
+
+RESP=$(curl -sS --max-time "$TIMEOUT" --unix-socket "$SOCKET" \
+  -X POST http://localhost/v1/chat/completions \
+  -H 'Content-Type: application/json' -d "$BODY" 2>&1)
+STATUS=$?
+if [ "$STATUS" != 0 ]; then
+  echo "[dockweave-run] endpoint request failed (curl $STATUS): $RESP" >&2
+  exit 1
+fi
+
+printf '%s' "$RESP" | python3 -c 'import json,sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+    print(d["choices"][0]["message"]["content"])
+except Exception as e:
+    print("[dockweave-run] invalid endpoint response: %s" % e, file=sys.stderr)
+    print(raw[:500], file=sys.stderr)
+    sys.exit(1)
+'

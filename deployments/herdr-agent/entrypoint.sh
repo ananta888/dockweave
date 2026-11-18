@@ -41,13 +41,27 @@ pane="$(printf '%s' "$out" | grep -oE '"pane_id":"[^"]+"' | head -1 | cut -d'"' 
 # 4. Launch the harness as a herdr-managed agent in the pane. Best-effort:
 #    the harness may require interactive auth; herdr still owns and tracks
 #    the pane in that case.
-if [ -n "${DOCKWEAVE_HARNESS_ARGS:-}" ]; then
-  herdr agent start "$NAME" --kind "$KIND" --pane "$pane" --timeout 30000 -- $DOCKWEAVE_HARNESS_ARGS 2>/dev/null || true
+ARGS="${DOCKWEAVE_HARNESS_ARGS:-}"
+if [ -n "$ARGS" ]; then
+  # herdr agent start already launches the canonical binary for KIND; drop a
+  # leading binary name from the agent command (e.g. "codex --flag").
+  FIRST=${ARGS%% *}
+  if [ "$(basename "$FIRST")" = "$KIND" ]; then
+    if [ "$FIRST" = "$ARGS" ]; then ARGS=""; else ARGS=${ARGS#* }; fi
+  fi
+fi
+if [ -n "$ARGS" ]; then
+  herdr agent start "$NAME" --kind "$KIND" --pane "$pane" --timeout 30000 -- $ARGS 2>/dev/null || true
 else
   herdr agent start "$NAME" --kind "$KIND" --pane "$pane" --timeout 30000 2>/dev/null || true
 fi
 
 echo "dockweave-herdr: herdr server running, agent=$NAME kind=$KIND pane=$pane" >&2
 
-# 5. Keep the server in the foreground.
-wait "$SERVER_PID"
+# 5. Focus the agent pane, then attach the container's main TTY to the herdr
+#    session. If the client detaches, reattach so the server and panes stay alive.
+herdr agent focus "$NAME" >/dev/null 2>&1 || true
+while true; do
+  herdr || true
+  sleep 1
+done

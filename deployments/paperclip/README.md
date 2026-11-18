@@ -36,9 +36,53 @@ paperclipai issue create --company-id "$CID" --title "…" --description "…" \
 paperclipai agent wake "$AG" --company-id "$CID" --reason "…"
 ```
 
-## Einschränkung (Harness)
+## Standardmodus: DockWeave-Endpoint
 
-Der Harness im Container ist aktuell ein deterministischer Platzhalter
-(echoet den Task + Container-Hostname). Für einen echten Harness-Lauf
-`codex exec` verwenden — dafür muss codex im Container **authentifiziert**
-sein (gültiger OpenAI-Key). Siehe Zeile `docker exec` in `dockweave-run.sh`.
+`dockweave-run.sh` ruft standardmäßig den OpenAI-kompatiblen Endpoint des
+DockWeave-Daemons über den Unix-Socket auf:
+
+```
+paperclip → dockweave-run.sh → POST /v1/chat/completions (unix socket)
+          → native Harness-API oder TUI-Fallback → Antwort
+```
+
+- Kein Web-Token nötig: der Daemon autorisiert den Socket-Peer per
+  `SO_PEERCRED`.
+- Der Task bleibt in der **live TUI** sichtbar (Mode 2), weil der Endpoint
+  dieselbe Session treibt.
+- Der Wrapper gibt die Antwort aus; paperclip speichert sie als Run-Output.
+
+Adapter-Konfiguration des Agents:
+
+```json
+{
+  "command": "/home/krusty/dockweave/deployments/paperclip/dockweave-run.sh",
+  "args": ["demo-opencode"],
+  "cwd": "/home/krusty/dockweave",
+  "timeoutSec": 300
+}
+```
+
+`args[0]` ist der DockWeave-Modellname (Agentenname). Der Legacy-Modus
+(`args: ["dockweave-<cid>", "opencode", "/memory/.local/bin/opencode"]`) bleibt
+für bestehende Konfigurationen erhalten.
+
+## E2E-Test
+
+```bash
+paperclipai issue create -C <company> --title "Antworte nur mit X." \
+  --assignee-agent-id <agent> --standalone
+paperclipai agent wake <agent> -C <company> --source assignment
+```
+
+Danach: `paperclipai agent runtime-state <agent> --json` (lastRunStatus) und
+die DockWeave-TUI des Agenten prüfen.
+
+## Was noch fehlt
+
+- paperclip läuft aktuell als manueller Prozess (`paperclipai run`); für
+  Dauerbetrieb als systemd-User-Service installieren.
+- Der Daemon muss den aktuellen Build laufen haben, damit die Native-Backends
+  aktiv sind; sonst nutzt der Endpoint den TUI-Fallback (funktioniert ebenfalls).
+- Der Prozess-Adapter schließt Issues nicht selbst; Status/Workflow bleibt
+  paperclip-Aufgabe.
