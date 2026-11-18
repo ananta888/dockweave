@@ -413,6 +413,14 @@ func (s *Store) EndFocus(ctx context.Context, humanID string, complete bool, not
 			model.TaskDone, now.Format(time.RFC3339Nano), nowString(), f.TaskID); err != nil {
 			return nil, err
 		}
+	} else {
+		// Skipping puts the task back into the queue instead of leaving it
+		// stuck in_progress.
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tasks SET status=?, updated_at=? WHERE id=? AND status=?`,
+			model.TaskTodo, nowString(), f.TaskID, model.TaskInProgress); err != nil {
+			return nil, err
+		}
 	}
 
 	elapsed := int64(f.Elapsed(now).Seconds())
@@ -746,4 +754,46 @@ func runtimeEvent(agent string, start, end time.Time, state string) *model.WorkE
 		StartedAt: start, EndedAt: &end, DurationSeconds: int64(d.Seconds()),
 		Source: "derived:audit", Meta: map[string]string{"state": state},
 	}
+}
+
+// RolloverTasks moves unfinished human tasks from one day to another and
+// returns how many were moved. Finished tasks and agent orders stay untouched.
+func (s *Store) RolloverTasks(ctx context.Context, from, to string) (int, error) {
+	q := `UPDATE tasks SET day = ?, updated_at = ? WHERE day = ? AND assignee_kind = 'human'
+		AND status NOT IN ('done','verified','cancelled')`
+	res, err := s.db.ExecContext(ctx, q, to, nowString(), from)
+	if err != nil {
+		return 0, fmt.Errorf("rollover tasks: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// PruneProductivity deletes measurements, evidence, reviews and closed focus
+// sessions older than the given time. Returns the number of removed rows.
+func (s *Store) PruneProductivity(ctx context.Context, before time.Time) (map[string]int64, error) {
+	cutoff := before.UTC().Format(time.RFC3339Nano)
+	out := map[string]int64{}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	for name, stmt := range map[string]string{
+		"work_events":  `DELETE FROM work_events WHERE started_at < ?`,
+		"evidence":     `DELETE FROM evidence WHERE created_at < ?`,
+		"reviews":      `DELETE FROM reviews WHERE created_at < ?`,
+		"focus_closed": `DELETE FROM focus_sessions WHERE status IN ('completed','skipped') AND started_at < ?`,
+	} {
+		res, err := tx.ExecContext(ctx, stmt, cutoff)
+		if err != nil {
+			return nil, fmt.Errorf("prune %s: %w", name, err)
+		}
+		n, _ := res.RowsAffected()
+		out[name] = n
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

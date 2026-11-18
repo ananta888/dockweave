@@ -290,6 +290,16 @@ const (
 	EventRecovery       EventType = "recovery"
 	EventSecurityDeny   EventType = "security.denied"
 	EventConflict       EventType = "monitor.conflict"
+
+	// Productivity layer audit events (goal and focus changes).
+	EventObjectiveCreated  EventType = "objective.created"
+	EventTaskCreated       EventType = "task.created"
+	EventTaskUpdated       EventType = "task.updated"
+	EventFocusStarted      EventType = "focus.started"
+	EventFocusEnded        EventType = "focus.ended"
+	EventBudgetUpdated     EventType = "budget.updated"
+	EventReviewCreated     EventType = "review.created"
+	EventProductivityPrune EventType = "productivity.pruned"
 )
 
 // Event is an audit-log record. Events form a hash chain (PrevHash/Hash)

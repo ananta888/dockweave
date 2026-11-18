@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -178,7 +180,46 @@ func taskCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(add, list, move, done)
+	rollover := &cobra.Command{
+		Use: "rollover", Short: "Move unfinished human tasks to another day",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			from, _ := cmd.Flags().GetString("from")
+			to, _ := cmd.Flags().GetString("to")
+			if to == "today" {
+				to = time.Now().Format("2006-01-02")
+			}
+			body := map[string]string{"from": from, "to": to}
+			var out map[string]any
+			if err := client().Do(context.Background(), "POST", "/api/v1/tasks/rollover", body, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	}
+	rollover.Flags().String("from", "", "source day (default yesterday)")
+	rollover.Flags().String("to", "today", "target day")
+
+	order := &cobra.Command{
+		Use: "order ID N", Short: "Set the manual position of a task", Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var t model.Task
+			if err := client().Do(context.Background(), "GET", "/api/v1/tasks/"+args[0], nil, &t); err != nil {
+				return err
+			}
+			n, err := strconv.Atoi(args[1])
+			if err != nil {
+				return err
+			}
+			t.OrderIndex = n
+			if err := client().Do(context.Background(), "PATCH", "/api/v1/tasks/"+args[0], t, &t); err != nil {
+				return err
+			}
+			fmt.Printf("%s -> position %d\n", t.ID, t.OrderIndex)
+			return nil
+		},
+	}
+	cmd.AddCommand(add, list, move, done, rollover, order)
 	return cmd
 }
 
@@ -235,7 +276,22 @@ func focusCmd() *cobra.Command {
 		c.Flags().String("notes", "", "session notes")
 		return c
 	}
-	cmd.AddCommand(start, status,
+	sw := &cobra.Command{
+		Use: "switch TASK", Short: "Skip the current session and start another task", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			h, _ := cmd.Flags().GetString("human")
+			body := map[string]string{"task_id": args[0], "human": h}
+			var f model.FocusSession
+			if err := client().Do(context.Background(), "POST", "/api/v1/focus/switch", body, &f); err != nil {
+				return err
+			}
+			fmt.Printf("switched to %s (%s)\n", f.TaskID, f.Status)
+			return nil
+		},
+	}
+	sw.Flags().String("human", "local", "human identity")
+
+	cmd.AddCommand(start, status, sw,
 		action("pause", "/api/v1/focus/pause", false),
 		action("resume", "/api/v1/focus/resume", false),
 		action("done", "/api/v1/focus/complete", true),
@@ -324,7 +380,27 @@ func evidenceCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(add, list)
+	git := &cobra.Command{
+		Use: "git TASK", Short: "Attach the current HEAD commit as evidence", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+			if err != nil {
+				return fmt.Errorf("not a git repository: %w", err)
+			}
+			sha := strings.TrimSpace(string(out))
+			e := model.Evidence{
+				TaskID: args[0], Kind: model.EvidenceCommit, Status: model.EvidencePassed,
+				Ref: sha, Verified: true, IdempotencyKey: "commit:" + sha,
+			}
+			var res map[string]any
+			if err := client().Do(context.Background(), "POST", "/api/v1/evidence", e, &res); err != nil {
+				return err
+			}
+			fmt.Printf("commit %s attached to %s\n", sha[:12], args[0])
+			return nil
+		},
+	}
+	cmd.AddCommand(add, list, git)
 	return cmd
 }
 
@@ -599,6 +675,27 @@ func calendarCmd() *cobra.Command {
 	}
 	cmd.Flags().String("start", "", "start day YYYY-MM-DD")
 	cmd.Flags().String("end", "", "end day YYYY-MM-DD")
+	return cmd
+}
+
+func pruneCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use: "prune", Short: "Delete old measurements, evidence and reviews (retention)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			before, _ := cmd.Flags().GetString("before")
+			path := "/api/v1/productivity/prune"
+			if before != "" {
+				path += "?before=" + before
+			}
+			var out map[string]any
+			if err := client().Do(context.Background(), "POST", path, nil, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			return nil
+		},
+	}
+	cmd.Flags().String("before", "", "delete data older than YYYY-MM-DD (default 90d)")
 	return cmd
 }
 

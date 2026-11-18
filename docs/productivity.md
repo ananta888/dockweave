@@ -90,3 +90,16 @@ events, budget actuals, calendar logbook, optional ranking, Ananta contracts.
   `s/p/c/d/x` for start/pause/continue/done/skip.
 - Secret-looking keys (`token`, `secret`, `password`, `api_key`, ...) are
   rejected in event metadata and evidence payloads.
+
+## Rollover, switch, retention and audit
+
+- `POST /api/v1/tasks/rollover` moves unfinished human tasks to the next day;
+  agent orders and finished tasks stay untouched.
+- `POST /api/v1/focus/switch` skips the current session, returns the old task
+  to the queue and starts the new one.
+- `POST /api/v1/productivity/prune?before=YYYY-MM-DD` deletes old measurements
+  (by `started_at`), evidence, reviews and closed focus sessions.
+- Every mutation writes a hash-chained audit event (`objective.created`,
+  `task.created`, `task.updated`, `focus.started`, `budget.updated`,
+  `review.created`, `productivity.pruned`).
+- `dockweave evidence git TASK` attaches the current HEAD commit idempotently.

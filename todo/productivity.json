@@ -329,6 +329,99 @@
         "go test ./internal/api -run Auth"
       ],
       "status": "done"
+    },
+    {
+      "id": "prod-018",
+      "title": "Tages-Rollover",
+      "description": "Nicht erledigte menschliche Aufgaben kontrolliert auf den Folgetag übertragen; Agentenaufträge und erledigte Aufgaben bleiben unberührt.",
+      "priority": "high",
+      "dependencies": [
+        "prod-002"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Rollover verschiebt nur offene human-Tasks; Rückgabewert nennt die Anzahl.",
+      "tests": [
+        "Persistence: nur offene human-Tasks"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-019",
+      "title": "Focus-Switch",
+      "description": "Wechsel der Fokus-Session ohne Aufgabe in_progress zu lassen: alte Session wird übersprungen, neue gestartet.",
+      "priority": "high",
+      "dependencies": [
+        "prod-003"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Switch beendet die alte Session als skipped, setzt den alten Task auf todo und startet die neue.",
+      "tests": [
+        "API: Switch setzt alten Task zurück"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-020",
+      "title": "Aufbewahrung / Pruning",
+      "description": "Konfigurierbares Löschen alter Messungen, Nachweise, Reviews und geschlossener Fokus-Sessions.",
+      "priority": "medium",
+      "dependencies": [
+        "prod-004",
+        "prod-007"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Prune löscht nur Daten vor dem Stichtag; Bericht nennt Anzahl je Tabelle.",
+      "tests": [
+        "Persistence: alte Messung gelöscht, neue bleibt"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-021",
+      "title": "Audit-Historie für Planungsänderungen",
+      "description": "Produktivitätsänderungen (Ziel, Aufgabe, Fokus, Budget, Review, Prune) im hash-verketteten Audit-Log protokollieren.",
+      "priority": "high",
+      "dependencies": [
+        "prod-009"
+      ],
+      "components": [
+        "internal/api",
+        "internal/persistence"
+      ],
+      "acceptance": "Jede Mutation erzeugt ein Event; Kette bleibt intakt.",
+      "tests": [
+        "API: Events nach Rollover/Switch"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "prod-022",
+      "title": "Git-Nachweis aus der CLI",
+      "description": "Aktuellen HEAD-Commit als verifizierten Nachweis an eine Aufgabe hängen.",
+      "priority": "medium",
+      "dependencies": [
+        "prod-005"
+      ],
+      "components": [
+        "cmd/dockweave"
+      ],
+      "acceptance": "dockweave evidence git TASK trägt Commit-SHA idempotent ein.",
+      "tests": [
+        "Manuell"
+      ],
+      "status": "done"
     }
   ]
 }

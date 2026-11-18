@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/persistence"
 )
 
 // Productivity API: goals, daily tasks, focus, measurements, evidence,
@@ -43,6 +45,7 @@ func (s *Server) createObjective(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventObjectiveCreated, o.Title)
 	writeJSON(w, http.StatusCreated, o)
 }
 
@@ -81,6 +84,7 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventTaskCreated, t.Title)
 	writeJSON(w, http.StatusCreated, t)
 }
 
@@ -107,6 +111,7 @@ func (s *Server) updateTask(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventTaskUpdated, existing.Title)
 	writeJSON(w, http.StatusOK, existing)
 }
 
@@ -148,6 +153,7 @@ func (s *Server) startFocus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventFocusStarted, "focus "+f.TaskID)
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -266,6 +272,7 @@ func (s *Server) createBudget(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventBudgetUpdated, fmt.Sprintf("%s/%s", b.Scope, b.Kind))
 	writeJSON(w, http.StatusCreated, b)
 }
 
@@ -288,6 +295,7 @@ func (s *Server) createReview(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
+	s.audit(r, model.EventReviewCreated, string(rv.Kind))
 	writeJSON(w, http.StatusCreated, rv)
 }
 
@@ -618,3 +626,78 @@ func (s *Server) exportProductivity(w http.ResponseWriter, r *http.Request) {
 		"note": "read-only export; grants no execution rights",
 	})
 }
+
+// audit writes productivity changes into the hash-chained audit log.
+func (s *Server) audit(r *http.Request, typ model.EventType, msg string) {
+	_ = s.Store.AppendEvent(r.Context(), &model.Event{
+		ID: model.NewID("evt"), Type: typ, Actor: "api", Message: msg,
+		Timestamp: time.Now().UTC(),
+	})
+}
+
+// rolloverTasks moves unfinished human tasks to another day.
+func (s *Server) rolloverTasks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.To == "" {
+		req.To = today()
+	}
+	if req.From == "" {
+		req.From = time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	}
+	n, err := s.Store.RolloverTasks(r.Context(), req.From, req.To)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, model.EventTaskUpdated, fmt.Sprintf("rollover %s -> %s: %d tasks", req.From, req.To, n))
+	writeJSON(w, http.StatusOK, map[string]any{"from": req.From, "to": req.To, "moved": n})
+}
+
+// switchFocus ends the current session (skip) and starts the given task.
+func (s *Server) switchFocus(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TaskID string `json:"task_id"`
+		Human  string `json:"human"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", err)
+		return
+	}
+	if req.Human == "" {
+		req.Human = humanFrom(r)
+	}
+	if _, err := s.Store.EndFocus(r.Context(), req.Human, false, "switched"); err != nil && !errors.Is(err, persistenceErrNotFound()) {
+		s.fail(w, err)
+		return
+	}
+	f, err := s.Store.StartFocus(r.Context(), req.TaskID, req.Human)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, model.EventFocusStarted, "switch to "+req.TaskID)
+	writeJSON(w, http.StatusCreated, f)
+}
+
+// pruneProductivity deletes old measurements and reviews (retention policy).
+func (s *Server) pruneProductivity(w http.ResponseWriter, r *http.Request) {
+	before := time.Now().AddDate(0, 0, -90)
+	if v := r.URL.Query().Get("before"); v != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			before = t
+		}
+	}
+	counts, err := s.Store.PruneProductivity(r.Context(), before)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.audit(r, model.EventProductivityPrune, fmt.Sprintf("pruned before %s", before.Format("2006-01-02")))
+	writeJSON(w, http.StatusOK, map[string]any{"before": before.Format("2006-01-02"), "deleted": counts})
+}
+
+func persistenceErrNotFound() error { return persistence.ErrNotFound }

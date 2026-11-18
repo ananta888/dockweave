@@ -177,3 +177,75 @@ func TestBulkDeleteTaskRemovesFocus(t *testing.T) {
 		t.Fatalf("focus still present: %v", err)
 	}
 }
+
+func TestRolloverOnlyUnfinishedHumanTasks(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	_ = st.CreateTask(ctx, &model.Task{Title: "open", Day: "2026-11-17"})
+	_ = st.CreateTask(ctx, &model.Task{Title: "done", Day: "2026-11-17", Status: model.TaskDone})
+	_ = st.CreateTask(ctx, &model.Task{Title: "agent", Day: "2026-11-17", AssigneeKind: model.AssigneeAgent, AgentID: "ag_1"})
+
+	n, err := st.RolloverTasks(ctx, "2026-11-17", "2026-11-18")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("moved = %d, want 1", n)
+	}
+	open, _ := st.ListTasks(ctx, "2026-11-18", "", "", 0)
+	if len(open) != 1 || open[0].Title != "open" {
+		t.Fatalf("today = %+v", open)
+	}
+}
+
+func TestPruneRemovesOldMeasurements(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	old := time.Now().AddDate(0, 0, -120)
+	_, _ = st.AddWorkEvent(ctx, &model.WorkEvent{
+		Kind: model.EventHumanFocus, StartedAt: old, DurationSeconds: 60,
+		IdempotencyKey: "old",
+	})
+	_, _ = st.AddWorkEvent(ctx, &model.WorkEvent{
+		Kind: model.EventHumanFocus, StartedAt: time.Now(), DurationSeconds: 60,
+		IdempotencyKey: "new",
+	})
+	counts, err := st.PruneProductivity(ctx, time.Now().AddDate(0, 0, -90))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["work_events"] != 1 {
+		t.Fatalf("deleted = %v", counts)
+	}
+	events, _ := st.ListWorkEvents(ctx, "", 0)
+	if len(events) != 1 || events[0].IdempotencyKey != "new" {
+		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestMigrationSurvivesReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reopen.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	task := &model.Task{Title: "persist me"}
+	if err := st.CreateTask(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+
+	st2, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer st2.Close()
+	got, err := st2.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("read after reopen: %v", err)
+	}
+	if got.Title != "persist me" {
+		t.Fatalf("title = %s", got.Title)
+	}
+}

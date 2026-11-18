@@ -75,3 +75,14 @@ Ananta-Verträge.
   `s/p/c/d/x` fuer Start/Pause/Weiter/Fertig/Ueberspringen.
 - Secret-artige Keys (`token`, `secret`, `password`, `api_key`, ...) werden in
   Event-Metadaten und Evidence-Payloads abgelehnt.
+
+## Rollover, Wechsel, Aufbewahrung und Audit
+
+- `POST /api/v1/tasks/rollover` verschiebt offene menschliche Aufgaben auf den
+  Folgetag; Agentenauftraege und erledigte Aufgaben bleiben unberuehrt.
+- `POST /api/v1/focus/switch` beendet die laufende Session als skipped, legt die
+  alte Aufgabe zurueck in die Queue und startet die neue.
+- `POST /api/v1/productivity/prune?before=YYYY-MM-DD` loescht alte Messungen
+  (nach `started_at`), Nachweise, Reviews und geschlossene Fokus-Sessions.
+- Jede Aenderung schreibt ein hash-verkettetes Audit-Event.
+- `dockweave evidence git TASK` haengt den aktuellen HEAD-Commit idempotent an.

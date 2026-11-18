@@ -187,3 +187,57 @@ func TestDerivedSuggestCalendarAndReport(t *testing.T) {
 }
 
 func timeNow() time.Time { return time.Now().UTC() }
+
+func TestRolloverSwitchAndAudit(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	yesterday := "2026-11-17"
+	a := &model.Task{Title: "a", Day: yesterday}
+	b := &model.Task{Title: "b", Day: "2026-11-18"}
+	_ = s.Store.CreateTask(ctx, a)
+	_ = s.Store.CreateTask(ctx, b)
+
+	// Focus a, then switch to b: a goes back to the queue.
+	if _, err := s.Store.StartFocus(ctx, a.ID, "mira"); err != nil {
+		t.Fatal(err)
+	}
+	rec := call(t, s, s.switchFocus, http.MethodPost, "/api/v1/focus/switch",
+		map[string]string{"task_id": b.ID, "human": "mira"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("switch = %d: %s", rec.Code, rec.Body.String())
+	}
+	gotA, _ := s.Store.GetTask(ctx, a.ID)
+	if gotA.Status != model.TaskTodo {
+		t.Fatalf("switched-away task = %s, want todo", gotA.Status)
+	}
+
+	rec = call(t, s, s.rolloverTasks, http.MethodPost, "/api/v1/tasks/rollover",
+		map[string]string{"from": yesterday, "to": "2026-11-18"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rollover = %d: %s", rec.Code, rec.Body.String())
+	}
+	plan, _ := s.Store.TodayPlan(ctx, "2026-11-18", "mira")
+	if len(plan.Tasks) != 2 {
+		t.Fatalf("today = %d tasks, want 2", len(plan.Tasks))
+	}
+
+	events, _ := s.Store.ListEvents(ctx, 50)
+	found := false
+	for _, e := range events {
+		if e.Type == model.EventTaskUpdated || e.Type == model.EventFocusStarted {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected productivity audit events")
+	}
+}
+
+func TestPruneEndpoint(t *testing.T) {
+	s := testServer(t)
+	rec := call(t, s, s.pruneProductivity, http.MethodPost,
+		"/api/v1/productivity/prune?before=2026-01-01", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("prune = %d: %s", rec.Code, rec.Body.String())
+	}
+}
