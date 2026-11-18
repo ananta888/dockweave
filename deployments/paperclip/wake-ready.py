@@ -16,8 +16,12 @@ CLI = os.environ.get("PAPERCLIPAI_BIN") or "/home/krusty/.local/bin/paperclipai"
 DONE = {"done", "cancelled", "canceled"}
 
 
-def run(args):
-    return subprocess.run([CLI] + args, capture_output=True, text=True)
+def run(args, local=False):
+    env = dict(os.environ)
+    if local:
+        for key in ("PAPERCLIP_API_KEY", "PAPERCLIP_AGENT_ID", "PAPERCLIP_RUN_ID"):
+            env.pop(key, None)
+    return subprocess.run([CLI] + args, capture_output=True, text=True, env=env)
 
 
 def list_issues(company):
@@ -57,9 +61,13 @@ def main():
             g = run(["issue", "get", issue.get("id"), "--json"])
             if g.returncode == 0:
                 try:
-                    blockers = json.loads(g.stdout).get("blockedByIssueIds") or []
+                    detail = json.loads(g.stdout)
                 except Exception:
-                    blockers = []
+                    detail = {}
+                ids = detail.get("blockedByIssueIds") or []
+                if not ids:
+                    ids = [b.get("id") for b in detail.get("blockedBy") or [] if b.get("id")]
+                blockers = ids
         if any(status.get(b) not in DONE for b in blockers):
             continue
         agent = issue.get("assigneeAgentId")
@@ -69,6 +77,11 @@ def main():
                  "--source", "assignment", "--trigger", "manual",
                  "--reason", "Unblocked: %s" % (issue.get("identifier") or issue.get("id")),
                  "--json"])
+        if w.returncode != 0:
+            w = run(["agent", "wake", agent, "-C", company,
+                     "--source", "assignment", "--trigger", "manual",
+                     "--reason", "Unblocked: %s" % (issue.get("identifier") or issue.get("id")),
+                     "--json"], local=True)
         if w.returncode == 0:
             names = {i.get("id"): i.get("name") for i in issues}
             print("READY\t%s\t%s" % (issue.get("identifier") or issue.get("id"), names.get(agent) or agent))

@@ -80,9 +80,10 @@ def rework(issue_id, reason):
 
 def call(method, path, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(API + path, data=data, method=method,
-                                 headers={"Content-Type": "application/json",
-                                          "Authorization": "Bearer " + KEY})
+    headers = {"Content-Type": "application/json"}
+    if KEY:
+        headers["Authorization"] = "Bearer " + KEY
+    req = urllib.request.Request(API + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read()
@@ -121,7 +122,7 @@ def list_pending(issue_id):
 
 
 def main():
-    if len(sys.argv) < 3 or not KEY:
+    if len(sys.argv) < 3:
         print(json.dumps({"ok": False, "error": "usage or missing API key"}))
         return 2
     action = sys.argv[1]

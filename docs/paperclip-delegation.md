@@ -66,3 +66,24 @@ dockweave-run.sh lead orchestrate
 - All roles work in the same registered workspace (default
   `/workspace/crystal-run`); the wrapper repeats the workspace path and the
   "no parallel writes to the same file" rule in every child issue.
+
+## Gates
+
+The wrapper enforces four gates before an issue counts as done:
+
+1. **Dependencies** - `plan-delegate.py` writes real `blockedByIssueIds` edges;
+   `wake-ready.py` only wakes issues whose blockers are done.
+2. **Build/test** - `gates.py` reads `<workspace>/.paperclip/gates.json` and runs
+   the project command. A failed gate turns `STATUS: DONE` into `in_progress`
+   with the command output as comment.
+3. **Review** - the reviewer answers with `VERDICT: PASS|FAIL`; `FAIL` opens a
+   rework issue for the author of the first dependency.
+4. **Human approval** - `parent-close.py` closes a Lead issue only when all
+   children are done, the review has `VERDICT: PASS` and an accepted
+   `human_only` interaction exists. Otherwise the parent stays `in_review` with
+   a pending card in the Paperclip inbox.
+
+The 2D graph in the Angular app stores the same gate contracts. Previously it
+lived in `localStorage`; `GET/PUT /graph` on the web gateway persists the whole
+document in `~/.local/share/dockweave/graph.json`, and the daemon exposes the
+same document as `GET/PUT /api/v1/graph` for non-browser clients.

@@ -170,6 +170,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/grants", s.listGrants)
 	s.mux.HandleFunc("DELETE /api/v1/grants/{id}", s.revokeGrant)
 	s.mux.HandleFunc("GET /api/v1/mounts", s.listMounts)
+	s.mux.HandleFunc("GET /api/v1/graph", s.getGraph)
+	s.mux.HandleFunc("PUT /api/v1/graph", s.putGraph)
 	s.mux.HandleFunc("GET /api/v1/activity", s.activity)
 	s.mux.HandleFunc("GET /api/v1/conflicts", s.conflicts)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)

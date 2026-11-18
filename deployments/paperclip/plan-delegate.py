@@ -142,8 +142,10 @@ def main():
             marker = "DEPENDS_ON: " + ",".join(
                 (by_title.get(d, {}).get("identifier") or created[d]) for d in deps if created.get(d)
             )
-            run(["issue", "comment", issue_id, "--body",
-                 marker + "\n(automatisch gesetzt aus dem Lead-Plan)"])
+            already = run(["issue", "comments", issue_id, "--json"]).stdout or ""
+            if "DEPENDS_ON:" not in already:
+                run(["issue", "comment", issue_id, "--body",
+                     marker + "\n(automatisch gesetzt aus dem Lead-Plan)"])
         if dep_ids and KEY:
             try:
                 api("PATCH", "/api/issues/" + issue_id, {"blockedByIssueIds": dep_ids})

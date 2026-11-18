@@ -185,6 +185,12 @@ var migrations = []string{
 	ALTER TABLE agents ADD COLUMN avatar_svg TEXT NOT NULL DEFAULT '';`,
 	// 11: in-container runtime adapter (docker|herdr|paperclip); empty = docker.
 	`ALTER TABLE agents ADD COLUMN runtime TEXT NOT NULL DEFAULT '';`,
+	// 12: server-side 2D graph / gate contracts (previously browser localStorage).
+	`CREATE TABLE IF NOT EXISTS graph_documents (
+		id TEXT PRIMARY KEY,
+		body TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);`,
 }
 
 // Store is the DockWeave registry.
@@ -1215,6 +1221,32 @@ func (s *Store) DeleteAgentTypeSkill(ctx context.Context, agentType, idOrName st
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// GraphDocument returns the stored 2D graph document or an empty body.
+func (s *Store) GraphDocument(ctx context.Context, id string) (string, error) {
+	var body string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT body FROM graph_documents WHERE id = ?`, id).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read graph document: %w", err)
+	}
+	return body, nil
+}
+
+// SaveGraphDocument stores the 2D graph document.
+func (s *Store) SaveGraphDocument(ctx context.Context, id, body string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO graph_documents (id, body, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at`,
+		id, body, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("save graph document: %w", err)
 	}
 	return nil
 }

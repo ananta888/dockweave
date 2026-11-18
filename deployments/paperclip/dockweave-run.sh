@@ -102,6 +102,26 @@ case "$MODEL_OR_CONTAINER" in
     ;;
 esac
 
+# Guard: a Lead issue that already has children only settles its gates.
+if [ "$MODE" = "orchestrate" ] && [ -n "$ISSUE_ID" ]; then
+  HELPER_DIR_EARLY="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
+  HAS_KIDS=$(python3 -c 'import json,subprocess,sys
+parent, company = sys.argv[1], sys.argv[2]
+p = subprocess.run([sys.argv[3], "issue", "list", "-C", company, "--json"], capture_output=True, text=True)
+try:
+    items = json.loads(p.stdout)
+except Exception:
+    items = []
+if isinstance(items, dict):
+    items = items.get("issues") or items.get("data") or []
+print(sum(1 for i in items if i.get("parentId") == parent))' "$ISSUE_ID" "${PAPERCLIP_COMPANY_ID:-}" "$PAPERCLIPAI" 2>/dev/null)
+  if [ "${HAS_KIDS:-0}" != "0" ]; then
+    echo "[dockweave-run] parent already delegated (${HAS_KIDS} children); settling gates only" >&2
+    python3 "$HELPER_DIR_EARLY/parent-close.py" "$ISSUE_ID" "${DOCKWEAVE_HOST_WORKSPACE:-/home/krusty/projects/crystal-run}" 2>/dev/null || true
+    exit 0
+  fi
+fi
+
 PROMPT="$TASK"
 if [ "$MODE" = "orchestrate" ]; then
   PROMPT=$(python3 - "$TASK" "$WORKSPACE" <<'EOF'
@@ -129,6 +149,21 @@ deine Antwort mit genau einer Statuszeile:
   STATUS: BLOCKED     - du brauchst eine Entscheidung oder fehlende Rechte
   STATUS: IN_PROGRESS - Teilarbeit erledigt, Rest offen
 Ohne diese Zeile gilt die Aufgabe als IN_PROGRESS."
+  REVIEWER_ID=$(python3 -c 'import json,sys
+try:
+    print(json.load(open(sys.argv[1])).get("reviewer") or "")
+except Exception:
+    print("")' "$ROLES_FILE" 2>/dev/null)
+  if [ -n "${PAPERCLIP_AGENT_ID:-}" ] && [ "$PAPERCLIP_AGENT_ID" = "$REVIEWER_ID" ]; then
+    PROMPT="$PROMPT
+
+Review-Vertrag: Pruefe die Arbeit der anderen Rollen (Build, Tests, Code).
+Beende deine Antwort zusaetzlich mit:
+  VERDICT: PASS   - freigegeben
+  VERDICT: FAIL   - nicht freigegeben
+  REASON: <ein Satz Begruendung>
+Bei FAIL wird automatisch ein Rework-Issue beim Autor angelegt."
+  fi
 fi
 
 # 2. Send the task through the DockWeave endpoint (unix socket, no token).

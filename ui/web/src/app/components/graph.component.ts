@@ -3,6 +3,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
+import { GraphService } from '../core/services/graph.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
@@ -110,6 +111,9 @@ interface GraphEdge {
           <button [class.active]="mode() === 'resources'" (click)="setMode('resources')">Ressourcen</button>
         </div>
         <span class="muted">{{ mode() === 'organization' ? 'units · roles · agents' : 'agents · workspaces · memory · credentials · knowledge' }}</span>
+        @if (gateCount() > 0) {
+          <span class="muted" title="Deterministische Gates aus dem Graph-Dokument">Gates: {{ gateCount() }}</span>
+        }
         <span class="spacer"></span>
         <select class="small-select" [ngModel]="layout()" (ngModelChange)="setLayout($event)">
           <option value="mixed">Gemischt</option>
@@ -960,6 +964,53 @@ export class GraphComponent implements OnChanges {
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly graphService = inject(GraphService);
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
+
+  constructor() {
+    // The gateway is the shared source of truth; localStorage stays as a
+    // fallback when the gateway has no document yet.
+    this.graphService.load().subscribe({
+      next: (res) => {
+        const doc = (res?.saved ? res.body : null) as Record<string, unknown> | null;
+        if (!doc) return;
+        const apply = <T>(key: string, value: T | undefined, target: { set: (v: T) => void }) => {
+          if (value === undefined) return;
+          try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* ignore */ }
+          target.set(value);
+        };
+        apply('dockweave.agentConnectors', doc['connectors'] as ConnectorConfig[] | undefined, this.connectors);
+        apply('dockweave.customEdges', doc['customEdges'] as CustomEdge[] | undefined, this.customEdges);
+        apply('dockweave.graphGhosts', doc['ghosts'] as GhostNode[] | undefined, this.ghosts);
+        if (doc['schema']) apply('dockweave.graphSchema', doc['schema'] as GraphSchema, this.schema);
+        if (doc['positions']) {
+          this.manualPositions = doc['positions'] as Record<string, { x: number; y: number }>;
+          try { localStorage.setItem('dockweave.graphPositions', JSON.stringify(this.manualPositions)); } catch { /* ignore */ }
+        }
+      },
+      error: () => { /* offline: keep the local copy */ },
+    });
+  }
+
+  /** Debounced push of the whole graph document to the gateway. */
+  private scheduleGraphSave(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.pushGraph(), 400);
+  }
+
+  private pushGraph(): void {
+    const doc = {
+      version: 1,
+      schema: this.schema(),
+      connectors: this.connectors(),
+      customEdges: this.customEdges(),
+      ghosts: this.ghosts(),
+      positions: this.manualPositions,
+      updatedAt: new Date().toISOString(),
+    };
+    this.graphService.save(doc).subscribe({ error: () => { /* keep localStorage */ } });
+  }
 
   dataVersion = signal(0);
 
@@ -2034,6 +2085,7 @@ export class GraphComponent implements OnChanges {
 
   private persistConnectors(v: ConnectorConfig[]): void {
     try { localStorage.setItem('dockweave.agentConnectors', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   private connectorNodes(base: GraphNode[]): GraphNode[] {
@@ -2104,6 +2156,7 @@ export class GraphComponent implements OnChanges {
 
   private persistTemplates(v: LayoutTemplate[]): void {
     try { localStorage.setItem('dockweave.layoutTemplates', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   private loadGhosts(): GhostNode[] {
@@ -2112,6 +2165,7 @@ export class GraphComponent implements OnChanges {
 
   private persistGhosts(v: GhostNode[]): void {
     try { localStorage.setItem('dockweave.graphGhosts', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   openSettings(): void {
@@ -2169,6 +2223,7 @@ export class GraphComponent implements OnChanges {
 
   private persistSchema(v: GraphSchema): void {
     try { localStorage.setItem('dockweave.graphSchema', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   private loadCustomEdges(): CustomEdge[] {
@@ -2177,6 +2232,7 @@ export class GraphComponent implements OnChanges {
 
   private persistCustomEdges(v: CustomEdge[]): void {
     try { localStorage.setItem('dockweave.customEdges', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   private loadPositions(): Record<string, { x: number; y: number }> {
@@ -2185,6 +2241,7 @@ export class GraphComponent implements OnChanges {
 
   private persistPositions(v: Record<string, { x: number; y: number }>): void {
     try { localStorage.setItem('dockweave.graphPositions', JSON.stringify(v)); } catch { /* ignore */ }
+    this.scheduleGraphSave();
   }
 
   portsForId(nodeId: string, type?: 'in' | 'out'): GraphPort[] {
