@@ -199,7 +199,7 @@ interface GraphEdge {
                 fDragHandle
                 [fGroupId]="node.id"
                 [attr.data-node-id]="node.id"
-                [fGroupPosition]="node.position"
+                [fGroupPosition]="animatedPos(node)"
                 (fGroupPositionChange)="moveNode(node.id, $event)"
                 class="gw-node"
                 [class]="'kind-' + node.kind"
@@ -913,6 +913,9 @@ export class GraphComponent implements OnChanges {
   customEdges = signal<CustomEdge[]>(this.loadCustomEdges());
   layoutNonce = signal(0);
   readonly computing = signal(false);
+  private animTick = signal(0);
+  private animated = new Map<string, { x: number; y: number }>();
+  private animId: number | null = null;
   private layoutGen = 0;
   private pendingLayout: LayoutAlgorithm | null = null;
   private previousLayout: LayoutAlgorithm = 'mixed';
@@ -1597,15 +1600,55 @@ export class GraphComponent implements OnChanges {
     this.pendingLayout = algo;
     const gen = ++this.layoutGen;
     this.computing.set(true);
+    // Snapshot the current rendered positions as the animation start.
+    const from = new Map<string, { x: number; y: number }>();
+    for (const n of this.nodes()) from.set(n.id, { ...(this.animated.get(n.id) ?? n.position) });
     // Yield one frame so the spinner paints, then run the layout.
     setTimeout(() => {
-      if (gen !== this.layoutGen) return; // cancelled in the meantime
+      if (gen !== this.layoutGen) { this.computing.set(false); return; } // cancelled
       this.layoutNonce.update(v => v + 1);
-      void this.nodes(); // force evaluation while the spinner is visible
+      const target = this.nodes(); // force evaluation while the spinner is visible
       this.computing.set(false);
       this.pendingLayout = null;
+      this.animateTo(from, target);
       this.fit();
     }, 16);
+  }
+
+  // animatedPos is bound to every node position: during an animation it
+  // returns the interpolated value, otherwise the node's target position.
+  animatedPos(node: GraphNode): { x: number; y: number } {
+    this.animTick();
+    return this.animated.get(node.id) ?? node.position;
+  }
+
+  // Animate nodes from their previous positions to the new layout with an
+  // ease-out, so the user sees them arrange themselves.
+  private animateTo(from: Map<string, { x: number; y: number }>, target: GraphNode[]): void {
+    if (this.animId !== null) cancelAnimationFrame(this.animId);
+    const start = performance.now();
+    const dur = 480;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      this.animated.clear();
+      for (const n of target) {
+        const f = from.get(n.id) ?? n.position;
+        this.animated.set(n.id, {
+          x: f.x + (n.position.x - f.x) * e,
+          y: f.y + (n.position.y - f.y) * e,
+        });
+      }
+      this.animTick.update(v => v + 1);
+      if (t < 1) {
+        this.animId = requestAnimationFrame(step);
+      } else {
+        this.animated.clear();
+        this.animTick.update(v => v + 1);
+        this.animId = null;
+      }
+    };
+    this.animId = requestAnimationFrame(step);
   }
 
   cancelLayout(): void {
