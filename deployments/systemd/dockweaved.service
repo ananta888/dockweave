@@ -10,10 +10,8 @@ Type=simple
 User=dockweave
 Group=dockweave
 SupplementaryGroups=docker
-RuntimeDirectory=dockweave
-RuntimeDirectoryMode=0750
-StateDirectory=dockweave
-StateDirectoryMode=0750
+# The runtime directory is owned by dockweave-mountd (group dockweave);
+# the daemon only needs write access through its group membership.
 Environment=DOCKWEAVE_MOUNTD_SOCKET=/run/dockweave/mountd.sock
 EnvironmentFile=-/etc/dockweave/dockweaved.conf
 ExecStart=/usr/local/bin/dockweaved
@@ -24,7 +22,7 @@ RestartSec=2
 CapabilityBoundingSet=
 AmbientCapabilities=
 NoNewPrivileges=yes
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=read-only
 PrivateTmp=yes
 ProtectKernelTunables=yes
