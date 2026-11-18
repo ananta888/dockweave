@@ -287,7 +287,10 @@ compromised daemon can mount any directory it can open, but not over arbitrary
 targets. (b) The Docker socket remains root-equivalent unless a socket proxy or
 rootless Docker is used — this decision does not change that. (c) The helper
 itself still holds CAP_SYS_ADMIN and is therefore a small, auditable attack
-surface; it must stay minimal.
+surface; it must stay minimal. It additionally holds CAP_DAC_READ_SEARCH
+because it resolves fds to paths and must traverse directories whose owner
+mode is 0700; that capability bypasses read/search checks only, not write
+checks.
 
 **Fallback:** without `MOUNTD_SOCKET` the daemon keeps the direct root backend.
 

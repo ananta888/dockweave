@@ -14,8 +14,8 @@ Restart=on-failure
 RestartSec=2
 
 # The helper only performs mount(2)/mount_setattr on fds it receives.
-CapabilityBoundingSet=CAP_SYS_ADMIN
-AmbientCapabilities=CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
 NoNewPrivileges=yes
 ProtectSystem=full
 ProtectHome=read-only

@@ -9,7 +9,7 @@ that only accepts directory file descriptors.
 | Process | User | Privileges | Responsibility |
 |---|---|---|---|
 | `dockweaved` | `dockweave` (+ `docker` group) | none beyond a normal user | API, DB, Docker, sessions |
-| `dockweave-mountd` | root | `CAP_SYS_ADMIN` only | `mount`, `mount_setattr`, `umount` on received fds |
+| `dockweave-mountd` | root | `CAP_SYS_ADMIN`, `CAP_DAC_READ_SEARCH` | `mount`, `mount_setattr`, `umount` on received fds |
 
 ## Protocol
 
@@ -50,6 +50,10 @@ systemctl enable --now dockweave-mountd dockweaved
 The units harden both processes (`NoNewPrivileges`, `ProtectSystem`,
 `CapabilityBoundingSet`). The daemon unit deliberately grants **no**
 capabilities; only the helper has `CAP_SYS_ADMIN`.
+
+`CAP_DAC_READ_SEARCH` is needed because the helper resolves received fds to
+paths (e.g. probe directories created with mode 0700) and must be able to
+traverse them; it grants read/search only, no write bypass.
 
 ## Without the helper
 

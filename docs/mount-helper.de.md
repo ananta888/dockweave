@@ -9,7 +9,7 @@ Helfer, der nur Dateideskriptoren akzeptiert.
 | Prozess | Benutzer | Rechte | Aufgabe |
 |---|---|---|---|
 | `dockweaved` | `dockweave` (+ `docker`-Gruppe) | keine besonderen Rechte | API, DB, Docker, Sessions |
-| `dockweave-mountd` | root | nur `CAP_SYS_ADMIN` | `mount`/`mount_setattr`/`umount` auf empfangenen FDs |
+| `dockweave-mountd` | root | `CAP_SYS_ADMIN`, `CAP_DAC_READ_SEARCH` | `mount`/`mount_setattr`/`umount` auf empfangenen FDs |
 
 ## Protokoll
 
