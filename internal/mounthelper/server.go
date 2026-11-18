@@ -76,7 +76,10 @@ func dispatch(req Request, fds []int, root string) error {
 		return nil
 	}
 	path := func(i int, verify bool) (string, error) {
-		return resolveFD(fds[i], root, verify)
+		return resolveFD(fds[i], root, true, verify)
+	}
+	source := func(i int) (string, error) {
+		return resolveFD(fds[i], root, false, false)
 	}
 
 	switch req.Op {
@@ -86,7 +89,7 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		src, err := path(0, false)
+		src, err := source(0)
 		if err != nil {
 			return err
 		}
@@ -108,7 +111,7 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		src, err := path(0, false)
+		src, err := source(0)
 		if err != nil {
 			return err
 		}
@@ -181,15 +184,17 @@ func closeAll(fds []int) {
 // resolveFD returns the path an fd refers to. The target must lie below the
 // state root. With verify, the path must still point at the same inode as the
 // fd (no swap between check and syscall).
-func resolveFD(fd int, root string, verify bool) (string, error) {
+func resolveFD(fd int, root string, requireRoot, verify bool) (string, error) {
 	link := fmt.Sprintf("/proc/self/fd/%d", fd)
 	target, err := os.Readlink(link)
 	if err != nil {
 		return "", fmt.Errorf("resolve fd %d: %w", fd, err)
 	}
-	cleanRoot := filepath.Clean(root)
-	if !strings.HasPrefix(filepath.Clean(target), cleanRoot+string(filepath.Separator)) && filepath.Clean(target) != cleanRoot {
-		return "", fmt.Errorf("target %q is outside the state root", target)
+	if requireRoot {
+		cleanRoot := filepath.Clean(root)
+		if !strings.HasPrefix(filepath.Clean(target), cleanRoot+string(filepath.Separator)) && filepath.Clean(target) != cleanRoot {
+			return "", fmt.Errorf("target %q is outside the state root", target)
+		}
 	}
 	if verify {
 		var fdStat, pathStat unix.Stat_t
