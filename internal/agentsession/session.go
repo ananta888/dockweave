@@ -329,6 +329,27 @@ func (s *Session) clearComposer() error {
 	return nil
 }
 
+// PressEnter submits the current composer line (used as a retry by adapters
+// whose TUI occasionally drops the first Enter).
+func (m *Manager) PressEnter(ctx context.Context, idOrName string) error {
+	s, err := m.session(ctx, idOrName)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.alive() {
+		return ErrSessionClosed
+	}
+	s.writeMu.Lock()
+	_, err = s.conn.Write([]byte("\r"))
+	s.writeMu.Unlock()
+	if err != nil {
+		s.shutdown()
+	}
+	return err
+}
+
 // typePrompt writes the prompt text to the TTY. Multi-line prompts use
 // bracketed paste so embedded newlines do not submit half-way.
 func (s *Session) typePrompt(ctx context.Context, prompt string) error {

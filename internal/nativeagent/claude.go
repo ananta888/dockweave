@@ -48,6 +48,8 @@ func (m *Manager) promptClaude(ctx context.Context, idOrName, prompt string) (st
 	deadline := time.Now().Add(m.Timeout)
 	lastChange := time.Now()
 	lastOut := ""
+	started := time.Now()
+	retries := 0
 	for time.Now().Before(deadline) {
 		out, err := m.Docker.ExecOutput(ctx, cid, []string{
 			"tail", "-n", "+" + strconv.Itoa(before+1), path,
@@ -55,6 +57,17 @@ func (m *Manager) promptClaude(ctx context.Context, idOrName, prompt string) (st
 		if err == nil && out != lastOut {
 			lastOut = out
 			lastChange = time.Now()
+			retries = 0
+		}
+		if strings.TrimSpace(out) == "" && retries < 2 && time.Since(started) > 2*time.Second {
+			// Claude's composer occasionally drops the first Enter (especially
+			// right after a restart); press it again while the transcript is
+			// still empty.
+			if m.PressEnter != nil {
+				_ = m.PressEnter(ctx, idOrName)
+			}
+			retries++
+			started = time.Now()
 		}
 		if text := claudeAssistantText(out); text != "" && time.Since(lastChange) >= 1200*time.Millisecond {
 			return text, nil

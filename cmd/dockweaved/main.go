@@ -193,6 +193,7 @@ func run(cfgPath string) error {
 		return lookup.ContainerID(ctx, idOrName)
 	})
 	native.TypePrompt = sessions.TypePrompt
+	native.PressEnter = sessions.PressEnter
 	apiSrv.Native = native
 	if skills, err := skillcatalog.New(filepath.Join(cfg.Root, "skills")); err != nil {
 		log.Printf("skill catalog disabled: %v", err)

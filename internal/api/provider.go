@@ -41,7 +41,7 @@ func (s *Server) enableDeepSeek(w http.ResponseWriter, r *http.Request) {
 		req.Credential = "deepseek-main"
 	}
 	if req.Model == "" {
-		req.Model = "deepseek-chat"
+		req.Model = "deepseek-flash"
 	}
 	if req.TTL == "" {
 		req.TTL = "8h"
@@ -109,8 +109,8 @@ func (s *Server) enableDeepSeek(w http.ResponseWriter, r *http.Request) {
 			"apiKey":  mint.Token,
 		},
 		"models": map[string]any{
-			"deepseek-chat":     map[string]any{"name": "DeepSeek Chat"},
-			"deepseek-reasoner": map[string]any{"name": "DeepSeek Reasoner"},
+			"deepseek-flash":  map[string]any{"name": "DeepSeek Flash"},
+			"deepseek-v4-pro": map[string]any{"name": "DeepSeek V4 Pro"},
 		},
 	}
 	cfg["provider"] = providers

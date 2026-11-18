@@ -114,8 +114,8 @@ import { BrokerRequestEntry } from '../core/models';
           </label>
           <label>Modell
             <select [(ngModel)]="providerModel" name="pvModel">
-              <option value="deepseek-chat">deepseek-chat</option>
-              <option value="deepseek-reasoner">deepseek-reasoner</option>
+              <option value="deepseek-flash">DeepSeek Flash</option>
+              <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
             </select>
           </label>
           <label>TTL <input [(ngModel)]="providerTTL" name="pvTTL" /></label>
@@ -256,7 +256,7 @@ export class CredentialsComponent implements OnInit {
 
   providerAgent = '';
   providerCredential = 'deepseek-main';
-  providerModel = 'deepseek-chat';
+  providerModel = 'deepseek-flash';
   providerTTL = '8h';
   providerResult = signal<{ provider: string; model: string; session_id: string; expires_at: string } | null>(null);
 

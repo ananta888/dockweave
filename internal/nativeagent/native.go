@@ -27,6 +27,8 @@ type Manager struct {
 	// TypePrompt submits a prompt into the live TUI (used by the Claude
 	// transcript adapter).
 	TypePrompt func(ctx context.Context, idOrName, prompt string) error
+	// PressEnter retries the submit if a TUI dropped the first Enter.
+	PressEnter func(ctx context.Context, idOrName string) error
 }
 
 // New creates a Manager. Timeout defaults to 3 minutes.

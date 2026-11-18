@@ -4,7 +4,7 @@
 set -eu
 AGENT_ID="${1:?agent id required}"
 CREDENTIAL="${2:-deepseek-main}"
-MODEL="${3:-deepseek-chat}"
+MODEL="${3:-deepseek-flash}"
 TTL="${4:-8h}"
 SOCKET="${DOCKWEAVE_SOCKET:-/run/dockweave/dockweaved.sock}"
 curl -sS --max-time 30 --unix-socket "$SOCKET" \
