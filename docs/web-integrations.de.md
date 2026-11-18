@@ -68,6 +68,19 @@ Agenten `DW-<name>` an (`adapterConfig.args = ["<name>"]`). Paperclips
 synchronisieren** erledigt das für alle laufenden DockWeave-Agenten; bestehende
 `DW-*`-Agenten werden aktualisiert.
 
+## Credentials-Tab
+
+Der Angular-Tab **Credentials** verwaltet Vault/Broker über Daemon-Endpunkte,
+die den Broker-Admin-Socket proxyen:
+
+- Secrets: Metadatenliste, write-only anlegen/rotieren, löschen
+- Grants: Credential pro Agent, Modelle und Budgets (rpm, concurrent, Tokens/Tag, USD/Tag)
+- Sessions: minten (Token wird einmal angezeigt), auflisten, widerrufen
+- letzte Broker-Requests (secret-free)
+
+Secret-Werte werden nie zurückgegeben; nur das frisch gemintete `dws_`-Token
+wird bei der Erstellung einmal angezeigt.
+
 ## Hinweise
 
 - `herdr prepare` benötigt `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf`, damit der Daemon die Session minten kann.

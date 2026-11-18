@@ -7,6 +7,7 @@ import {
   MountState, ProviderStatus, Workspace, SkillCatalog, SkillCatalogEntry,
 } from './models';
 import { HerdrStatus, HerdrPrepareResult } from './domain/integrations';
+import { CredentialGrant, CredentialMint, CredentialSecret, CredentialSession, CredentialStatus } from './domain/credentials';
 
 export interface AgentSpec {
   name: string;
@@ -132,6 +133,35 @@ export class ApiService {
   }
   herdrPrepare(id: string, body: { credential?: string; model?: string; ttl?: string }): Observable<HerdrPrepareResult> {
     return this.req(this.http.post<HerdrPrepareResult>(`${this.base}/agents/${id}/herdr/prepare`, body));
+  }
+  credentialStatus(): Observable<CredentialStatus> { return this.req(this.http.get<CredentialStatus>(`${this.base}/credentials/status`)); }
+  credentialSecrets(): Observable<CredentialSecret[]> { return this.req(this.http.get<CredentialSecret[]>(`${this.base}/credentials/secrets`)); }
+  putCredentialSecret(name: string, provider: string, value: string): Observable<unknown> {
+    return this.req(this.http.put(`${this.base}/credentials/secrets/${encodeURIComponent(name)}`, { provider, value }));
+  }
+  deleteCredentialSecret(name: string): Observable<unknown> {
+    return this.req(this.http.delete(`${this.base}/credentials/secrets/${encodeURIComponent(name)}`));
+  }
+  credentialGrants(agent = ''): Observable<CredentialGrant[]> {
+    return this.req(this.http.get<CredentialGrant[]>(`${this.base}/credentials/grants${agent ? `?agent=${encodeURIComponent(agent)}` : ''}`));
+  }
+  addCredentialGrant(g: Partial<CredentialGrant>): Observable<CredentialGrant> {
+    return this.req(this.http.post<CredentialGrant>(`${this.base}/credentials/grants`, g));
+  }
+  deleteCredentialGrant(id: string): Observable<unknown> {
+    return this.req(this.http.delete(`${this.base}/credentials/grants/${encodeURIComponent(id)}`));
+  }
+  credentialSessions(agent = ''): Observable<CredentialSession[]> {
+    return this.req(this.http.get<CredentialSession[]>(`${this.base}/credentials/sessions${agent ? `?agent=${encodeURIComponent(agent)}` : ''}`));
+  }
+  mintCredentialSession(body: { agent: string; credential: string; ttl: string; grant_id?: string }): Observable<CredentialMint> {
+    return this.req(this.http.post<CredentialMint>(`${this.base}/credentials/sessions`, body));
+  }
+  revokeCredentialSession(id: string): Observable<unknown> {
+    return this.req(this.http.delete(`${this.base}/credentials/sessions/${encodeURIComponent(id)}`));
+  }
+  credentialRequests(): Observable<import('./models').BrokerRequestEntry[]> {
+    return this.req(this.http.get<import('./models').BrokerRequestEntry[]>(`${this.base}/credentials/requests`));
   }
   getSkillCatalog(): Observable<SkillCatalog> { return this.req(this.http.get<SkillCatalog>(`${this.base}/skills/catalog`)); }
   installCatalogSkill(repo: string, path: string, ref: string): Observable<SkillCatalogEntry> { return this.req(this.http.post<SkillCatalogEntry>(`${this.base}/skills/install`, { repo, path, ref })); }

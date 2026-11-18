@@ -65,6 +65,19 @@ The panel lists DockWeave agents and creates a Paperclip process agent
 **Choose assignee** then selects the DockWeave agent 1:1. **Sync all** does this
 for every running DockWeave agent; existing `DW-*` agents are updated.
 
+## Credentials tab
+
+The Angular **Credentials** tab manages the vault/broker through daemon
+endpoints that proxy the broker admin socket:
+
+- secrets: metadata list, write-only add/rotate, delete
+- grants: per-agent credential, models and budgets (rpm, concurrent, tokens/day, USD/day)
+- sessions: mint (token shown once), list, revoke
+- recent broker requests (secret-free)
+
+Secret values are never returned by the API; only the freshly minted `dws_`
+token is shown once at creation.
+
 ## Notes
 
 - `herdr prepare` requires `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf` so the daemon can mint the session.

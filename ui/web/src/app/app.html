@@ -44,6 +44,7 @@
         <button [class.active]="view() === 'types'" (click)="view.set('types')">Agent Types</button>
         <button [class.active]="view() === 'skills'" (click)="view.set('skills')">Skills</button>
         <button [class.active]="view() === 'integrations'" (click)="view.set('integrations')">Integrations</button>
+        <button [class.active]="view() === 'credentials'" (click)="view.set('credentials')">Credentials</button>
       </nav>
       <span class="spacer"></span>
       @if (store.selected(); as a) {
@@ -133,6 +134,9 @@
         }
         @case ('integrations') {
           <dw-integrations />
+        }
+        @case ('credentials') {
+          <dw-credentials />
         }
         @case ('workspaces') {
           <div class="workspaces">
