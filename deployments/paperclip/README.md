@@ -36,6 +36,23 @@ paperclipai issue create --company-id "$CID" --title "…" --description "…" \
 paperclipai agent wake "$AG" --company-id "$CID" --reason "…"
 ```
 
+## DockWeave Engineering team
+
+The current Paperclip company is **DockWeave Engineering**. Assignees map to
+DockWeave agents (not 1:1 to containers — Paperclip agents are the process
+bridge):
+
+| Paperclip assignee | Role | DockWeave target | Runtime / model |
+|---|---|---|---|
+| Lead | Lead / Architect | `developer` | codex (ChatGPT OAuth) |
+| Backend | Backend Developer | `demo-opencode` | opencode (DeepSeek) |
+| Frontend | Frontend Developer | `researcher` | opencode (DeepSeek) |
+| Reviewer | Reviewer / QA | `claude-test` | Claude |
+| Platform | Platform / DevOps | `herdr-codex` | herdr + codex |
+
+DockWeave display names mirror the roles. The old demo agents (`demo-codex`,
+`reviewer`, `DockWeave-Sandbox-Agent`, `DW-*`) were removed.
+
 ## Standardmodus: DockWeave-Endpoint
 
 `dockweave-run.sh` ruft standardmäßig den OpenAI-kompatiblen Endpoint des

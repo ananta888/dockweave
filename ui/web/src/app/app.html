@@ -17,7 +17,7 @@
       <button *ngFor="let a of store.agents()" type="button" class="agent-row" [class.active]="store.selectedId() === a.id" (click)="select(a)">
           <span class="state" [class]="stateClass(a.state)"></span>
           <span class="agent-meta">
-            <span class="agent-name">{{ a.name }}</span>
+            <span class="agent-name">{{ a.display_name || a.name }}</span>
             <span class="agent-sub">{{ a.type }} · {{ a.state }}</span>
           </span>        </button>
       @if (!store.agents().length) {
@@ -60,7 +60,7 @@
           @if (store.selected(); as agent) {
             <div class="agent-head">
               <div>
-                <h1>{{ agent.name }}</h1>
+                <h1>{{ agent.display_name || agent.name }}</h1>
                 <div class="muted">{{ agent.type }} · {{ agent.image }} · UID {{ agent.uid }}:{{ agent.gid }}</div>
               </div>
               <span class="spacer"></span>
@@ -84,7 +84,7 @@
               @if (agentTab() === 'chat') {
                 <dw-terminal
                   [agentId]="agent.id"
-                  [agentName]="agent.name"
+                  [agentName]="agent.display_name || agent.name"
                   [running]="agent.state === 'running'"
                   (start)="startSelected()" />
               } @else {
