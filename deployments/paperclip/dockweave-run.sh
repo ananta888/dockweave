@@ -82,6 +82,16 @@ fi
 
 echo "[dockweave-run] task: $TASK" >&2
 
+# Execution-time dependency gate: Paperclip wakes assignees on creation, so an
+# issue with open blockers must not consume a model turn.
+if [ "$MODE" != "orchestrate" ] && [ -n "$ISSUE_ID" ]; then
+  HDIR="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
+  if ! python3 "$HDIR/blocked-check.py" "$ISSUE_ID" 2>/dev/null; then
+    echo "[dockweave-run] blockers open; issue queued again" >&2
+    exit 0
+  fi
+fi
+
 case "$MODEL_OR_CONTAINER" in
   dockweave-*)
     # Legacy one-shot docker exec path.
@@ -302,9 +312,14 @@ print(m.group(1).strip() if m else "Review FAIL")' 2>/dev/null)
 
   COMMENT="$CONTENT"
   [ -n "$NOTE" ] && COMMENT="$CONTENT$NOTE"
+  if [ -z "$(printf '%s' "$COMMENT" | tr -d '[:space:]')" ]; then
+    COMMENT="(keine Textantwort vom Agenten)"
+    [ "$STATUS" = "done" ] && STATUS=in_progress
+  fi
 
-  if ! "$PAPERCLIPAI" issue update "$ISSUE_ID" --status "$STATUS" --comment "$COMMENT" --json >/dev/null 2>&1; then
-    echo "[dockweave-run] could not update paperclip issue $ISSUE_ID" >&2
+  UPD_OUT=$("$PAPERCLIPAI" issue update "$ISSUE_ID" --status "$STATUS" --comment "$COMMENT" --json 2>&1)
+  if [ $? -ne 0 ]; then
+    echo "[dockweave-run] could not update paperclip issue $ISSUE_ID: $(printf '%s' "$UPD_OUT" | tr '\n' ' ' | cut -c1-300)" >&2
   fi
 
   # Unblock dependents, then close the parent if every gate agrees.

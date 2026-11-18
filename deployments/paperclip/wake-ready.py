@@ -53,7 +53,7 @@ def main():
     for issue in issues:
         if parent and issue.get("parentId") != parent:
             continue
-        if (issue.get("status") or "") != "todo":
+        if (issue.get("status") or "") not in ("todo", "blocked"):
             continue
         blockers = issue.get("blockedByIssueIds") or []
         if not blockers:
