@@ -210,4 +210,6 @@ print(mapping.get(hits[-1], "in_progress") if hits else "in_progress")' 2>/dev/n
   if ! "$PAPERCLIPAI" issue update "$ISSUE_ID" --status "$STATUS" --comment "$CONTENT" --json >/dev/null 2>&1; then
     echo "[dockweave-run] could not update paperclip issue $ISSUE_ID" >&2
   fi
+  # Close the parent Lead issue when every child is finished.
+  python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" 2>/dev/null || true
 fi
