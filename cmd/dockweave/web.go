@@ -6,6 +6,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -21,21 +23,57 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ananta888/dockweave/internal/oidc"
 	"github.com/ananta888/dockweave/internal/webui"
 )
 
+func splitList(s string) []string {
+	var out []string
+	for _, v := range strings.Split(s, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func buildSessionKey(hexKey string) ([32]byte, error) {
+	var key [32]byte
+	if hexKey != "" {
+		b, err := hex.DecodeString(hexKey)
+		if err != nil || len(b) != 32 {
+			return key, errors.New("--oidc-session-key must be 32 bytes hex")
+		}
+		copy(key[:], b)
+		return key, nil
+	}
+	if _, err := rand.Read(key[:]); err != nil {
+		return key, err
+	}
+	return key, nil
+}
+
 func webCmd() *cobra.Command {
 	var (
-		listen           string
-		webDir           string
-		termSocket       string
-		open             bool
-		browseRoots      string
-		mcpListen        string
-		mcpToken         string
-		paperclipURL     string
-		paperclipCLI     string
-		paperclipWrapper string
+		listen            string
+		webDir            string
+		termSocket        string
+		open              bool
+		browseRoots       string
+		mcpListen         string
+		mcpToken          string
+		paperclipURL      string
+		paperclipCLI      string
+		paperclipWrapper  string
+		oidcIssuer        string
+		oidcClientID      string
+		oidcClientSecret  string
+		oidcRedirect      string
+		oidcScopes        string
+		oidcRolesClaim    string
+		oidcAdminGroups   string
+		oidcMonitorGroups string
+		oidcSessionKey    string
 	)
 	c := &cobra.Command{
 		Use:   "web",
@@ -88,6 +126,28 @@ func webCmd() *cobra.Command {
 					roots = append(roots, r)
 				}
 			}
+			var oidcCfg *oidc.Config
+			if oidcIssuer != "" {
+				key, err := buildSessionKey(oidcSessionKey)
+				if err != nil {
+					fail(err)
+				}
+				redirect := oidcRedirect
+				if redirect == "" {
+					redirect = fmt.Sprintf("http://%s/oauth/callback", listen)
+				}
+				oidcCfg = &oidc.Config{
+					Issuer:        oidcIssuer,
+					ClientID:      oidcClientID,
+					ClientSecret:  oidcClientSecret,
+					RedirectURL:   redirect,
+					Scopes:        splitList(oidcScopes),
+					RolesClaim:    oidcRolesClaim,
+					AdminGroups:   splitList(oidcAdminGroups),
+					MonitorGroups: splitList(oidcMonitorGroups),
+					SessionKey:    key,
+				}
+			}
 			srv, err := webui.New(webui.Config{
 				DaemonSocket:     socketPath,
 				TermSocket:       termSocket,
@@ -98,6 +158,7 @@ func webCmd() *cobra.Command {
 				PaperclipURL:     paperclipURL,
 				PaperclipCLI:     paperclipCLI,
 				PaperclipWrapper: paperclipWrapper,
+				OIDC:             oidcCfg,
 			})
 			if err != nil {
 				fail(err)
@@ -159,6 +220,15 @@ func webCmd() *cobra.Command {
 		"optional TCP listen address for the UI MCP server, e.g. 0.0.0.0:8791")
 	f.StringVar(&mcpToken, "mcp-token", envOr("DOCKWEAVE_UI_MCP_TOKEN", ""),
 		"UI MCP bearer token (default: random when --mcp-listen is set)")
+	f.StringVar(&oidcIssuer, "oidc-issuer", envOr("DOCKWEAVE_OIDC_ISSUER", ""), "OIDC issuer URL (enables OpenID Connect sign-in)")
+	f.StringVar(&oidcClientID, "oidc-client-id", envOr("DOCKWEAVE_OIDC_CLIENT_ID", ""), "OIDC client id")
+	f.StringVar(&oidcClientSecret, "oidc-client-secret", envOr("DOCKWEAVE_OIDC_CLIENT_SECRET", ""), "OIDC client secret")
+	f.StringVar(&oidcRedirect, "oidc-redirect-url", envOr("DOCKWEAVE_OIDC_REDIRECT_URL", ""), "OIDC redirect URL (default http://<listen>/oauth/callback)")
+	f.StringVar(&oidcScopes, "oidc-scopes", envOr("DOCKWEAVE_OIDC_SCOPES", "openid,profile"), "comma-separated OIDC scopes")
+	f.StringVar(&oidcRolesClaim, "oidc-roles-claim", envOr("DOCKWEAVE_OIDC_ROLES_CLAIM", "groups"), "id_token claim carrying roles (groups|roles)")
+	f.StringVar(&oidcAdminGroups, "oidc-admin-groups", envOr("DOCKWEAVE_OIDC_ADMIN_GROUPS", ""), "comma-separated groups mapped to admin")
+	f.StringVar(&oidcMonitorGroups, "oidc-monitor-groups", envOr("DOCKWEAVE_OIDC_MONITOR_GROUPS", ""), "comma-separated groups mapped to monitor")
+	f.StringVar(&oidcSessionKey, "oidc-session-key", envOr("DOCKWEAVE_OIDC_SESSION_KEY", ""), "32-byte hex session key (random when empty)")
 	f.StringVar(&paperclipURL, "paperclip-url", envOr("DOCKWEAVE_PAPERCLIP_URL", "http://127.0.0.1:3100"),
 		"Paperclip UI URL embedded by the frontend")
 	f.StringVar(&paperclipCLI, "paperclip-cli", envOr("DOCKWEAVE_PAPERCLIP_CLI", ""),

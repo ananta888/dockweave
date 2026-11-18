@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/ananta888/dockweave/internal/oidc"
 )
 
 //go:embed all:dist
@@ -52,6 +54,8 @@ type Config struct {
 	PaperclipCLI string
 	// PaperclipWrapper is the process-adapter command for generated agents.
 	PaperclipWrapper string
+	// OIDC (optional) enables OpenID Connect sign-in via internal/oidc.
+	OIDC *oidc.Config
 }
 
 // Server is the browser-facing HTTP handler.
@@ -64,6 +68,7 @@ type Server struct {
 	uiHub       *UIHub
 	mcp         *MCPHandler
 	loginLim    *loginLimiter
+	oidcSvc     *oidc.Service
 }
 
 // loginLimiter throttles failed /login attempts per client address.
@@ -141,6 +146,14 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
 	s.loginLim = newLoginLimiter()
+	if cfg.OIDC != nil && cfg.OIDC.Issuer != "" {
+		prov, err := oidc.NewProvider(context.Background(), *cfg.OIDC)
+		if err != nil {
+			return nil, fmt.Errorf("oidc: %w", err)
+		}
+		store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
+		s.oidcSvc = oidc.NewService(prov, store, *cfg.OIDC)
+	}
 	s.handler = s.securityHeaders(s.auth(s.routes()))
 	return s, nil
 }
@@ -170,6 +183,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /paperclip/agents", s.paperclipEnsureAgent)
 	mux.HandleFunc("POST /paperclip/sync", s.paperclipSync)
 	mux.HandleFunc("GET /ws/ui", s.uiHub.ServeWS)
+	if s.oidcSvc != nil {
+		mux.HandleFunc("GET /oauth/login", s.oidcSvc.BeginLogin)
+		mux.HandleFunc("GET /oauth/callback", s.oidcSvc.HandleCallback)
+		mux.HandleFunc("POST /oauth/logout", s.oidcSvc.Logout)
+	}
 	mux.Handle("/api/", s.proxy)
 	mux.Handle("/v1/", s.proxy) // OpenAI-compatible endpoint (proxied to daemon)
 	mux.HandleFunc("/ws/term", s.term)
@@ -206,7 +224,7 @@ func newUnixProxy(socket string) *httputil.ReverseProxy {
 
 const cookieName = "dockweave_web"
 
-const loginPage = `<!doctype html><html><head><meta charset="utf-8">
+const loginPageTemplate = `<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DockWeave</title>
 <style>
@@ -217,13 +235,24 @@ h1{margin:0 0 .4rem;font-size:1.1rem;color:#58a6ff}
 p{color:#8b949e;font-size:.8rem;margin:.2rem 0 1rem}
 input{width:100%;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:.5rem;font-size:.9rem}
 button{margin-top:.8rem;width:100%;background:#238636;border:1px solid #2ea043;color:#fff;border-radius:5px;padding:.5rem;cursor:pointer}
+a.idp{display:block;margin-top:.8rem;text-align:center;color:#58a6ff;text-decoration:none}
 </style></head><body>
 <form method="post" action="/login">
 <h1>DockWeave</h1>
 <p>Login-Token eingeben (steht im Terminal, in dem <code>dockweave web</code> laeuft).</p>
 <input name="token" type="password" autofocus autocomplete="off" placeholder="Token">
 <button type="submit">Anmelden</button>
+{{IDP}}
 </form></body></html>`
+
+// loginPage renders the login form, with an IdP link when OIDC is enabled.
+func loginPage(idp bool) string {
+	link := ""
+	if idp {
+		link = `<hr><a class="idp" href="/oauth/login">Mit IdP anmelden (OpenID Connect)</a>`
+	}
+	return strings.Replace(loginPageTemplate, "{{IDP}}", link, 1)
+}
 
 func (s *Server) setCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
@@ -235,7 +264,7 @@ func (s *Server) setCookie(w http.ResponseWriter) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(loginPage))
+		_, _ = w.Write([]byte(loginPage(s.oidcSvc != nil)))
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -338,6 +367,12 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if s.oidcSvc != nil {
+			if _, err := s.oidcSvc.Principal(r); err == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
 		c, err := r.Cookie(cookieName)
 		if err == nil && tokenEqual(c.Value, s.cfg.Token) {
 			next.ServeHTTP(w, r)
@@ -346,7 +381,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		// Browser navigation gets a login page; API/asset requests stay 401.
 		if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(loginPage))
+			_, _ = w.Write([]byte(loginPage(s.oidcSvc != nil)))
 			return
 		}
 		http.Error(w, "token required: open the URL printed by `dockweave web`", http.StatusUnauthorized)
