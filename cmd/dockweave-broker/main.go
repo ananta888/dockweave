@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -43,6 +44,8 @@ func run() error {
 		listenAddr    = flag.String("listen", envOr("DOCKWEAVE_BROKER_LISTEN", ""), "optional TCP listen address for the proxy, e.g. 172.30.0.1:8787 (unix socket remains enabled)")
 		providersFile = flag.String("providers-file", envOr("DOCKWEAVE_BROKER_PROVIDERS_FILE", ""), "optional JSON file overriding provider adapters")
 		allowInsecure = flag.Bool("allow-insecure-http", false, "allow http:// provider base URLs (local demo only)")
+		socketMode    = flag.String("socket-mode", envOr("DOCKWEAVE_BROKER_SOCKET_MODE", "0600"), "permission bits for the unix sockets, e.g. 0660")
+		socketGroup   = flag.String("socket-group", envOr("DOCKWEAVE_BROKER_SOCKET_GROUP", ""), "group owner for the unix sockets (lets the unprivileged daemon connect)")
 	)
 	flag.Parse()
 
@@ -133,8 +136,26 @@ func run() error {
 		return fmt.Errorf("listen admin socket: %w", err)
 	}
 	defer adminLn.Close()
-	_ = os.Chmod(*proxySocket, 0o600)
-	_ = os.Chmod(*adminSocket, 0o600)
+	mode := os.FileMode(0o600)
+	if v, err := strconv.ParseUint(*socketMode, 8, 32); err == nil {
+		mode = os.FileMode(v)
+	}
+	gid := -1
+	if *socketGroup != "" {
+		if grp, err := user.LookupGroup(*socketGroup); err == nil {
+			if n, err := strconv.Atoi(grp.Gid); err == nil {
+				gid = n
+			}
+		} else {
+			logger.Warn("socket group not found", "group", *socketGroup)
+		}
+	}
+	for _, p := range []string{*proxySocket, *adminSocket} {
+		_ = os.Chmod(p, mode)
+		if gid >= 0 {
+			_ = os.Chown(p, -1, gid)
+		}
+	}
 
 	proxySrv := &http.Server{Handler: broker, ReadHeaderTimeout: 10 * time.Second}
 	adminSrv := &http.Server{
