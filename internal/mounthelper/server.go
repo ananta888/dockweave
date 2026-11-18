@@ -71,11 +71,11 @@ func handle(conn *net.UnixConn, cfg ServerConfig) {
 func dispatch(req Request, fds []int, root string) error {
 	// Resolve each fd to its path, but only after proving that the path still
 	// refers to the same inode as the fd (no swap between check and syscall).
-	// Bind and move create a new mount, so the target must still be the
-	// inode we validated. Operations on an existing mount (unmount, remount,
-	// propagation, setattr) may legitimately see the mounted root instead of
-	// the covered directory, so they skip the identity check.
-	verifyIdentity := req.Op == OpBind || req.Op == OpMove
+	// Only `bind` targets a fresh directory, where the inode check is
+	// meaningful. Everything else (move, unmount, remount, propagation,
+	// setattr) operates on an existing mount whose O_PATH fd can report the
+	// covered inode while stat() reports the mounted root.
+	verifyIdentity := req.Op == OpBind
 	paths := make([]string, len(fds))
 	for i, fd := range fds {
 		p, err := resolveFD(fd, verifyIdentity)
