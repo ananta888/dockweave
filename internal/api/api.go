@@ -111,6 +111,7 @@ func NewServer(a *agents.Service, w *workspaces.Service, m *monitor.Monitor, st 
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/health", s.health)
+	s.mux.HandleFunc("GET /api/v1/usage", s.usage)
 	s.mux.HandleFunc("GET /api/v1/agents", s.listAgents)
 	s.mux.HandleFunc("POST /api/v1/agents", s.createAgent)
 	s.mux.HandleFunc("GET /api/v1/agents/{id}", s.getAgent)

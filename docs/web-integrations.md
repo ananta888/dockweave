@@ -79,6 +79,19 @@ endpoints that proxy the broker admin socket:
 Secret values are never returned by the API; only the freshly minted `dws_`
 token is shown once at creation.
 
+## Usage tab
+
+Shows subscription/plan consumption where the harness exposes it locally:
+
+- **Codex**: 5-hour and 7-day plan windows plus credits, parsed from the latest
+  rollout (`rate_limits`).
+- **Claude**: 5-hour and 7-day utilization from the local usage cache (refreshed
+  by `/usage` in the TUI).
+- **OpenCode**: aggregated session cost/tokens from the local OpenCode server;
+  subscription credits are not exposed by the local API.
+
+The tab refreshes every 60 seconds; unavailable data is shown with a note.
+
 ## Notes
 
 - `herdr prepare` requires `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf` so the daemon can mint the session.

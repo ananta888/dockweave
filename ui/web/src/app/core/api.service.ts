@@ -8,6 +8,7 @@ import {
 } from './models';
 import { HerdrStatus, HerdrPrepareResult } from './domain/integrations';
 import { CredentialGrant, CredentialMint, CredentialSecret, CredentialSession, CredentialStatus } from './domain/credentials';
+import { AgentUsage } from './domain/usage';
 
 export interface AgentSpec {
   name: string;
@@ -137,6 +138,7 @@ export class ApiService {
   enableDeepSeek(id: string, body: { credential: string; model: string; ttl: string }): Observable<{ ok: boolean; provider: string; model: string; session_id: string; expires_at: string; config: string }> {
     return this.req(this.http.post<{ ok: boolean; provider: string; model: string; session_id: string; expires_at: string; config: string }>(`${this.base}/agents/${id}/provider/deepseek`, body));
   }
+  usage(): Observable<AgentUsage[]> { return this.req(this.http.get<AgentUsage[]>(`${this.base}/usage`)); }
   credentialStatus(): Observable<CredentialStatus> { return this.req(this.http.get<CredentialStatus>(`${this.base}/credentials/status`)); }
   credentialSecrets(): Observable<CredentialSecret[]> { return this.req(this.http.get<CredentialSecret[]>(`${this.base}/credentials/secrets`)); }
   putCredentialSecret(name: string, provider: string, value: string): Observable<unknown> {

@@ -14,17 +14,18 @@ import { AgentTypesComponent } from './components/agent-types.component';
 import { SkillsComponent } from './components/skills.component';
 import { IntegrationsComponent } from './components/integrations/integrations.component';
 import { CredentialsComponent } from './components/credentials.component';
+import { UsageComponent } from './components/usage.component';
 import { RuntimePresetsService } from './core/services/runtime-presets.service';
 import { RuntimeKind } from './core/domain/integrations';
 import { figureSvg } from './core/figures';
 import { UiBridgeService } from './core/ui-bridge.service';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills' | 'integrations' | 'credentials';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills' | 'integrations' | 'credentials' | 'usage';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent, IntegrationsComponent, CredentialsComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent, IntegrationsComponent, CredentialsComponent, UsageComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

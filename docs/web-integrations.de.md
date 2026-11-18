@@ -82,6 +82,20 @@ die den Broker-Admin-Socket proxyen:
 Secret-Werte werden nie zurückgegeben; nur das frisch gemintete `dws_`-Token
 wird bei der Erstellung einmal angezeigt.
 
+## Usage-Tab
+
+Zeigt Abo-/Plan-Verbrauch, soweit der Harness ihn lokal bereitstellt:
+
+- **Codex**: 5-Stunden- und 7-Tage-Planfenster plus Credits, aus dem neuesten
+  Rollout (`rate_limits`) gelesen.
+- **Claude**: 5-Stunden- und 7-Tage-Auslastung aus dem lokalen Usage-Cache
+  (aktualisiert durch `/usage` in der TUI).
+- **OpenCode**: aggregierte Session-Kosten/Tokens vom lokalen OpenCode-Server;
+  Abo-Credits werden von der lokalen API nicht bereitgestellt.
+
+Der Tab aktualisiert alle 60 Sekunden; nicht verfügbare Daten werden mit
+Hinweis angezeigt.
+
 ## Hinweise
 
 - `herdr prepare` benötigt `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf`, damit der Daemon die Session minten kann.
