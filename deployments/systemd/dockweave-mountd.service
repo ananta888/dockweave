@@ -17,13 +17,9 @@ RestartSec=2
 CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
 AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
 NoNewPrivileges=yes
-ProtectSystem=full
-ProtectHome=read-only
-PrivateTmp=no
-PrivateDevices=no
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
+# No ProtectSystem/PrivateTmp/ProtectKernel*: those create a private mount
+# namespace, and mounts made there would never reach the host or the
+# containers. The helper must operate in the host mount namespace.
 RestrictAddressFamilies=AF_UNIX
 RestrictNamespaces=yes
 LockPersonality=yes

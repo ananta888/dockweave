@@ -32,5 +32,9 @@ systemctl daemon-reload
 systemctl enable --now dockweave-mountd dockweaved
 ```
 
+Die mountd-Unit darf **kein** `ProtectSystem`, `PrivateTmp` oder aehnliches
+setzen: Diese Optionen erzeugen eine private Mount-Namespace, in der erzeugte
+Mounts weder den Host noch die Container erreichen.
+
 Ohne `DOCKWEAVE_MOUNTD_SOCKET` faellt der Daemon auf den direkten Root-Backend
 zurueck und startet als Nicht-root nicht.

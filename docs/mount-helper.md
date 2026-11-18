@@ -47,9 +47,12 @@ systemctl daemon-reload
 systemctl enable --now dockweave-mountd dockweaved
 ```
 
-The units harden both processes (`NoNewPrivileges`, `ProtectSystem`,
+The units harden both processes (`NoNewPrivileges`,
 `CapabilityBoundingSet`). The daemon unit deliberately grants **no**
-capabilities; only the helper has `CAP_SYS_ADMIN`.
+capabilities; only the helper has `CAP_SYS_ADMIN`. The helper unit must **not**
+use `ProtectSystem`, `PrivateTmp` or similar options: they create a private
+mount namespace, and mounts made there would never reach the host or the
+containers.
 
 `CAP_DAC_READ_SEARCH` is needed because the helper resolves received fds to
 paths (e.g. probe directories created with mode 0700) and must be able to
