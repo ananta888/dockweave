@@ -69,7 +69,17 @@ func handle(conn *net.UnixConn, cfg ServerConfig) {
 }
 
 func dispatch(req Request, fds []int, root string) error {
-	fdPath := func(i int) string { return fmt.Sprintf("/proc/self/fd/%d", fds[i]) }
+	// Resolve each fd to its path, but only after proving that the path still
+	// refers to the same inode as the fd (no swap between check and syscall).
+	paths := make([]string, len(fds))
+	for i, fd := range fds {
+		p, err := resolveFD(fd)
+		if err != nil {
+			return err
+		}
+		paths[i] = p
+	}
+	fdPath := func(i int) string { return paths[i] }
 	need := func(n int) error {
 		if len(fds) < n {
 			return fmt.Errorf("op %s needs %d fds, got %d", req.Op, n, len(fds))
@@ -77,10 +87,7 @@ func dispatch(req Request, fds []int, root string) error {
 		return nil
 	}
 	checkTarget := func(i int) error {
-		target, err := os.Readlink(fdPath(i))
-		if err != nil {
-			return fmt.Errorf("read fd link: %w", err)
-		}
+		target := fdPath(i)
 		cleanRoot := filepath.Clean(root)
 		if !strings.HasPrefix(filepath.Clean(target), cleanRoot+string(filepath.Separator)) && filepath.Clean(target) != cleanRoot {
 			return fmt.Errorf("target %q is outside the state root", target)
@@ -147,6 +154,25 @@ func dispatch(req Request, fds []int, root string) error {
 	default:
 		return fmt.Errorf("unknown op %q", req.Op)
 	}
+}
+
+func resolveFD(fd int) (string, error) {
+	link := fmt.Sprintf("/proc/self/fd/%d", fd)
+	target, err := os.Readlink(link)
+	if err != nil {
+		return "", fmt.Errorf("resolve fd %d: %w", fd, err)
+	}
+	var fdStat, pathStat unix.Stat_t
+	if err := unix.Fstat(fd, &fdStat); err != nil {
+		return "", fmt.Errorf("fstat fd %d: %w", fd, err)
+	}
+	if err := unix.Stat(target, &pathStat); err != nil {
+		return "", fmt.Errorf("stat target %q: %w", target, err)
+	}
+	if fdStat.Dev != pathStat.Dev || fdStat.Ino != pathStat.Ino {
+		return "", fmt.Errorf("target %q changed identity", target)
+	}
+	return target, nil
 }
 
 func peerAllowed(conn *net.UnixConn, allowed []uint32) bool {
