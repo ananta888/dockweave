@@ -59,6 +59,8 @@ the quick actions are conveniences.
 
 ## Notes
 
+- `herdr prepare` requires `BROKER_ADMIN_SOCKET` in `/etc/dockweave/dockweaved.conf` so the daemon can mint the session.
+
 - The herdr prepare endpoint is currently Codex-only (`codex-main` credential).
 - Herdr prompts require the agent to be started through the herdr entrypoint
   (pane + rollout present).
