@@ -2521,7 +2521,7 @@ export class GraphComponent implements OnChanges {
   // Top-down layered layout: root -> units -> agents (organization) or
   // left-to-right columns (resources). Edges always point downwards/rightwards.
   private layeredLayout(nodes: GraphNode[]): GraphNode[] {
-    const GX = 200, GY = 120;
+    const GX = 280, GY = 130;
     if (this.mode() === 'organization') {
       const root = nodes.filter(n => n.kind === 'org');
       const units = nodes.filter(n => n.kind === 'unit');
@@ -2558,26 +2558,67 @@ export class GraphComponent implements OnChanges {
     return Math.max(this.nodeSize({ kind: 'agent' } as GraphNode).w, members.length ? 250 : 170);
   }
 
-  // Columns by kind, with large gaps and vertical spacing based on node height.
+  // Columns by kind, ordered with the barycenter heuristic (Sugiyama) so that
+  // edges between the agent column and the resource columns cross as little as
+  // possible.
   private columnLayout(nodes: GraphNode[]): GraphNode[] {
     const order: NodeKind[] = ['org', 'unit', 'agent', 'workspace', 'memory', 'credential', 'knowledge'];
     const groups = new Map<NodeKind, GraphNode[]>();
     for (const kind of order) groups.set(kind, []);
     for (const n of nodes) groups.get(n.kind)?.push(n);
+
+    // adjacency among these nodes, used for barycenter ordering
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = this.buildEdges().filter(e => ids.has(e.source) && ids.has(e.target));
+    const adj = new Map<string, string[]>();
+    for (const n of nodes) adj.set(n.id, []);
+    for (const e of edges) { adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source); }
+
+    // stable anchor order: agents sorted by name define the row indices
+    const rank = new Map<string, number>();
+    const agents = (groups.get('agent') || []).sort((a, b) => a.title.localeCompare(b.title));
+    agents.forEach((a, i) => rank.set(a.id, i));
+
+    const ordered: GraphNode[][] = [];
+    for (const kind of order) {
+      const list = groups.get(kind) || [];
+      if (kind === 'org' || kind === 'unit' || kind === 'knowledge') {
+        list.sort((a, b) => a.title.localeCompare(b.title));
+      } else {
+        list.sort((a, b) => {
+          const ba = this.barycenter(a.id, adj, rank);
+          const bb = this.barycenter(b.id, adj, rank);
+          if (ba !== bb) return ba - bb;
+          return a.title.localeCompare(b.title);
+        });
+      }
+      ordered.push(list);
+    }
+
     const out: GraphNode[] = [];
     let col = 0;
-    const GX = 420, GY = 120;
-    for (const kind of order) {
-      const list = groups.get(kind) ?? [];
-      list.sort((a, b) => a.title.localeCompare(b.title));
+    const GX = 440, GY = 120;
+    for (const list of ordered) {
       let y = 0;
-      list.forEach((n, i) => {
+      for (const n of list) {
         out.push({ ...n, position: { x: col * GX, y } });
         y += this.nodeSize(n).h + GY;
-      });
+      }
       if (list.length) col++;
     }
     return out;
+  }
+
+  // Mean rank of the node's agent neighbours; used to order resource rows so
+  // that edges to the agent column do not cross.
+  private barycenter(id: string, adj: Map<string, string[]>, rank: Map<string, number>): number {
+    const neigh = adj.get(id) || [];
+    let sum = 0, count = 0;
+    for (const m of neigh) {
+      const r = rank.get(m);
+      if (r !== undefined) { sum += r; count++; }
+    }
+    return count ? sum / count : Number.MAX_SAFE_INTEGER;
   }
 
   // Node-size aware grid with a natural aspect ratio.
