@@ -34,7 +34,7 @@ npm install -g --prefix "$HOME/.local" @opencode/cli@2.2.6
 "$BIN" service start || "$BIN" service restart || true
 i=0
 while [ "$i" -lt 100 ]; do
-  if "$BIN" api GET /api/health >/dev/null 2>&1; then break; fi
+  if "$BIN" api GET /api/session >/dev/null 2>&1; then break; fi
   i=$((i + 1))
   sleep 0.2
 done
