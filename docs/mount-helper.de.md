@@ -38,3 +38,18 @@ Mounts weder den Host noch die Container erreichen.
 
 Ohne `DOCKWEAVE_MOUNTD_SOCKET` faellt der Daemon auf den direkten Root-Backend
 zurueck und startet als Nicht-root nicht.
+
+## Migration von einem Root-Daemon
+
+Zwei idempotente Skripte automatisieren die Schritte fuer eine bestehende
+Instanz:
+
+```bash
+sudo ./scripts/migrate-unprivileged.sh /home/krusty   # System-Seite (Binaries,
+                                                      # Units, User, Eigentum)
+./scripts/migrate-broker-user.sh                      # User-Seite (Broker-Socket)
+```
+
+`migrate-unprivileged.sh` bekommt die Host-Verzeichnisse, die der Daemon
+durchqueren koennen muss (z. B. das Home mit den registrierten Workspaces) und
+setzt dort `o+x`. Es rekursiert nie in Mounts und vergibt kein Lesen/Schreiben.

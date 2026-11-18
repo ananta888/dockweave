@@ -64,3 +64,17 @@ propagation resolve a path, from the received fd, with a state-root check.
 
 If `DOCKWEAVE_MOUNTD_SOCKET` is unset, `dockweaved` falls back to the direct
 root backend and refuses to start as a non-root user.
+
+## Migrating from a root daemon
+
+Two idempotent scripts automate the steps for an existing instance:
+
+```bash
+sudo ./scripts/migrate-unprivileged.sh /home/krusty   # system side (binaries,
+                                                      # units, user, ownership)
+./scripts/migrate-broker-user.sh                      # user side (broker socket)
+```
+
+`migrate-unprivileged.sh` takes the host directories the daemon must be able
+to traverse (e.g. the home that contains registered workspaces) and adds
+`o+x` to them. It never recurses into mounts and never grants read/write.
