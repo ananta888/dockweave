@@ -10,7 +10,7 @@ import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, M
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
-type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'free' | 'mixed';
+type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'free' | 'mixed';
 
 interface GraphPort {
   id: string;
@@ -121,6 +121,7 @@ interface GraphEdge {
         <span class="spacer"></span>
         <select class="small-select" [ngModel]="layout()" (ngModelChange)="setLayout($event)">
           <option value="mixed">Gemischt</option>
+          <option value="force">Force (federnd)</option>
           <option value="hierarchy">Hierarchie (hart)</option>
           <option value="columns">Spalten (hart)</option>
           <option value="grid">Grid</option>
@@ -325,6 +326,7 @@ interface GraphEdge {
                     <option value="columns">Spalten (hart)</option>
                     <option value="grid">Grid</option>
                     <option value="radial">Radial</option>
+                    <option value="force">Force (federnd)</option>
                     <option value="free">Frei (manuell, Positionen bleiben)</option>
                   </select>
                   <button class="primary" (click)="cleanup()">Aufräumen</button>
@@ -2341,26 +2343,75 @@ export class GraphComponent implements OnChanges {
     this.persistCustomEdges(next);
   }
 
+  // --- Layout constants: generous spacing so nodes and edges never crowd. ---
+  private nodeSize(n: GraphNode): { w: number; h: number } {
+    if (n.kind === 'agent') return { w: 170, h: 150 };
+    if (n.kind === 'ghost') return { w: 190, h: 110 };
+    return { w: 250, h: 110 };
+  }
+
   private applyLayout(nodes: GraphNode[]): GraphNode[] {
     const algo = this.layout();
     let laid: GraphNode[];
-    if (algo === 'free' || algo === 'hierarchy') {
+    if (algo === 'free') {
       laid = nodes;
+    } else if (algo === 'hierarchy') {
+      laid = this.layeredLayout(nodes);
     } else if (algo === 'mixed') {
-      laid = this.mode() === 'organization' ? nodes : this.columnLayout(nodes);
+      laid = this.mode() === 'organization' ? this.layeredLayout(nodes) : this.columnLayout(nodes);
     } else if (algo === 'columns') {
       laid = this.columnLayout(nodes);
     } else if (algo === 'grid') {
-      const sorted = [...nodes].sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
-      const cols = Math.max(1, Math.ceil(Math.sqrt(sorted.length)));
-      laid = sorted.map((n, i) => ({ ...n, position: { x: (i % cols) * 300, y: Math.floor(i / cols) * 200 } }));
+      laid = this.gridLayout(nodes);
+    } else if (algo === 'force') {
+      laid = this.forceLayout(nodes);
     } else {
-      const cx = 0, cy = 0, r = Math.max(260, nodes.length * 24);
-      laid = nodes.map((n, i) => ({ ...n, position: { x: cx + Math.cos((i / nodes.length) * 2 * Math.PI) * r, y: cy + Math.sin((i / nodes.length) * 2 * Math.PI) * r } }));
+      laid = this.radialLayout(nodes);
     }
     return laid.map(n => this.manualPositions[n.id] ? { ...n, position: this.manualPositions[n.id] } : n);
   }
 
+  // Top-down layered layout: root -> units -> agents (organization) or
+  // left-to-right columns (resources). Edges always point downwards/rightwards.
+  private layeredLayout(nodes: GraphNode[]): GraphNode[] {
+    const GX = 200, GY = 120;
+    if (this.mode() === 'organization') {
+      const root = nodes.filter(n => n.kind === 'org');
+      const units = nodes.filter(n => n.kind === 'unit');
+      const agents = nodes.filter(n => n.kind === 'agent');
+      const byUnit = new Map<string, GraphNode[]>();
+      for (const a of agents) byUnit.set(a.unit || 'Unassigned', [...(byUnit.get(a.unit || 'Unassigned') || []), a]);
+
+      const out: GraphNode[] = [];
+      // center the org root over all units
+      const unitOrder = [...units].sort((a, b) => a.title.localeCompare(b.title));
+      const totalW = Math.max(1, unitOrder.reduce((acc, u) => acc + this.maxColWidth(byUnit.get(u.title) || []), 0)
+        + (unitOrder.length - 1) * GX);
+      const rootY = 0;
+      out.push(...root.map(r => ({ ...r, position: { x: totalW / 2, y: rootY } })));
+
+      let x = 0;
+      const unitY = 170;
+      for (const u of unitOrder) {
+        const members = (byUnit.get(u.title) || []).sort((a, b) => a.title.localeCompare(b.title));
+        const colW = this.maxColWidth(members);
+        out.push({ ...u, position: { x: x + colW / 2, y: unitY } });
+        members.forEach((a, j) => {
+          out.push({ ...a, position: { x: x + colW / 2, y: unitY + 130 + j * (this.nodeSize(a).h + GY) } });
+        });
+        x += colW + GX;
+      }
+      return out;
+    }
+    // resources: agents column on the left, resources to the right
+    return this.columnLayout(nodes);
+  }
+
+  private maxColWidth(members: GraphNode[]): number {
+    return Math.max(this.nodeSize({ kind: 'agent' } as GraphNode).w, members.length ? 250 : 170);
+  }
+
+  // Columns by kind, with large gaps and vertical spacing based on node height.
   private columnLayout(nodes: GraphNode[]): GraphNode[] {
     const order: NodeKind[] = ['org', 'unit', 'agent', 'workspace', 'memory', 'credential', 'knowledge'];
     const groups = new Map<NodeKind, GraphNode[]>();
@@ -2368,13 +2419,139 @@ export class GraphComponent implements OnChanges {
     for (const n of nodes) groups.get(n.kind)?.push(n);
     const out: GraphNode[] = [];
     let col = 0;
+    const GX = 420, GY = 120;
     for (const kind of order) {
       const list = groups.get(kind) ?? [];
       list.sort((a, b) => a.title.localeCompare(b.title));
-      list.forEach((n, i) => out.push({ ...n, position: { x: col * 340, y: i * 160 } }));
+      let y = 0;
+      list.forEach((n, i) => {
+        out.push({ ...n, position: { x: col * GX, y } });
+        y += this.nodeSize(n).h + GY;
+      });
       if (list.length) col++;
     }
     return out;
+  }
+
+  // Node-size aware grid with a natural aspect ratio.
+  private gridLayout(nodes: GraphNode[]): GraphNode[] {
+    const sorted = [...nodes].sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title));
+    const maxW = Math.max(...sorted.map(n => this.nodeSize(n).w));
+    const maxH = Math.max(...sorted.map(n => this.nodeSize(n).h));
+    const cw = maxW + 140, ch = maxH + 120;
+    const cols = Math.max(1, Math.round(Math.sqrt(sorted.length * (cw / ch))));
+    return sorted.map((n, i) => ({ ...n, position: { x: (i % cols) * cw, y: Math.floor(i / cols) * ch } }));
+  }
+
+  // Radial with a radius that guarantees no node overlap and a BFS ordering
+  // that keeps connected nodes adjacent (fewer crossing edges).
+  private radialLayout(nodes: GraphNode[]): GraphNode[] {
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = this.buildEdges().filter(e => ids.has(e.source) && ids.has(e.target));
+    const adj = new Map<string, string[]>();
+    for (const n of nodes) adj.set(n.id, []);
+    for (const e of edges) { adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source); }
+    const order: string[] = [];
+    const visited = new Set<string>();
+    const start = nodes.reduce((best, n) => (adj.get(n.id)!.length > (adj.get(best?.id || '')?.length ?? -1) ? n : best), nodes[0]).id;
+    const queue = [start]; visited.add(start);
+    while (queue.length) {
+      const cur = queue.shift()!;
+      order.push(cur);
+      for (const nxt of adj.get(cur) || []) if (!visited.has(nxt)) { visited.add(nxt); queue.push(nxt); }
+    }
+    for (const n of nodes) if (!visited.has(n.id)) { visited.add(n.id); order.push(n.id); }
+
+    // circumference must fit every node
+    const arc = nodes.reduce((acc, n) => acc + Math.max(this.nodeSize(n).w, this.nodeSize(n).h) + 40, 0);
+    const r = Math.max(300, arc / (2 * Math.PI));
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    return order.map((id, i) => {
+      const a = (i / order.length) * 2 * Math.PI - Math.PI / 2;
+      const n = byId.get(id)!;
+      return { ...n, position: { x: Math.cos(a) * r, y: Math.sin(a) * r } };
+    });
+  }
+
+  // Fruchterman-Reingold force layout with node-size aware collision
+  // resolution. Connected nodes attract, all nodes repel; a final pass
+  // separates overlaps.
+  private forceLayout(nodes: GraphNode[]): GraphNode[] {
+    if (nodes.length < 2) return nodes.map(n => ({ ...n, position: { x: 0, y: 0 } }));
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = this.buildEdges().filter(e => ids.has(e.source) && ids.has(e.target));
+    const area = Math.max(1200, Math.sqrt(nodes.length) * 420);
+    const k = area / Math.max(1, Math.sqrt(nodes.length));
+    const pos = new Map<string, { x: number; y: number }>();
+    const sizes = new Map<string, { w: number; h: number }>();
+    for (const n of nodes) {
+      const ang = Math.random() * 2 * Math.PI;
+      const rr = 120 + Math.random() * 200;
+      pos.set(n.id, { x: Math.cos(ang) * rr, y: Math.sin(ang) * rr });
+      sizes.set(n.id, this.nodeSize(n));
+    }
+    const adj = new Map<string, Set<string>>();
+    for (const n of nodes) adj.set(n.id, new Set());
+    for (const e of edges) { adj.get(e.source)?.add(e.target); adj.get(e.target)?.add(e.source); }
+
+    const temp = (t: number) => Math.max(1, 40 * (1 - t));
+    for (let it = 0; it < 140; it++) {
+      const t = it / 140;
+      const disp = new Map<string, { x: number; y: number }>();
+      for (const n of nodes) disp.set(n.id, { x: 0, y: 0 });
+      // repulsion
+      const arr = nodes;
+      for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) {
+        const a = arr[i], b = arr[j];
+        let dx = pos.get(a.id)!.x - pos.get(b.id)!.x;
+        let dy = pos.get(a.id)!.y - pos.get(b.id)!.y;
+        let dist = Math.hypot(dx, dy) || 0.01;
+        const f = (k * k) / dist;
+        dx = (dx / dist) * f; dy = (dy / dist) * f;
+        disp.get(a.id)!.x += dx; disp.get(a.id)!.y += dy;
+        disp.get(b.id)!.x -= dx; disp.get(b.id)!.y -= dy;
+      }
+      // attraction
+      for (const e of edges) {
+        const a = pos.get(e.source), b = pos.get(e.target);
+        if (!a || !b) continue;
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.hypot(dx, dy) || 0.01;
+        const f = (dist * dist) / k;
+        disp.get(e.source)!.x -= (dx / dist) * f; disp.get(e.source)!.y -= (dy / dist) * f;
+        disp.get(e.target)!.x += (dx / dist) * f; disp.get(e.target)!.y += (dy / dist) * f;
+      }
+      for (const n of nodes) {
+        const d = disp.get(n.id)!;
+        const dl = Math.hypot(d.x, d.y) || 0.01;
+        const step = Math.min(dl, temp(t));
+        pos.set(n.id, { x: pos.get(n.id)!.x + (d.x / dl) * step, y: pos.get(n.id)!.y + (d.y / dl) * step });
+      }
+    }
+    // collision resolution: separate overlapping nodes by their radii
+    for (let pass = 0; pass < 8; pass++) {
+      let moved = false;
+      for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const sa = sizes.get(a.id)!, sb = sizes.get(b.id)!;
+        const minDX = (sa.w + sb.w) / 2 + 40;
+        const minDY = (sa.h + sb.h) / 2 + 40;
+        const pa = pos.get(a.id)!, pb = pos.get(b.id)!;
+        const dx = pa.x - pb.x, dy = pa.y - pb.y;
+        if (Math.abs(dx) < minDX && Math.abs(dy) < minDY) {
+          moved = true;
+          if (Math.abs(dx) * minDY > Math.abs(dy) * minDX) {
+            const push = Math.sign(dx || 1) * (minDX - Math.abs(dx));
+            pa.x += push / 2; pb.x -= push / 2;
+          } else {
+            const push = Math.sign(dy || 1) * (minDY - Math.abs(dy));
+            pa.y += push / 2; pb.y -= push / 2;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+    return nodes.map(n => ({ ...n, position: { x: Math.round(pos.get(n.id)!.x), y: Math.round(pos.get(n.id)!.y) } }));
   }
 
   private effective(a: Agent): Agent {
