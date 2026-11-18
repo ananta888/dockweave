@@ -2,8 +2,7 @@
 Description=DockWeave daemon (unprivileged, mount helper)
 Documentation=https://github.com/ananta888/dockweave
 After=network-online.target docker.service dockweave-mountd.service
-Wants=network-online.target
-Requires=dockweave-mountd.service
+Wants=network-online.target dockweave-mountd.service
 
 [Service]
 Type=simple
