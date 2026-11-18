@@ -18,7 +18,11 @@ make build
 
 Die ausgegebene URL öffnen und den Login-Token auf der Anmeldeseite eingeben.
 Das Token wird als HttpOnly-Cookie gespeichert; weitere Requests brauchen es
-nicht mehr in URL oder Verlauf. Das Gateway lauscht
+nicht mehr in URL oder Verlauf. API-Clients können stattdessen
+`Authorization: Bearer <token>` senden. Fehlversuche werden begrenzt
+(5/Minute je Adresse), und jede Antwort trägt `Cache-Control: no-store`,
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` und
+`Referrer-Policy: no-referrer`. Das Gateway lauscht
 standardmäßig **nur auf Loopback** und läuft unprivilegiert mit deiner UID.
 
 Flags:

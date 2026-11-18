@@ -233,3 +233,48 @@ func TestDirectoryBrowser(t *testing.T) {
 		t.Fatalf("outside status = %d", rec.Code)
 	}
 }
+
+func TestBearerAndRateLimit(t *testing.T) {
+	daemonSock := filepath.Join(t.TempDir(), "daemon.sock")
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html>dw</html>"), 0o644)
+	srv, err := New(Config{DaemonSocket: daemonSock, TermSocket: "/nonexistent", WebDir: webDir, Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Bearer header grants access without a cookie.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "dw") {
+		t.Fatalf("bearer / = %d body=%q", rec.Code, rec.Body.String())
+	}
+
+	// Security headers are present.
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("missing Cache-Control: %q", rec.Header().Get("Cache-Control"))
+	}
+	if rec.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("missing X-Frame-Options")
+	}
+
+	// Rate limit: after 5 bad logins the next is 429.
+	for i := 0; i < 5; i++ {
+		bad := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=wrong"))
+		bad.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec = httptest.NewRecorder()
+		srv.ServeHTTP(rec, bad)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("bad login %d = %d, want 403", i, rec.Code)
+		}
+	}
+	over := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("token=wrong"))
+	over.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, over)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate limit = %d, want 429", rec.Code)
+	}
+}

@@ -23,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -62,6 +63,51 @@ type Server struct {
 	browseRoots []string
 	uiHub       *UIHub
 	mcp         *MCPHandler
+	loginLim    *loginLimiter
+}
+
+// loginLimiter throttles failed /login attempts per client address.
+type loginLimiter struct {
+	mu       sync.Mutex
+	attempts map[string][]time.Time
+}
+
+const loginWindow = time.Minute
+const loginMaxFails = 5
+
+func newLoginLimiter() *loginLimiter {
+	return &loginLimiter{attempts: map[string][]time.Time{}}
+}
+
+func (l *loginLimiter) allow(addr string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	cutoff := time.Now().Add(-loginWindow)
+	kept := l.attempts[addr][:0]
+	for _, t := range l.attempts[addr] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	l.attempts[addr] = kept
+	return len(kept) < loginMaxFails
+}
+
+func (l *loginLimiter) fail(addr string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.attempts[addr] = append(l.attempts[addr], time.Now())
+}
+
+func clientAddr(r *http.Request) string {
+	if h := r.Header.Get("X-Forwarded-For"); h != "" {
+		return strings.TrimSpace(strings.Split(h, ",")[0])
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // New creates the web gateway.
@@ -94,7 +140,8 @@ func New(cfg Config) (*Server, error) {
 		s.mcp = NewMCPHandler(cfg.MCPToken, s.uiHub)
 	}
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
-	s.handler = s.auth(s.routes())
+	s.loginLim = newLoginLimiter()
+	s.handler = s.securityHeaders(s.auth(s.routes()))
 	return s, nil
 }
 
@@ -195,12 +242,71 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	addr := clientAddr(r)
+	if !s.loginLim.allow(addr) {
+		http.Error(w, "too many attempts", http.StatusTooManyRequests)
+		return
+	}
 	if !tokenEqual(r.FormValue("token"), s.cfg.Token) {
+		s.loginLim.fail(addr)
 		http.Error(w, "invalid token", http.StatusForbidden)
 		return
 	}
 	s.setCookie(w)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// bearerOK reports whether the request carries the token as a bearer header.
+func (s *Server) bearerOK(r *http.Request) bool {
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, "Bearer ") {
+		return false
+	}
+	return tokenEqual(strings.TrimSpace(strings.TrimPrefix(h, "Bearer ")), s.cfg.Token)
+}
+
+// securityHeaders sets conservative defaults on every response. The headers
+// are re-applied in WriteHeader so a downstream handler (e.g. the static
+// server's "no-cache") cannot override them.
+type headerWriter struct {
+	http.ResponseWriter
+}
+
+func (w headerWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, errors.New("hijack not supported")
+}
+
+func (w headerWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (w headerWriter) setSecurity() {
+	h := w.Header()
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "no-referrer")
+	h.Set("X-Frame-Options", "DENY")
+}
+
+func (w headerWriter) Write(b []byte) (int, error) {
+	w.setSecurity()
+	return w.ResponseWriter.Write(b)
+}
+
+func (w headerWriter) WriteHeader(code int) {
+	w.setSecurity()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (s *Server) securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(headerWriter{w}, r)
+	})
 }
 
 func (s *Server) auth(next http.Handler) http.Handler {
@@ -225,6 +331,10 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			return
 		}
 		if r.URL.Path == "/favicon.ico" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if s.bearerOK(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

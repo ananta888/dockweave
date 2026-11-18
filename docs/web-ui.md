@@ -18,7 +18,10 @@ make build
 
 Open the printed URL and enter the Login-Token in the login page. The
 token is stored as an HttpOnly cookie; subsequent requests work without it
-in the URL or history. The gateway is **loopback-only by
+in the URL or history. API clients can send `Authorization: Bearer <token>`
+instead of a cookie. Failed logins are rate limited (5/minute per address),
+and every response carries `Cache-Control: no-store`, `X-Frame-Options: DENY`,
+`X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The gateway is **loopback-only by
 default** and runs unprivileged with your UID.
 
 Useful flags:
