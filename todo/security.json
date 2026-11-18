@@ -88,6 +88,39 @@
         "Unit"
       ],
       "status": "done"
+    },
+    {
+      "id": "sec-020",
+      "title": "Unprivilegierter Daemon mit Capability-Set",
+      "description": "dockweaved laeuft als eigener Benutzer ohne Capabilities; systemd-Unit mit NoNewPrivileges, ProtectSystem, CapabilityBoundingSet leer.",
+      "priority": "high",
+      "dependencies": [],
+      "components": [
+        "deployments/systemd",
+        "cmd/dockweaved"
+      ],
+      "acceptance": "Daemon startet ohne root, wenn MOUNTD_SOCKET gesetzt ist; ohne Helper verweigert er den Start als Nicht-root.",
+      "tests": [
+        "Unit/Manuell"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "sec-021",
+      "title": "Privilegierter Mount-Helper mit FD-Protokoll",
+      "description": "dockweave-mountd (root, nur CAP_SYS_ADMIN) empfaengt Verzeichnis-FDs per SCM_RIGHTS und fuehrt mount/mount_setattr/umount nur auf /proc/self/fd/N aus; Ziele muessen unter dem State-Root liegen.",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/mounthelper",
+        "internal/mounts",
+        "cmd/dockweave-mountd"
+      ],
+      "acceptance": "Ziel ausserhalb des State-Roots wird vor dem Syscall abgelehnt; RO-Sequenz liegt im Helper; Daemon nutzt Helper automatisch, wenn Socket vorhanden.",
+      "tests": [
+        "helper_test: ping, outside-root, unknown op"
+      ],
+      "status": "done"
     }
   ]
 }

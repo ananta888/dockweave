@@ -37,6 +37,9 @@ type Config struct {
 	AllowedRoots []string
 	// MountinfoPath overrides /proc/self/mountinfo (tests).
 	MountinfoPath string
+	// MountdSocket, when set, routes privileged syscalls to
+	// dockweave-mountd so the daemon itself can run unprivileged.
+	MountdSocket string
 }
 
 // Manager performs mount operations with per-agent serialization.
@@ -48,6 +51,8 @@ type Manager struct {
 
 	allowedMu sync.RWMutex
 	allowed   []string
+
+	sys backend
 }
 
 // New creates a Manager.
@@ -61,7 +66,7 @@ func New(cfg Config) (*Manager, error) {
 	if err := os.MkdirAll(cfg.Root, 0o755); err != nil {
 		return nil, fmt.Errorf("create root %q: %w", cfg.Root, err)
 	}
-	return &Manager{cfg: cfg, locks: map[string]*sync.Mutex{}, allowed: append([]string(nil), cfg.AllowedRoots...)}, nil
+	return &Manager{cfg: cfg, locks: map[string]*sync.Mutex{}, allowed: append([]string(nil), cfg.AllowedRoots...), sys: pickBackend(cfg)}, nil
 }
 
 // AddAllowedRoot registers an additional allowed mount source root at runtime
@@ -152,11 +157,11 @@ func (m *Manager) PrepareAgentTree(agentID string) error {
 		}
 	}
 	if !isMount {
-		if err := unix.Mount(tree, tree, "none", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+		if err := m.sys.Bind(tree, tree, unix.MS_BIND|unix.MS_REC); err != nil {
 			return fmt.Errorf("bind workspace tree %q onto itself: %w", tree, err)
 		}
 	}
-	if err := unix.Mount("none", tree, "", unix.MS_REC|unix.MS_SHARED, ""); err != nil {
+	if err := m.sys.Propagation(tree, unix.MS_REC|unix.MS_SHARED); err != nil {
 		return fmt.Errorf("make workspace tree %q rshared: %w", tree, err)
 	}
 	return nil
@@ -225,7 +230,7 @@ func (m *Manager) TeardownAgentTree(agentID string, force bool) (detached []stri
 		return nil, err
 	}
 	unmount := func(mp string) error {
-		err := unix.Unmount(mp, 0)
+		err := m.sys.Unmount(mp, 0)
 		if err == nil || errors.Is(err, unix.EINVAL) {
 			return nil // EINVAL: not a mountpoint (already gone)
 		}
@@ -236,7 +241,7 @@ func (m *Manager) TeardownAgentTree(agentID string, force bool) (detached []stri
 			return err
 		}
 		detached = append(detached, mp)
-		return unix.Unmount(mp, unix.MNT_DETACH)
+		return m.sys.Unmount(mp, unix.MNT_DETACH)
 	}
 	subs := MountsUnder(infos, tree)
 	// Deepest first (submounts before their parents).
@@ -293,11 +298,11 @@ func (m *Manager) List(agentID string) ([]model.MountState, error) {
 // mount degrades to a plain bind and the degradation is logged (audit); every
 // caller must treat that as security-relevant.
 func (m *Manager) mountNoSymfollow(src, target string, flags uintptr) error {
-	if err := unix.Mount(src, target, "none", flags|unix.MS_NOSYMFOLLOW, ""); err == nil {
+	if err := m.sys.Bind(src, target, flags|unix.MS_NOSYMFOLLOW); err == nil {
 		return nil
 	} else if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
 		log.Printf("mounts: MS_NOSYMFOLLOW unavailable for %q (symlink protection disabled): %v", target, err)
-		return unix.Mount(src, target, "none", flags, "")
+		return m.sys.Bind(src, target, flags)
 	} else {
 		return err
 	}
@@ -387,11 +392,11 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		os.Remove(target)
 		return "", fmt.Errorf("stage bind %q: %w", canon, err)
 	}
-	if err := unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC|unix.MS_NOSYMFOLLOW, ""); err != nil {
+	if err := m.sys.Remount(staging, unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC|unix.MS_NOSYMFOLLOW); err != nil {
 		// MS_NOSYMFOLLOW may not survive the remount on some kernels; the
 		// stage bind above already applied it (or degraded audibly).
 		if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
-			if err = unix.Mount("none", staging, "", unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC, ""); err != nil {
+			if err = m.sys.Remount(staging, unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC); err != nil {
 				cleanup()
 				return "", fmt.Errorf("remount ro on staging %q: %w", staging, err)
 			}
@@ -404,8 +409,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 	// kernels. mount_setattr(AT_RECURSIVE) enforces read-only on the whole
 	// staged subtree (Linux >= 5.12); on older kernels the defensive
 	// rw-submount check below refuses the mount instead of leaking writes.
-	if err := unix.MountSetattr(unix.AT_FDCWD, staging, unix.AT_RECURSIVE,
-		&unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY}); err != nil {
+	if err := m.sys.SetReadonly(staging, true); err != nil {
 		if !errors.Is(err, unix.ENOSYS) && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EPERM) {
 			cleanup()
 			return "", fmt.Errorf("recursive ro enforcement on %q: %w", staging, err)
@@ -417,7 +421,7 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		cleanup()
 		return "", fmt.Errorf("read-only enforcement failed: rw submounts under %q: %v", staging, rw)
 	}
-	if err := unix.Mount(staging, target, "", unix.MS_MOVE, ""); err != nil {
+	if err := m.sys.Move(staging, target); err != nil {
 		cleanup()
 		return "", fmt.Errorf("move staged mount into shared tree: %w", err)
 	}
@@ -504,7 +508,7 @@ func (m *Manager) unmount(target string, force bool) error {
 	if force {
 		flags = unix.MNT_DETACH
 	}
-	if err := unix.Unmount(target, flags); err != nil {
+	if err := m.sys.Unmount(target, flags); err != nil {
 		if errors.Is(err, unix.EBUSY) && !force {
 			return ErrBusy
 		}
@@ -574,14 +578,14 @@ func (m *Manager) PropagationProbe() error {
 		return fmt.Errorf("probe dir: %w", err)
 	}
 	defer os.RemoveAll(tmp)
-	if err := unix.Mount(tmp, tmp, "none", unix.MS_BIND, ""); err != nil {
+	if err := m.sys.Bind(tmp, tmp, unix.MS_BIND); err != nil {
 		return fmt.Errorf("bind mount failed (need CAP_SYS_ADMIN, not rootless docker): %w", err)
 	}
-	if err := unix.Mount("none", tmp, "", unix.MS_SHARED, ""); err != nil {
-		_ = unix.Unmount(tmp, 0)
+	if err := m.sys.Propagation(tmp, unix.MS_SHARED); err != nil {
+		_ = m.sys.Unmount(tmp, 0)
 		return fmt.Errorf("make-shared failed: %w", err)
 	}
-	if err := unix.Unmount(tmp, 0); err != nil {
+	if err := m.sys.Unmount(tmp, 0); err != nil {
 		return fmt.Errorf("probe unmount: %w", err)
 	}
 	return nil

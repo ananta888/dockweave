@@ -258,3 +258,38 @@ JSON in the vault; the admin API still never returns values.
 **Test:** `internal/credentialbroker/oauth_test.go` (refresh, persistence,
 header injection, refresh failure, static-secret compatibility) and a live
 Codex CLI run against a temporary broker.
+
+## SD-018 — Split privileges: unprivileged daemon + fd-only mount helper (2026-11-18)
+
+**Decision:** `dockweaved` may run as a dedicated unprivileged user
+(`dockweave`, member of `docker`) when `DOCKWEAVE_MOUNTD_SOCKET` is set. All
+mount syscalls then go through `dockweave-mountd`, a small root helper that
+accepts **directory file descriptors** (SCM_RIGHTS) and performs only
+`mount`/`mount_setattr`/`umount` on `/proc/self/fd/<n>`.
+
+**Why:** CAP_SYS_ADMIN in the initial namespace is effectively root. Splitting
+the API/DB/HTTP surface from the mount capability means a compromise of the
+daemon does not directly grant host mount control.
+
+**Boundary of the helper:**
+- Targets must resolve below the state root (`/var/lib/dockweave`); anything
+  else is rejected before the syscall.
+- The helper never resolves caller-supplied paths — it only uses the received
+  fds, so a path swap after validation cannot redirect a mount.
+- Source paths are validated by the daemon (allowlist + `openat2`), matching
+  the existing TOCTOU model (SD-001, SD-016).
+- The helper implements the RO-staging sequence itself; callers cannot skip
+  the read-only enforcement.
+- The socket is `0660`, and `--uid` restricts the client.
+
+**Residual risks:** (a) the helper trusts the daemon's source validation; a
+compromised daemon can mount any directory it can open, but not over arbitrary
+targets. (b) The Docker socket remains root-equivalent unless a socket proxy or
+rootless Docker is used — this decision does not change that. (c) The helper
+itself still holds CAP_SYS_ADMIN and is therefore a small, auditable attack
+surface; it must stay minimal.
+
+**Fallback:** without `MOUNTD_SOCKET` the daemon keeps the direct root backend.
+
+**Tests:** `internal/mounthelper/helper_test.go` (ping, target outside state
+root rejected, unknown op rejected) plus the existing mount tests.

@@ -1,0 +1,32 @@
+[Unit]
+Description=DockWeave privileged mount helper
+Documentation=https://github.com/ananta888/dockweave
+After=local-fs.target
+Before=dockweaved.service
+
+[Service]
+Type=simple
+RuntimeDirectory=dockweave
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/dockweave-mountd --socket /run/dockweave/mountd.sock --root /var/lib/dockweave --uid 1000
+Restart=on-failure
+RestartSec=2
+
+# The helper only performs mount(2)/mount_setattr on fds it receives.
+CapabilityBoundingSet=CAP_SYS_ADMIN
+AmbientCapabilities=CAP_SYS_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=no
+PrivateDevices=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

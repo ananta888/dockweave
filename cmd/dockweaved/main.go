@@ -55,9 +55,6 @@ func run(cfgPath string) error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("dockweaved requires Linux (mount propagation, /proc); got %s", runtime.GOOS)
 	}
-	if os.Geteuid() != 0 {
-		return errors.New("dockweaved must run as root (mount operations require CAP_SYS_ADMIN); refusing to start")
-	}
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		if !os.IsNotExist(errors.Unwrap(err)) {
@@ -66,7 +63,13 @@ func run(cfgPath string) error {
 		log.Printf("config %s not found, using defaults", cfgPath)
 	}
 
-	mountMgr, err := mounts.New(mounts.Config{Root: cfg.Root, AllowedRoots: cfg.AllowedRoots})
+	if os.Geteuid() != 0 && cfg.MountdSocket == "" {
+		return errors.New("dockweaved must run as root or with MOUNTD_SOCKET (privileged mount helper); refusing to start")
+	}
+
+	mountMgr, err := mounts.New(mounts.Config{
+		Root: cfg.Root, AllowedRoots: cfg.AllowedRoots, MountdSocket: cfg.MountdSocket,
+	})
 	if err != nil {
 		return err
 	}

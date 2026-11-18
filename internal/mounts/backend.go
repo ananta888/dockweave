@@ -1,0 +1,121 @@
+package mounts
+
+import (
+	"context"
+	"fmt"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/ananta888/dockweave/internal/mounthelper"
+)
+
+// backend abstracts the privileged syscalls. The direct backend runs inside a
+// root daemon; the helper backend sends directory fds to dockweave-mountd so
+// the daemon itself needs no CAP_SYS_ADMIN.
+type backend interface {
+	Bind(src, dst string, flags uintptr) error
+	Remount(dst string, flags uintptr) error
+	Move(src, dst string) error
+	Unmount(dst string, flags int) error
+	Propagation(dst string, flags uintptr) error
+	SetReadonly(dst string, recursive bool) error
+}
+
+type directBackend struct{}
+
+func (directBackend) Bind(src, dst string, flags uintptr) error {
+	return unix.Mount(src, dst, "none", flags, "")
+}
+
+func (directBackend) Remount(dst string, flags uintptr) error {
+	return unix.Mount("none", dst, "", flags, "")
+}
+
+func (directBackend) Move(src, dst string) error {
+	return unix.Mount(src, dst, "", unix.MS_MOVE, "")
+}
+
+func (directBackend) Unmount(dst string, flags int) error {
+	return unix.Unmount(dst, flags)
+}
+
+func (directBackend) Propagation(dst string, flags uintptr) error {
+	return unix.Mount("none", dst, "", flags, "")
+}
+
+func (directBackend) SetReadonly(dst string, recursive bool) error {
+	flags := 0
+	if recursive {
+		flags = unix.AT_RECURSIVE
+	}
+	return unix.MountSetattr(unix.AT_FDCWD, dst, uint(flags), &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_RDONLY})
+}
+
+// helperBackend passes O_PATH directory fds to the privileged helper.
+type helperBackend struct {
+	client *mounthelper.Client
+}
+
+func (h *helperBackend) open(path string) (int, error) {
+	fd, err := unix.Open(path, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, fmt.Errorf("open %s: %w", path, err)
+	}
+	return fd, nil
+}
+
+func (h *helperBackend) Do(req mounthelper.Request, paths ...string) error {
+	fds := make([]int, 0, len(paths))
+	for _, p := range paths {
+		fd, err := h.open(p)
+		if err != nil {
+			for _, open := range fds {
+				_ = unix.Close(open)
+			}
+			return err
+		}
+		fds = append(fds, fd)
+	}
+	defer func() {
+		for _, fd := range fds {
+			_ = unix.Close(fd)
+		}
+	}()
+	return h.client.Do(context.Background(), req, fds)
+}
+
+func (h *helperBackend) Bind(src, dst string, flags uintptr) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpBind, Flags: flags, Recursive: flags&unix.MS_REC != 0}, src, dst)
+}
+
+func (h *helperBackend) Remount(dst string, flags uintptr) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpRemount, Flags: flags}, dst)
+}
+
+func (h *helperBackend) Move(src, dst string) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpMove}, src, dst)
+}
+
+func (h *helperBackend) Unmount(dst string, flags int) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpUnmount, Flags: uintptr(flags)}, dst)
+}
+
+func (h *helperBackend) Propagation(dst string, flags uintptr) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpPropagation, Flags: flags}, dst)
+}
+
+func (h *helperBackend) SetReadonly(dst string, recursive bool) error {
+	return h.Do(mounthelper.Request{Op: mounthelper.OpSetReadonly, Recursive: recursive}, dst)
+}
+
+// pickBackend returns the helper backend when a socket is configured and
+// reachable, otherwise the direct (root) backend.
+func pickBackend(cfg Config) backend {
+	if cfg.MountdSocket != "" {
+		c := &mounthelper.Client{Socket: cfg.MountdSocket}
+		if c.Available() {
+			return &helperBackend{client: c}
+		}
+	}
+	return directBackend{}
+}

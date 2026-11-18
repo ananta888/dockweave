@@ -1,0 +1,38 @@
+[Unit]
+Description=DockWeave daemon (unprivileged, mount helper)
+Documentation=https://github.com/ananta888/dockweave
+After=network-online.target docker.service dockweave-mountd.service
+Wants=network-online.target
+Requires=dockweave-mountd.service
+
+[Service]
+Type=simple
+User=dockweave
+Group=dockweave
+SupplementaryGroups=docker
+RuntimeDirectory=dockweave
+RuntimeDirectoryMode=0750
+StateDirectory=dockweave
+StateDirectoryMode=0750
+Environment=DOCKWEAVE_MOUNTD_SOCKET=/run/dockweave/mountd.sock
+EnvironmentFile=-/etc/dockweave/dockweaved.conf
+ExecStart=/usr/local/bin/dockweaved
+Restart=on-failure
+RestartSec=2
+
+# No mount privileges here: the helper owns CAP_SYS_ADMIN.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

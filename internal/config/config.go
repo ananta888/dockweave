@@ -38,6 +38,10 @@ type Config struct {
 	// Roles still apply on top of socket access.
 	SocketGroup string
 
+	// MountdSocket routes privileged mount syscalls to dockweave-mountd so
+	// the daemon itself can run without CAP_SYS_ADMIN.
+	MountdSocket string
+
 	// BrokerAdminSocket is the unix socket of the credential broker's
 	// operator API. Empty disables broker metadata endpoints. The daemon
 	// must be in the broker's admin UID allowlist (root usually is not by
@@ -108,6 +112,8 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.SocketPath = v
 		case "SOCKET_GROUP":
 			cfg.SocketGroup = v
+		case "MOUNTD_SOCKET":
+			cfg.MountdSocket = v
 		case "BROKER_ADMIN_SOCKET":
 			cfg.BrokerAdminSocket = v
 		case "DB_PATH":
