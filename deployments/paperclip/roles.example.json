@@ -1,0 +1,6 @@
+{
+  "backend": "AGENT_ID_BACKEND",
+  "frontend": "AGENT_ID_FRONTEND",
+  "reviewer": "AGENT_ID_REVIEWER",
+  "platform": "AGENT_ID_PLATFORM"
+}
