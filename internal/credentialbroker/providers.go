@@ -60,6 +60,7 @@ func DefaultProviders() map[string]Provider {
 		{Name: "deepseek", BaseURL: "https://api.deepseek.com/v1", AuthHeader: "Authorization", AuthPrefix: "Bearer "},
 		{Name: "anthropic", BaseURL: "https://api.anthropic.com/v1", AuthHeader: "x-api-key"},
 		{Name: "gemini", BaseURL: "https://generativelanguage.googleapis.com/v1beta", AuthHeader: "x-goog-api-key"},
+		{Name: "github", BaseURL: "https://api.githubcopilot.com", AuthHeader: "Authorization", AuthPrefix: "Bearer "},
 		{Name: "opencode", BaseURL: "https://opencode.ai/zen/v1", AuthHeader: "Authorization", AuthPrefix: "Bearer "},
 		{
 			Name: "codex-chatgpt", BaseURL: "https://chatgpt.com/backend-api/codex",
