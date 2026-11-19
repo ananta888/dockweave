@@ -63,13 +63,18 @@ func (directBackend) ChownTree(path string, uid, gid int) error {
 	})
 }
 
-// helperBackend passes O_PATH directory fds to the privileged helper.
+// helperBackend passes O_RDONLY directory fds to the privileged helper. The
+// fds must be readable (not O_PATH) so the helper can bind-mount the *source*
+// via /proc/self/fd/<n> and pin the daemon-verified object across the
+// privilege boundary (no TOCTOU re-resolution). The daemon already opens mount
+// sources read-only in ResolveSource, and targets live under the daemon-owned
+// state root, so O_RDONLY is always available here.
 type helperBackend struct {
 	client *mounthelper.Client
 }
 
 func (h *helperBackend) open(path string) (int, error) {
-	fd, err := unix.Open(path, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return -1, fmt.Errorf("open %s: %w", path, err)
 	}
