@@ -91,8 +91,27 @@ func run() error {
 		}
 		return runCmd(*ca, *policy, *agent, *host, *user, *ttl, fs.Args())
 
+	case "git-ssh":
+		// Drop-in GIT_SSH_COMMAND target: git appends "<host> <command>".
+		// Usage: GIT_SSH_COMMAND="dockweave-ssh git-ssh --ca C --policy P --agent A --user git"
+		fs := flag.NewFlagSet("git-ssh", flag.ExitOnError)
+		ca := fs.String("ca", *caPath, "CA private key")
+		policy := fs.String("policy", *policyPath, "policy file")
+		agent := fs.String("agent", "", "agent identity")
+		user := fs.String("user", "", "destination user (required)")
+		ttl := fs.Duration("ttl", 0, "certificate TTL override")
+		_ = fs.Parse(args)
+		rest := fs.Args()
+		if *agent == "" || *user == "" {
+			return fmt.Errorf("--agent and --user are required")
+		}
+		if len(rest) < 1 {
+			return fmt.Errorf("git-ssh: destination host missing (set GIT_SSH_COMMAND correctly)")
+		}
+		return runCmd(*ca, *policy, *agent, rest[0], *user, *ttl, rest[1:])
+
 	default:
-		return fmt.Errorf("unknown command %q (init|grant|issue|list|run)", cmd)
+		return fmt.Errorf("unknown command %q (init|grant|issue|list|run|git-ssh)", cmd)
 	}
 }
 

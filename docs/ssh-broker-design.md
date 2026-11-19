@@ -122,7 +122,12 @@ checked on every signature/issuance.
 1. Design + TODO (this document). ✅
 2. CA key storage, policy, certificate issuance, wrapper and tests with a
    local SSH server. ✅ (2026-11-19, `internal/sshbroker` + `cmd/dockweave-ssh`)
-3. Git integration (`GIT_SSH_COMMAND`) and short-lived key cleanup.
-4. FIDO2 signer and hardware tests.
+3. Git integration (`GIT_SSH_COMMAND`) and short-lived key cleanup. ✅
+   (`dockweave-ssh git-ssh` as a drop-in `GIT_SSH_COMMAND`; key cleanup via
+   0700 temp dir removed on exit.)
+4. FIDO2 signer and hardware tests. ⏳ hardware-backed signer required; not
+   implementable without a FIDO2/PIV token. Left as a separate, hardware-only
+   increment.
 5. Privileged/e2e tests: direct SSH without wrapper must fail under
    broker-only egress; wrapper SSH succeeds; revoked/expired certs fail.
+   ⏳ needs the privileged CI environment (broker + agent container + egress).
