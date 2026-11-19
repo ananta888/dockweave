@@ -85,3 +85,22 @@ func TestPeerAuthMiddlewareResolvesRoleFromUID(t *testing.T) {
 		t.Fatalf("monitor write must be forbidden, got %d", rec.Code)
 	}
 }
+
+func TestPeerAuthMiddlewareExposesResolvedRole(t *testing.T) {
+	policy := NewAuthPolicy([]uint32{1000}, nil)
+	var seen Role
+	h := PeerAuthMiddleware(policy, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen, _ = r.Context().Value(peerRoleKey{}).(Role)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	rec := httptest.NewRecorder()
+	// PeerConnContext sets the uid only; the middleware must resolve and expose
+	// the role so admin-only handlers (approvals) work.
+	h.ServeHTTP(rec, reqWithPeer(http.MethodPost, 1000, ""))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("code = %d", rec.Code)
+	}
+	if seen != RoleAdmin {
+		t.Fatalf("handler saw role %q, want admin", seen)
+	}
+}

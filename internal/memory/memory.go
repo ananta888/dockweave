@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -32,13 +33,17 @@ type Manager struct {
 	// MemoryDir resolves the host path of a memory ID (default layout).
 	MemoryDir func(memoryID string) string
 	// overrides holds registered custom store directories (review
-	// follow-up: own memory folders).
+	// follow-up: own memory folders). Guarded by mu: the API reads Path from
+	// concurrent requests while SetPath mutates it.
 	overrides map[string]string
+	mu        sync.RWMutex
 }
 
 // SetPath registers a custom storage directory for a memory (empty clears
 // the override and restores the default layout).
 func (m *Manager) SetPath(memoryID, dir string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.overrides == nil {
 		m.overrides = map[string]string{}
 	}
@@ -52,7 +57,10 @@ func (m *Manager) SetPath(memoryID, dir string) {
 // Path returns the store directory of a memory: the registered custom
 // directory when set, the default layout otherwise.
 func (m *Manager) Path(memoryID string) string {
-	if p, ok := m.overrides[memoryID]; ok {
+	m.mu.RLock()
+	p, ok := m.overrides[memoryID]
+	m.mu.RUnlock()
+	if ok {
 		return p
 	}
 	return m.MemoryDir(memoryID)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -140,4 +141,26 @@ func TestRetention(t *testing.T) {
 	if len(removed) != 2 {
 		t.Fatalf("expected 2 removals by age, got %v", removed)
 	}
+}
+
+func TestManagerPathConcurrentAccess(t *testing.T) {
+	m, err := New(t.TempDir(), func(id string) string { return "/default/" + id })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 200; j++ {
+				if n%2 == 0 {
+					m.SetPath("mem", "/custom")
+				} else {
+					_ = m.Path("mem")
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 }

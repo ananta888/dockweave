@@ -81,10 +81,12 @@ func PeerAuthMiddleware(policy AuthPolicy, next http.Handler) http.Handler {
 			http.Error(w, "forbidden: monitor role is read-only", http.StatusForbidden)
 			return
 		}
+		// Make the resolved role available to handlers (approvals need it).
+		ctx = context.WithValue(ctx, peerRoleKey{}, role)
 		if ctx.Value(peerKey{}) == nil {
-			r = r.WithContext(context.WithValue(ctx, peerKey{}, "unknown"))
+			ctx = context.WithValue(ctx, peerKey{}, "unknown")
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
