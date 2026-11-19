@@ -1,6 +1,6 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-19, letzter Commit `a603237` (gepusht nach `origin/main`).
+Stand: 2026-11-19, letzter Commit `8935692` (gepusht nach `origin/main`).
 Working Tree sauber, `main` == `origin/main`.
 
 Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
@@ -286,6 +286,13 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
    Upstream-Pfad unter `/p/{provider}/…` weiter; die Modell-Allowlist greift
    nur, wenn der Body ein `model`-Feld trägt. Als bekannte Grenze in SD-019
    dokumentiert; Endpoint-/Modell-Eingrenzung ist Folgearbeit.
+9. **SSH-Broker Phasen 3–5:** Phase 2 (CA + Policy + Zertifikat + Wrapper) ist
+   umgesetzt (`internal/sshbroker`, `cmd/dockweave-ssh`). Offen bleiben
+   Git-Integration (`GIT_SSH_COMMAND`), FIDO2-Signer und privilegierte
+   Egress-Tests (siehe `docs/ssh-broker-design.md`, Abschnitt „Phases").
+10. **Mount-Helfer TOCTOU-Grenze:** Die Bind-Quelle wird im Helper per
+    `readlink` aufgelöst (WSL2 lehnt `/proc/self/fd` als Bind-Quelle ab) —
+    kleines TOCTOU-Fenster, dokumentiert in SD-019.
 
 ---
 
