@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,10 +29,39 @@ import (
 	"github.com/ananta888/dockweave/internal/mounts"
 )
 
+// capSysAdmin is the Linux capability bit for CAP_SYS_ADMIN (mount).
+const capSysAdmin = 21
+
+// hasCapSysAdmin reports whether the effective capability set contains
+// CAP_SYS_ADMIN. euid==0 alone is not sufficient: a root process with a
+// restricted capability bounding set cannot mount(2) and must skip rather
+// than fail mid-test (which could leave stray mounts behind).
+func hasCapSysAdmin() bool {
+	b, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(line, "CapEff:") {
+			continue
+		}
+		v := strings.TrimSpace(strings.TrimPrefix(line, "CapEff:"))
+		n, err := strconv.ParseUint(v, 16, 64)
+		if err != nil {
+			return false
+		}
+		return n&(1<<capSysAdmin) != 0
+	}
+	return false
+}
+
 func requireRoot(t *testing.T) {
 	t.Helper()
 	if os.Geteuid() != 0 {
 		t.Skip("requires root (privileged container)")
+	}
+	if !hasCapSysAdmin() {
+		t.Skip("root without CAP_SYS_ADMIN (restricted capability set); cannot mount")
 	}
 }
 
