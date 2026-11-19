@@ -190,7 +190,7 @@ type Memory struct {
 
 // GrantStatus is the lifecycle state of a grant. A grant is only *active*
 // (permission in effect) after its kernel mount has been applied; every
-// intermediate state is visible and resolvable (see todo/review-2026-10.json
+// intermediate state is visible and resolvable (see todo/archive/review-2026-10.json
 // review-002).
 type GrantStatus string
 

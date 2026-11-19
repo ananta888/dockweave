@@ -46,7 +46,7 @@ func (pruneDockerStub) ExecOutput(context.Context, string, []string) (string, er
 
 // TestAgentPruneBusyMount exercises agents.Remove with a real busy mount:
 // prune must report errors (no silent MNT_DETACH), keep the agent record
-// (retryable), and succeed on retry. See todo/review-2026-10.json review-003.
+// (retryable), and succeed on retry. See todo/archive/review-2026-10.json review-003.
 func TestAgentPruneBusyMount(t *testing.T) {
 	requireRoot(t)
 	root := t.TempDir()

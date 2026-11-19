@@ -336,7 +336,7 @@ code fell short of its own documented contract. Fixed in this round:
    applies when the body carries a `model` field. Models are enforced when
    present, but an agent could call non-LLM endpoints or omit the field.
    Restricting the surface is a design change with breakage risk for running
-   agents; tracked as a follow-up (todo/hardening-2026-11.json hard-007).
+   agents; tracked as a follow-up (todo/archive/hardening-2026-11.json hard-007).
 
 **Tests:** `internal/mounts/hardening_test.go` (staging sequence + fail-closed
 NOSYMFOLLOW), `internal/mounthelper/helper_test.go` (fd source link),

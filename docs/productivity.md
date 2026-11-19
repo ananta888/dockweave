@@ -69,7 +69,7 @@ dockweave review add --kind weekly --start 2026-11-11 --end 2026-11-18 --body '{
 
 ## Open items
 
-See `todo/productivity.json`: TUI focus tab, ingestion of monitor/supervisor
+See `todo/archive/productivity.json`: TUI focus tab, ingestion of monitor/supervisor
 events, budget actuals, calendar logbook, optional ranking, Ananta contracts.
 
 ## Reporting, ranking and export (implemented)

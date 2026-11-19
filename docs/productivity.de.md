@@ -55,7 +55,7 @@ dockweave evidence add tk_123 --kind test --ref "go test ./..." --verified
 
 ## Offene Punkte
 
-Siehe `todo/productivity.json`: TUI-Fokus-Tab, Übernahme der Monitor-/Supervisor-
+Siehe `todo/archive/productivity.json`: TUI-Fokus-Tab, Übernahme der Monitor-/Supervisor-
 Events, Budget-Ist-Werte, Kalender-Logbuch, optionale Priorisierung,
 Ananta-Verträge.
 

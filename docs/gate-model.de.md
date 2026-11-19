@@ -2,7 +2,7 @@
 
 Dieses Dokument legt die Verantwortungsgrenze zwischen Paperclip und
 DockWeave für Gates, Reviews und Freigaben fest. Es ist die Referenz für
-`todo/gate-enforcement.json`.
+`todo/archive/gate-enforcement.json`.
 
 ## Prinzip
 

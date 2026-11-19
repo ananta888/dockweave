@@ -91,7 +91,8 @@ statt zu scheitern).
 - `pkg/sdk` — öffentlicher Go-Client
 - `ui/tui` — Bubble Tea TUI
 - `scripts/` — Install-/Uninstall-Skripte (`install.sh`, `uninstall.sh`)
-- `todo/*.json` — maschinenlesbare Aufgabenstände
+- `todo/*.json` — aktive, maschinenlesbare Aufgabenstände
+- `todo/archive/*.json` — abgeschlossene Aufgabenstände (alle Tasks `done`/`deferred`)
 - `tests/integration` — privilegierte Tests
 
 ## Docker-Label-Konvention

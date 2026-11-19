@@ -74,7 +74,7 @@ Features:
 ### 3.2 Gate-Enforcement (Paperclip ↔ DockWeave)
 
 Doku: `docs/gate-model.md` / `.de.md` (Verantwortungsgrenze, Non-Goals,
-Status-Semantik, Fail-closed-Regeln). TODO: `todo/gate-enforcement.json`
+Status-Semantik, Fail-closed-Regeln). TODO: `todo/archive/gate-enforcement.json`
 (**20 done, 2 deferred**).
 
 - **Graph → Paperclip-Sync** (`internal/gatesync`): aktivierte Gate-Connectoren
@@ -120,7 +120,7 @@ Status-Semantik, Fail-closed-Regeln). TODO: `todo/gate-enforcement.json`
 ### 3.4 Security-Hardening (Analyse-Runde, 2026-11-19)
 
 Eine Quellcode-Analyse deckte Stellen auf, an denen Code und Doku/Sicherheits-
-Kontrakt auseinanderliefen. Gepflegt in `todo/hardening-2026-11.json`
+Kontrakt auseinanderliefen. Gepflegt in `todo/archive/hardening-2026-11.json`
 (**6 done, 1 deferred**), Commits `7ebd92f` … `6e6c732`:
 
 - **mountd-TOCTOU geschlossen** (`internal/mounthelper`): Der Helper löste die
@@ -230,7 +230,7 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 | Web-Sync-Status | `internal/webui/graph.go`, `internal/webui/server.go` |
 | Paperclip | `deployments/paperclip/{gates,parent-close}.py`, `dockweave-run.sh` |
 | Doku | `docs/gate-model.md` / `.de.md`, `docs/paperclip-delegation.md` / `.de.md` |
-| TODO | `todo/gate-enforcement.json` |
+| TODO | `todo/archive/gate-enforcement.json` |
 
 ---
 
@@ -267,7 +267,7 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 
 ## 8. Offene Punkte / nächste Schritte
 
-1. **`todo/gate-enforcement.json`:** 20 Tasks `done`; offen nur die bewussten
+1. **`todo/archive/gate-enforcement.json`:** 20 Tasks `done`; offen nur die bewussten
    Non-Goals `gate-040` (keine zweite Dependency-DB) und `gate-041` (kein
    eigenes Issue-Board), beide `deferred`.
 2. **Rollen-Durchsetzung am Web-Gateway:** in dieser Session umgesetzt

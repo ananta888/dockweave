@@ -2,7 +2,7 @@
 
 This document fixes the responsibility boundary between Paperclip and
 DockWeave for gates, reviews and approvals. It is the reference for
-`todo/gate-enforcement.json`.
+`todo/archive/gate-enforcement.json`.
 
 ## Principle
 
