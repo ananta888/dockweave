@@ -4,7 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"encoding/asn1"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -21,6 +21,7 @@ type TPMSigner struct {
 	tpm    transport.TPM
 	closer io.Closer
 	handle tpm2.TPMHandle
+	name   tpm2.TPM2BName
 	pub    ssh.PublicKey
 }
 
@@ -67,6 +68,16 @@ func NewTPMSignerFromReadWriter(rw io.ReadWriteCloser) (*TPMSigner, error) {
 }
 
 func newTPMSigner(t transport.TPM, closer io.Closer) (*TPMSigner, error) {
+	// A raw TPM transport (e.g. a swtpm socket) is not auto-started by a
+	// kernel driver, so send TPM2_Startup(TPM_SU_CLEAR) first. It is a no-op
+	// (TPM_RC_INITIALIZE is tolerated) when the TPM was already started.
+	if _, err := (tpm2.Startup{StartupType: tpm2.TPMSUClear}).Execute(t); err != nil {
+		// TPM_RC_INITIALIZE means "already started"; anything else is fatal.
+		if !isRCInitialize(err) {
+			_ = closer.Close()
+			return nil, fmt.Errorf("sshbroker: TPM startup: %w", err)
+		}
+	}
 	tmpl := tpm2.TPMTPublic{
 		Type:    tpm2.TPMAlgECC,
 		NameAlg: tpm2.TPMAlgSHA256,
@@ -116,7 +127,13 @@ func newTPMSigner(t transport.TPM, closer io.Closer) (*TPMSigner, error) {
 		_ = closer.Close()
 		return nil, fmt.Errorf("sshbroker: marshal TPM public key: %w", err)
 	}
-	return &TPMSigner{tpm: t, closer: closer, handle: rsp.ObjectHandle, pub: sshPub}, nil
+	return &TPMSigner{tpm: t, closer: closer, handle: rsp.ObjectHandle, name: rsp.Name, pub: sshPub}, nil
+}
+
+// isRCInitialize reports whether err is the TPM "already initialized" return
+// code (tolerated on Startup so a reused TPM works too).
+func isRCInitialize(err error) bool {
+	return errors.Is(err, tpm2.TPMRCInitialize)
 }
 
 // eccPublicKey extracts an *ecdsa.PublicKey from a TPM ECC public area.
@@ -149,13 +166,17 @@ func (s *TPMSigner) SignCert(cert *ssh.Certificate) error {
 	digest := sha256.Sum256(certBytesForSigning(cert))
 
 	sign := tpm2.Sign{
-		KeyHandle: s.handle,
+		KeyHandle: tpm2.NamedHandle{Handle: s.handle, Name: s.name},
 		Digest:    tpm2.TPM2BDigest{Buffer: digest[:]},
-		InScheme: tpm2.TPMTSigScheme{
-			Scheme:  tpm2.TPMAlgECDSA,
-			Details: tpm2.NewTPMUSigScheme(tpm2.TPMAlgECDSA, &tpm2.TPMSSchemeHash{HashAlg: tpm2.TPMAlgSHA256}),
+		// The key template already pins the ECDSA+SHA256 scheme, so inScheme
+		// is NULL (use the key's scheme).
+		InScheme: tpm2.TPMTSigScheme{Scheme: tpm2.TPMAlgNull},
+		// Non-restricted signing key => NULL hash-check ticket.
+		Validation: tpm2.TPMTTKHashCheck{
+			Tag:       tpm2.TPMSTHashCheck,
+			Hierarchy: tpm2.TPMRHNull,
+			Digest:    tpm2.TPM2BDigest{},
 		},
-		Validation: tpm2.TPMTTKHashCheck{},
 	}
 	rsp, err := sign.Execute(s.tpm)
 	if err != nil {
@@ -165,17 +186,14 @@ func (s *TPMSigner) SignCert(cert *ssh.Certificate) error {
 	if err != nil {
 		return fmt.Errorf("sshbroker: TPM signature not ECDSA: %w", err)
 	}
-	// TPM returns raw r||s; SSH wants ASN.1 DER.
-	der, err := asn1.Marshal(struct {
+	// TPM returns raw r||s; SSH encodes ECDSA signatures as two mpints.
+	blob := ssh.Marshal(struct {
 		R, S *big.Int
 	}{
 		new(big.Int).SetBytes(ecc.SignatureR.Buffer),
 		new(big.Int).SetBytes(ecc.SignatureS.Buffer),
 	})
-	if err != nil {
-		return fmt.Errorf("sshbroker: encode TPM signature: %w", err)
-	}
-	cert.Signature = &ssh.Signature{Format: "ecdsa-sha2-nistp256", Blob: der}
+	cert.Signature = &ssh.Signature{Format: "ecdsa-sha2-nistp256", Blob: blob}
 	return nil
 }
 
