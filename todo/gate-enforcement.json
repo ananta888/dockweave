@@ -1,0 +1,425 @@
+{
+  "domain": "gate-enforcement",
+  "updated": "2026-11-19",
+  "tasks": [
+    {
+      "id": "gate-001",
+      "title": "Verantwortungsgrenze Paperclip ↔ DockWeave dokumentieren",
+      "description": "Verbindliche Architektur-Doku (de+en): Paperclip besitzt Planung, Issue-Hierarchie, Dependencies und grobe Prozess-Gates; DockWeave besitzt Runtime-Grenzen (Mounts, Egress, Capabilities, Broker), Identität/Audit, Budgets und Beweis-/Integritätsnachweise. Enthält die Liste der Grenzen heutiger Paperclip-Gates (after_run, Host-Shell, workspace-beschreibbare gates.json, Freitext-VERDICT, kein Runtime-Kontext) und die Redundanz-/Sync-Tabelle (Gate-Definition, Review, Approval, Issue↔Task, Statusbegriff).",
+      "priority": "high",
+      "dependencies": [],
+      "components": [
+        "docs"
+      ],
+      "acceptance": "docs/gate-model.md und docs/gate-model.de.md existieren; jede Zuständigkeit ist genau einer Seite zugeordnet; Redundanzen sind mit Sync-Richtung benannt; verlinkt aus paperclip-delegation.md und HANDOFF.",
+      "tests": [],
+      "status": "pending"
+    },
+    {
+      "id": "gate-002",
+      "title": "Kanonische Gate-Definition im Graph + Sync nach gates.json",
+      "description": "Aktivierte Gate-Connectoren des 2D-Graphen sind die kanonische Definition und werden beim Speichern nach <workspace>/.paperclip/gates.json abgeleitet: command → gates[], review_required → review.required, human_approval_required → human_approval.required. Schreiben nur unterhalb der Admin-Browser-Roots, atomar, Ergebnis in der PUT-/graph-Antwort.",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/gatesync",
+        "internal/webui",
+        "ui/web/src/app/components"
+      ],
+      "acceptance": "PUT /graph mit aktivem Gate schreibt die Datei; deaktivierte Gates und Gates ohne command werden ignoriert; ungültige Contracts erzeugen Warnungen statt Fehlern; ein Sync-Fehler lässt das Speichern nicht scheitern.",
+      "tests": [
+        "Unit: Derive/Sync/Validierung (internal/gatesync)",
+        "API: PUT /graph schreibt gates.json"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "gate-003",
+      "title": "Merge-Schutz beim ersten Sync über handgepflegte gates.json",
+      "description": "Der erste Sync über eine manuell gepflegte Datei darf keine bestehenden Gates verlieren: Graph-Einträge gewinnen bei gleicher ID, unbekannte manuelle Gates (z. B. tests) und Review/Human-Flags bleiben erhalten. Danach gehört die Datei DockWeave (generatedBy) und wird vollständig verwaltet; beim Entfernen aller Gates wird sie geleert.",
+      "priority": "high",
+      "dependencies": [
+        "gate-002"
+      ],
+      "components": [
+        "internal/gatesync"
+      ],
+      "acceptance": "Migrationstest: manuelles tests-Gate + Graph-build-Gate ergeben beide Einträge; generatedBy gesetzt; zweiter Sync ohne Graph-Gates leert die Datei.",
+      "tests": [
+        "Unit: Merge, Übernahme, Leeren"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "gate-004",
+      "title": "Sync-Status und Drift-Erkennung in der UI",
+      "description": "Die Graph-Oberfläche zeigt nicht nur den letzten Sync-Text, sondern einen belastbaren Zustand: Hash der erzeugten gates.json, Zeitpunkt, Anzahl Gates, ob die Datei seitdem manuell verändert wurde (Drift) und ob der Graph gerade nicht die Quelle ist. Drift wird nicht still überschrieben, sondern sichtbar gemacht.",
+      "priority": "high",
+      "dependencies": [
+        "gate-002",
+        "gate-003"
+      ],
+      "components": [
+        "internal/gatesync",
+        "internal/webui",
+        "ui/web/src/app/components"
+      ],
+      "acceptance": "UI zeigt synchronisiert/drifted/disabled; bei Drift wird vor dem nächsten Überschreiben gewarnt; Hash und Pfad sind sichtbar; Response enthält den Hash.",
+      "tests": [
+        "Unit: Hash-Vergleich",
+        "E2E: Sync-Status sichtbar"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-010",
+      "title": "Sandboxed Gate-Runner im Daemon",
+      "description": "Neuer Daemon-Endpoint (und CLI `dockweave gate run <workspace>`), der Gate-Kommandos nicht auf dem Host, sondern in einem kurzlebigen Container ausführt: Workspace read-only oder als Kopie, kein Broker-/Docker-Socket, keine Agent-Credentials, Netzwerk standardmäßig aus, CPU/RAM/PID-Limits, hartes Timeout, non-root. Ergebnis als strukturiertes JSON (ok, skipped, results[]).",
+      "priority": "critical",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "internal/gateexec",
+        "internal/api",
+        "internal/dockerclient",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Gate läuft in einem eigenen Container ohne Broker-Socket und ohne Netz; Exit-Code/Output werden zurückgegeben; Timeout killt den Container; Host-Dateien werden nicht beschrieben.",
+      "tests": [
+        "Integration: Sandbox-Container-Inspect (keine Sockets, kein Netz)",
+        "Integration: Timeout und Exit-Code",
+        "Unit: Ergebnis-Schema"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-011",
+      "title": "Gate-Runs persistieren und als Evidence verfügbar machen",
+      "description": "Migration für gate_runs (workspace, gate_id, command, status, exit, dauer, output-tail, hashes, gestartet/beendet, actor). Ergebnis wird über die Productivity-Evidence ablegbar, damit `done → verified` an einem verifizierten Gate-Lauf hängt statt an einem Kommentar.",
+      "priority": "high",
+      "dependencies": [
+        "gate-010"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api",
+        "internal/model"
+      ],
+      "acceptance": "Jeder Lauf erzeugt genau einen Datensatz; Historie pro Workspace abrufbar; Evidence kann auf eine gate_run-ID verweisen; Lösch-/Prune-Regeln dokumentiert.",
+      "tests": [
+        "Persistence: Insert/List/Prune",
+        "API: Historie und Evidence-Verknüpfung"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-012",
+      "title": "Tamper-Erkennung für Gate-Definition und Tests",
+      "description": "Vor dem Lauf werden Hashes über .paperclip/gates.json sowie die referenzierten Test-/Build-Konfigurationen gebildet, nach dem Lauf erneut geprüft. Ändert der Agent Gate-Definition, Testskripte oder package.json/lockfile während des Runs, ist das Gate ungültig (FAIL mit Grund), auch wenn das Kommando Exit 0 liefert.",
+      "priority": "critical",
+      "dependencies": [
+        "gate-010"
+      ],
+      "components": [
+        "internal/gateexec",
+        "internal/gatesync"
+      ],
+      "acceptance": "Manipulation von gates.json oder Testdateien im Workspace führt zu FAIL; unveränderte Dateien ergeben PASS; Hashes stehen im Ergebnis und im Audit.",
+      "tests": [
+        "Integration: Gate nach Manipulation",
+        "Unit: Hash-Set-Bildung"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-013",
+      "title": "Paperclip-Wrapper auf den DockWeave-Gate-Runner umstellen",
+      "description": "dockweave-run.sh bzw. gates.py ruft künftig den Daemon-Endpoint statt `subprocess.run(shell=True)` auf dem Host. Host-Ausführung bleibt nur als expliziter, klar markierter Fallback (Umgebungsvariable), nie als Default. Fehler/Timeout werden wie ein fehlgeschlagenes Gate behandelt (DONE → in_progress).",
+      "priority": "critical",
+      "dependencies": [
+        "gate-010",
+        "gate-011",
+        "gate-012"
+      ],
+      "components": [
+        "deployments/paperclip",
+        "cmd/dockweave"
+      ],
+      "acceptance": "Ein Worker-Run führt Gates ausschließlich im Sandbox-Container aus; Host-Fallback ist opt-in und dokumentiert; fehlendes Daemon-Gate führt zu in_progress statt zu done.",
+      "tests": [
+        "Integration: Wrapper gegen Test-Daemon",
+        "E2E: Paperclip-Run mit fehlschlagendem Gate"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-014",
+      "title": "Gate-Ergebnis in Paperclip und DockWeave konsistent abbilden",
+      "description": "Ein Gate-Lauf erzeugt: (a) strukturierten Output-Tail als Paperclip-Kommentar, (b) Statuswechsel nur bei PASS, (c) Evidence-Eintrag in DockWeave, (d) Audit-Event mit Hash. Die drei Sichten dürfen nicht auseinanderlaufen; Widersprüche werden erkannt und gemeldet.",
+      "priority": "high",
+      "dependencies": [
+        "gate-011",
+        "gate-013"
+      ],
+      "components": [
+        "internal/api",
+        "deployments/paperclip",
+        "internal/productivity"
+      ],
+      "acceptance": "PASS erzeugt done + Evidence + Audit; FAIL erzeugt in_progress + Kommentar + Rework-Hinweis; Kommentar und Evidence verweisen auf dieselbe gate_run-ID.",
+      "tests": [
+        "Integration: PASS/FAIL-Pfad",
+        "Unit: Audit-Event"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-015",
+      "title": "Gate-Phasen (pre_run/after_run/post_commit) definieren",
+      "description": "Heute wertet gates.py nur `when == after_run` aus. Phasen explizit definieren, validieren und in definierter Reihenfolge ausführen; unbekannte Phasen sind ein Konfigurationsfehler. Vorbereitung für Pre-Flight-Checks (z. B. Workspace sauber, Dependencies installiert).",
+      "priority": "medium",
+      "dependencies": [
+        "gate-010"
+      ],
+      "components": [
+        "internal/gateexec",
+        "internal/gatesync",
+        "deployments/paperclip"
+      ],
+      "acceptance": "Unbekannte Phase wird abgelehnt; Reihenfolge deterministisch; Doku nennt Semantik und erlaubte Werte.",
+      "tests": [
+        "Unit: Phasen-Validierung",
+        "Integration: Reihenfolge"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-020",
+      "title": "Review-PASS an Akteur/Identität binden",
+      "description": "Der aktuelle Review-Gate akzeptiert jeden Kommentar mit `VERDICT: PASS`, ohne Autorprüfung. PASS muss vom zugewiesenen Reviewer-Agent stammen (oder von einem menschlichen Admin), mit Agent-ID/UID im Datensatz; Fremd- oder Selbst-Freigaben werden ignoriert. Paperclip-Interaction und DockWeave-Review-Datensatz werden verknüpft.",
+      "priority": "high",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "deployments/paperclip",
+        "internal/persistence"
+      ],
+      "acceptance": "PASS eines nicht zugewiesenen Autors zählt nicht; zugewiesener Reviewer zählt; Selbst-Review des Autors wird abgelehnt; Ablehnungsgrund ist im Kommentar sichtbar.",
+      "tests": [
+        "Unit: Autor-Mapping",
+        "Integration: fremder vs. zugewiesener Reviewer"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-021",
+      "title": "Human Approval über DockWeave-Rollen und Audit",
+      "description": "Menschliche Freigabe wird an DockWeave-Identität/Rolle (admin) gebunden und als Audit-Event mit Hash festgehalten; die Paperclip-`human_only`-Interaction bleibt Transport/Anzeige. Ein reiner Paperclip-Board-User ohne DockWeave-Rolle genügt nicht mehr für kritische Goals.",
+      "priority": "high",
+      "dependencies": [
+        "gate-020"
+      ],
+      "components": [
+        "internal/oidc",
+        "internal/api",
+        "deployments/paperclip"
+      ],
+      "acceptance": "Freigabe ohne admin-Rolle wird abgelehnt; Freigabe erzeugt Audit-Event; Parent-Close akzeptiert nur die verknüpfte Freigabe; monitor-Rolle kann nie freigeben.",
+      "tests": [
+        "Unit: Rollenprüfung",
+        "Integration: Freigabe-Pfad mit OIDC"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-022",
+      "title": "Budget-/Quota-Gate aus Broker-Usage",
+      "description": "Ein Goal/Task kann ein LLM-Budget (Tokens, RPM, Concurrent, Zeitfenster) als echtes Gate tragen. Vor dem Start prüft DockWeave die Broker-Usage; bei Überschreitung wird der Lauf nicht gestartet bzw. nach dem Lauf kein DONE akzeptiert. Graph-Contracts wie `budget < 5` werden damit ausführbar statt Doku.",
+      "priority": "high",
+      "dependencies": [
+        "gate-010"
+      ],
+      "components": [
+        "internal/credentialbroker",
+        "internal/productivity",
+        "internal/gateexec"
+      ],
+      "acceptance": "Überschrittenes Budget blockiert den Start mit klarer Meldung; Usage-Delta wird dem Lauf zugeordnet; Gate-Ergebnis nennt die gemessenen Werte.",
+      "tests": [
+        "Unit: Budget-Auswertung",
+        "Integration: Lauf über Limit"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-023",
+      "title": "Diff-Scope-, Dependency- und Secret-Policy",
+      "description": "Ergänzende Gates: nur erlaubte Pfade dürfen sich ändern (diff scope), keine neuen Runtime-Dependencies ohne Freigabe, kein eingeführtes Secret/Token im Diff. Ergebnisse werden wie Build-Gates behandelt und in der Evidence abgelegt.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-014"
+      ],
+      "components": [
+        "internal/gateexec",
+        "internal/productivity"
+      ],
+      "acceptance": "Verbotene Pfade ⇒ FAIL mit Liste; neue Dependency ⇒ FAIL oder Approval-Pflicht; Secret-Muster ⇒ FAIL ohne den Wert zu loggen.",
+      "tests": [
+        "Unit: Pfad-/Dependency-/Secret-Regeln",
+        "Integration: manipulierter Diff"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-024",
+      "title": "Reproduzierbare Gate-Umgebung",
+      "description": "Gate-Container verwendet ein gepinntes Image (Digest), definierte Toolchain-Versionen und einen Offline-/Cache-Modus. Der Gate-Lauf dokumentiert Image-Digest und Toolchain, damit ein PASS reproduzierbar ist.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-010"
+      ],
+      "components": [
+        "internal/gateexec",
+        "deployments"
+      ],
+      "acceptance": "Ergebnis enthält Image-Digest; zwei Läufe mit gleichem Stand liefern dasselbe Ergebnis; fehlendes Image schlägt klar fehl statt still auf Host auszuweichen.",
+      "tests": [
+        "Integration: Digest im Ergebnis",
+        "Integration: Offline-Lauf"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-030",
+      "title": "Issue ↔ Task: Sync oder explizites Non-Goal",
+      "description": "Klären, ob Paperclip-Issues und DockWeave-Tasks (objectives/tasks) synchronisiert werden oder getrennte Ebenen bleiben. Bei Sync: stabile Zuordnung issue_id ↔ task_id, Status-Mapping, Idempotenz. Bei Non-Goal: Grenze in gate-001 dokumentieren und UI-Dopplung vermeiden.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "internal/productivity",
+        "internal/webui",
+        "docs"
+      ],
+      "acceptance": "Entscheidung dokumentiert; bei Sync ist die Zuordnung idempotent und Status-Mapping getestet; bei Non-Goal gibt es keine konkurrierenden Statusanzeigen.",
+      "tests": [
+        "Unit: Mapping/Idempotenz (falls Sync)"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-031",
+      "title": "Review/Evidence-Sync zwischen DockWeave und Paperclip",
+      "description": "DockWeave hat bereits reviews/evidence/work_events; Paperclip hat Review-Kommentare und Interactions. Ein Review-Ergebnis wird genau einmal erzeugt und in beide Sichten gespiegelt, mit gemeinsamer ID und Akteur. Doppelte, widersprüchliche Reviews werden erkannt.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-020",
+        "gate-014"
+      ],
+      "components": [
+        "internal/productivity",
+        "internal/api",
+        "deployments/paperclip"
+      ],
+      "acceptance": "Ein PASS/FAIL erscheint in beiden Sichten mit gleicher ID; Widerspruch erzeugt ein Audit-Event; keine doppelten Reviews bei Retry.",
+      "tests": [
+        "Integration: Retry-Idempotenz",
+        "Unit: Widerspruchserkennung"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-032",
+      "title": "Status-Semantik trennen: blockedBy vs. Runtime/Recovery",
+      "description": "Paperclips `blocked` vermischt offene Dependencies mit „recovery needed“ nach einem Run ohne Statusänderung. DockWeave soll Dependency-Blocker und Laufzeitfehler/Recovery getrennt führen und das Mapping dokumentieren, damit Auswertungen und Wake-Logik eindeutig bleiben.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "docs",
+        "deployments/paperclip",
+        "internal/productivity"
+      ],
+      "acceptance": "Mapping-Tabelle vorhanden; Wake/Blocked-Check nutzt nur Dependency-Blocker; Recovery-Fälle sind separat sichtbar; keine Fehlinterpretation im Report.",
+      "tests": [
+        "Unit: Status-Mapping",
+        "Integration: Recovery vs. Dependency"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-033",
+      "title": "Gate-Health-Dashboard in der Web-UI",
+      "description": "Übersicht pro Workspace/Goal: letzte Gate-Läufe, Dauer, PASS/FAIL, Drift der gates.json, Budget-Status, offene Freigaben. Verlinkt auf das jeweilige Paperclip-Issue und die Evidence. Keine doppelte Statusquelle, sondern aggregierte Sicht.",
+      "priority": "medium",
+      "dependencies": [
+        "gate-004",
+        "gate-011",
+        "gate-031"
+      ],
+      "components": [
+        "ui/web/src/app/components",
+        "internal/webui"
+      ],
+      "acceptance": "Dashboard zeigt nur echte Daten (keine Platzhalter); fehlende Quellen sind als „unavailable“ markiert; Klick öffnet Issue/Evidence.",
+      "tests": [
+        "E2E: Dashboard mit Fake-API",
+        "Unit: Aggregation"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-034",
+      "title": "Audit-Events für alle Gate-Entscheidungen",
+      "description": "Jede Gate-Entscheidung (PASS/FAIL/Skip, Freigabe, Review, Drift, Budget-Block) wird als Audit-Event mit Akteur, Zeit, Grund und Hash-Vorgänger geschrieben. Damit sind Gate-Entscheidungen genauso prüfbar wie Mount-/Grant-Mutationen.",
+      "priority": "high",
+      "dependencies": [
+        "gate-011"
+      ],
+      "components": [
+        "internal/persistence",
+        "internal/api"
+      ],
+      "acceptance": "Jede Entscheidung erzeugt genau ein Event; Hash-Kette verifizierbar; Export enthält Gate-Events; keine Secrets im Event.",
+      "tests": [
+        "Unit: Hash-Kette",
+        "Integration: Event pro Entscheidung"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": "gate-040",
+      "title": "Non-Goal: Dependency-Verwaltung in DockWeave duplizieren",
+      "description": "Issue-Dependencies, blockedBy und Wake-Ordering bleiben bei Paperclip. DockWeave führt keine zweite Dependency-Datenbank; es konsumiert höchstens den Zustand für Gate-Entscheidungen. Verhindert zwei widersprüchliche Wahrheiten.",
+      "priority": "low",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "docs"
+      ],
+      "acceptance": "In gate-001 als Non-Goal festgehalten; kein DockWeave-Schema für Issue-Blocker ohne expliziten neuen Beschluss.",
+      "tests": [],
+      "status": "deferred"
+    },
+    {
+      "id": "gate-041",
+      "title": "Non-Goal: eigenes Issue-Board in DockWeave",
+      "description": "Planung, Board, Kommentare und Zuweisung bleiben bei Paperclip. DockWeave zeigt höchstens eine aggregierte Health-/Evidence-Sicht (gate-033) und dupliziert kein Kanban/Issue-System.",
+      "priority": "low",
+      "dependencies": [
+        "gate-001"
+      ],
+      "components": [
+        "docs"
+      ],
+      "acceptance": "In gate-001 als Non-Goal festgehalten; UI bietet keine konkurrierende Issue-Verwaltung.",
+      "tests": [],
+      "status": "deferred"
+    }
+  ]
+}
