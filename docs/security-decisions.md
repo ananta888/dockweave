@@ -275,10 +275,10 @@ daemon does not directly grant host mount control.
 **Boundary of the helper:**
 - Targets must resolve below the state root (`/var/lib/dockweave`); anything
   else is rejected before the syscall.
-- The bind *source* is mounted via `/proc/self/fd/<n>`, so the kernel resolves
-  the open (daemon-verified) descriptor; targets are resolved from the received
-  fd via `readlink` with a state-root check (and, for `bind`, an inode check
-  against swapping). See SD-019.
+- Source and target are resolved from the received fd via `readlink`; targets
+  must lie below the state root and, for `bind`, an inode check guards against
+  a swapped target. The bind source is re-resolved by path (see SD-019 for the
+  residual TOCTOU window).
 - Source paths are validated by the daemon (allowlist + `openat2`), matching
   the existing TOCTOU model (SD-001, SD-016).
 - The RO-staging sequence (bind → make private → remount ro → `mount_setattr`
@@ -305,12 +305,15 @@ root rejected, unknown op rejected) plus the existing mount tests.
 A code review of the security-critical paths found several places where the
 code fell short of its own documented contract. Fixed in this round:
 
-1. **Helper TOCTOU.** `dockweave-mountd` resolved the bind *source* fd back to
-   a path string (`readlink`) before `mount(2)`, reopening the TOCTOU window
-   that the daemon's `/proc/self/fd/<n>` mount closes. The bind source is now
-   mounted via `/proc/self/fd/<n>` (the open, daemon-verified descriptor);
-   `move` keeps the readlink-resolved staging path (DockWeave-owned, not
-   attacker-controlled). `docs/mount-helper.md` was corrected accordingly.
+1. **Helper source resolution (fd-pin reverted).** An attempt to pin the bind
+   *source* via `/proc/self/fd/<n>` (matching the direct backend) was reverted:
+   the WSL2 deployment kernel rejects a `/proc/self/fd` bind source with
+   `EINVAL`. The helper therefore resolves the bind source via `readlink` to a
+   path string, which re-opens a small TOCTOU window between the daemon's
+   `openat2` verification and the helper's `mount(2)` (a path swap in that
+   window would redirect the mount). Accepted as a documented limitation on the
+   current deployment; a portable fd-pin would require a non-`/proc/self/fd`
+   mechanism (`open_tree`/`move_mount`).
 
 2. **Explicit private staging.** The RO-staging sequence bound into
    `<root>/.staging` but never set `MS_PRIVATE`; privacy relied on location

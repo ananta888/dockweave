@@ -18,14 +18,14 @@ Eine JSON-Zeile plus optionale FDs per `SCM_RIGHTS` ueber
 Helfer prueft das per `readlink(/proc/self/fd/N)` vor dem Syscall. Der Socket
 ist `0660`, `--uid` beschraenkt den Client.
 
-Die Bind-*Quelle* wird ueber `/proc/self/fd/<n>` gemountet: Der Kernel loest
-den offenen, vom Daemon bereits verifizierten Deskriptor auf statt den Pfad
-erneut nachzuschlagen. Damit bleibt das verifizierte Objekt ueber die
-Privileg-Grenze gepinnt (TOCTOU-sicher). Ziele werden per `readlink` aus dem
-FD aufgeloest, mit State-Root-Pruefung (und bei `bind` zusaetzlich einem
-Inode-Check gegen Vertauschen). Die RO-Sequenz (Bind → privat → Remount ro →
-`mount_setattr` → Move) wird vom Daemon orchestriert; der Helfer fuehrt nur
-die einzelnen Syscalls aus.
+Quelle und Ziel werden per `readlink` aus dem FD aufgeloest; das Ziel wird mit
+State-Root-Pruefung (und bei `bind` zusaetzlich einem Inode-Check gegen
+Vertauschen) abgesichert. Die Bind-*Quelle* wird also per Pfad neu aufgeloest —
+ein Bind-Mount ueber `/proc/self/fd/<n>` wird auf dem WSL2-Kernel mit `EINVAL`
+abgelehnt, der FD laesst sich dort nicht pinnen. Daraus bleibt ein kleines
+TOCTOU-Fenster auf dem Quell-Pfad (siehe `docs/security-decisions.md` SD-019).
+Die RO-Sequenz (Bind → privat → Remount ro → `mount_setattr` → Move) wird vom
+Daemon orchestriert; der Helfer fuehrt nur die einzelnen Syscalls aus.
 
 ## Deployment
 

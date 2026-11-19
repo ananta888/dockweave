@@ -56,16 +56,14 @@ mount namespace, and mounts made there would never reach the host or the
 containers. The daemon runs as the dedicated `dockweave` user; `--uid` in the
 helper unit must match that uid.
 
-Mounts use plain `mount(2)`/`umount(2)`/`mount_setattr(2)`. The bind *source*
-is mounted via `/proc/self/fd/<n>`, so the kernel resolves the open
-(daemon-verified) descriptor instead of re-looking-up a path string — this
-pins the verified object across the privilege boundary and closes the TOCTOU
-window (no `open_tree`/`move_mount`/`AT_EMPTY_PATH` is involved). Targets are
-resolved from the received fd via `readlink(/proc/self/fd/N)` with a state-root
-check; `bind` additionally verifies the target inode was not swapped between
-check and syscall. `move` resolves the source path the same way (the source is
-the DockWeave-owned staging mount under `<root>/.staging`, not an
-attacker-controlled path).
+Mounts use plain `mount(2)`/`umount(2)`/`mount_setattr(2)` (no
+`open_tree`/`move_mount`/`AT_EMPTY_PATH`). Both source and target are resolved
+from the received fd via `readlink(/proc/self/fd/N)`; the target must lie below
+the state root and, for `bind`, an inode check guards against a swapped target.
+The bind *source* is re-resolved by path — a `/proc/self/fd` bind source is
+rejected with `EINVAL` on the WSL2 deployment kernel, so the fd cannot be
+pinned there. This leaves a small TOCTOU window on the source path (see
+`docs/security-decisions.md` SD-019).
 
 ## Without the helper
 

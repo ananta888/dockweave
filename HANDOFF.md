@@ -1,6 +1,6 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-19, letzter Commit `6e6c732` (gepusht nach `origin/main`).
+Stand: 2026-11-19, letzter Commit `a603237` (gepusht nach `origin/main`).
 Working Tree sauber, `main` == `origin/main`.
 
 Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
@@ -123,11 +123,11 @@ Eine Quellcode-Analyse deckte Stellen auf, an denen Code und Doku/Sicherheits-
 Kontrakt auseinanderliefen. Gepflegt in `todo/archive/hardening-2026-11.json`
 (**6 done, 1 deferred**), Commits `7ebd92f` … `6e6c732`:
 
-- **mountd-TOCTOU geschlossen** (`internal/mounthelper`): Der Helper löste die
-  Bind-*Quelle* per `readlink` in einen Pfad-String zurück — der openat2-Schutz
-  des Daemons (Mount via `/proc/self/fd/<n>`) wurde im Helper-Betrieb wieder
-  aufgehoben. Jetzt wird die Quelle per `/proc/self/fd/<n>` gemountet
-  (gepinntes, verifiziertes Objekt).
+- **mountd-TOCTOU (revertiert)** (`internal/mounthelper`): Ein Versuch, die
+  Bind-*Quelle* per `/proc/self/fd/<n>` zu pinnen, wurde revertiert — der
+  WSL2-Deployment-Kernel lehnt eine `/proc/self/fd`-Bind-Quelle mit `EINVAL`
+  ab. Der Helper löst die Quelle daher weiter per `readlink` auf (kleines
+  TOCTOU-Fenster auf dem Quell-Pfad, dokumentiert in SD-019).
 - **Explizites `MS_PRIVATE`** auf dem Staging-Mount vor dem RO-Remount
   (`internal/mounts`) — zuvor beruhte die „Privatsphäre" nur auf der Lage.
 - **`MS_NOSYMFOLLOW` fail-closed**: Nichtverfügbarkeit liefert jetzt
