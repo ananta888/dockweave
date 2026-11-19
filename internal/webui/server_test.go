@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"github.com/ananta888/dockweave/internal/oidc"
 )
 
 func unixHTTP(t *testing.T, handler http.Handler) string {
@@ -276,5 +278,107 @@ func TestBearerAndRateLimit(t *testing.T) {
 	srv.ServeHTTP(rec, over)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("rate limit = %d, want 429", rec.Code)
+	}
+}
+
+// stubProvider/stubStore let tests inject an OIDC principal without an IdP.
+type stubProvider struct{}
+
+func (stubProvider) AuthURL(_, _, _ string) (string, error) { return "http://idp/auth", nil }
+func (stubProvider) Exchange(context.Context, string, string, string) (*oidc.Principal, error) {
+	return nil, oidc.ErrTokenExchange
+}
+func (stubProvider) EndSessionURL(string) string { return "/" }
+
+type stubStore struct{ p oidc.Principal }
+
+func (s stubStore) Save(http.ResponseWriter, oidc.Session) error { return nil }
+func (s stubStore) Get(*http.Request) (*oidc.Session, error) {
+	return &oidc.Session{Principal: s.p, ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+func (s stubStore) Delete(http.ResponseWriter) {}
+
+func newRoleGateway(t *testing.T, roles []string) *Server {
+	t.Helper()
+	daemonSock := unixHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	webDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html>dw</html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv, err := New(Config{DaemonSocket: daemonSock, TermSocket: "/nonexistent", WebDir: webDir, Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.oidcSvc = oidc.NewService(stubProvider{}, stubStore{
+		p: oidc.Principal{Issuer: "iss", Subject: "sub", Roles: roles},
+	}, oidc.Config{SessionTTL: time.Hour})
+	return srv
+}
+
+func TestGatewayRoleEnforcement(t *testing.T) {
+	monitor := newRoleGateway(t, []string{"monitor"})
+
+	// monitor: reads are allowed (proxied to the daemon).
+	rec := httptest.NewRecorder()
+	monitor.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("monitor GET = %d, want 200", rec.Code)
+	}
+
+	// monitor: writes are denied.
+	rec = httptest.NewRecorder()
+	monitor.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/gates/run", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("monitor POST = %d, want 403", rec.Code)
+	}
+
+	// monitor: the directory browser is admin-only even though it is a GET.
+	rec = httptest.NewRecorder()
+	monitor.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/fs/dirs", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("monitor fs/dirs = %d, want 403", rec.Code)
+	}
+
+	// monitor: the interactive terminal is admin-only (GET upgrade).
+	rec = httptest.NewRecorder()
+	monitor.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ws/term?agent=x", nil))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("monitor term = %d, want 403", rec.Code)
+	}
+
+	admin := newRoleGateway(t, []string{"admin"})
+	rec = httptest.NewRecorder()
+	admin.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/gates/run", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin POST = %d, want 200", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	admin.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/fs/dirs", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin fs/dirs = %d, want 200", rec.Code)
+	}
+}
+
+func TestGatewayTokenHolderIsAdmin(t *testing.T) {
+	daemonSock := unixHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<html>dw</html>"), 0o644)
+	srv, err := New(Config{DaemonSocket: daemonSock, TermSocket: "/nonexistent", WebDir: webDir, Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A bearer-token holder keeps full (admin) write access.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/gates/run", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bearer POST = %d, want 200", rec.Code)
 	}
 }

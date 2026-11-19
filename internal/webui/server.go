@@ -397,29 +397,59 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+
+		// Resolve the caller's role. Token/bearer/cookie holders are trusted
+		// operators (admin). OIDC users get the role from their claims and
+		// default to read-only (monitor) unless they carry the admin role.
+		role := oidc.RoleAdmin
+		authed := false
 		if s.bearerOK(r) {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if s.oidcSvc != nil {
-			if _, err := s.oidcSvc.Principal(r); err == nil {
-				next.ServeHTTP(w, r)
-				return
+			authed = true
+		} else if s.oidcSvc != nil {
+			if p, err := s.oidcSvc.Principal(r); err == nil {
+				authed = true
+				if !p.HasRole(oidc.RoleAdmin) {
+					role = oidc.RoleMonitor
+				}
 			}
 		}
-		c, err := r.Cookie(cookieName)
-		if err == nil && tokenEqual(c.Value, s.cfg.Token) {
-			next.ServeHTTP(w, r)
+		if !authed {
+			if c, err := r.Cookie(cookieName); err == nil && tokenEqual(c.Value, s.cfg.Token) {
+				authed = true
+			}
+		}
+		if !authed {
+			// Browser navigation gets a login page; API/asset requests stay 401.
+			if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(loginPage(s.oidcSvc != nil)))
+				return
+			}
+			http.Error(w, "token required: open the URL printed by `dockweave web`", http.StatusUnauthorized)
 			return
 		}
-		// Browser navigation gets a login page; API/asset requests stay 401.
-		if r.Method == http.MethodGet && (r.URL.Path == "/" || r.URL.Path == "") {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(loginPage(s.oidcSvc != nil)))
+		if !s.allowRole(w, r, role) {
 			return
 		}
-		http.Error(w, "token required: open the URL printed by `dockweave web`", http.StatusUnauthorized)
+		next.ServeHTTP(w, r)
 	})
+}
+
+// allowRole enforces the gateway role policy after authentication. Monitor
+// (read-only) users may only read, and a few routes are admin-only regardless
+// of HTTP method: the interactive terminal and the directory browser.
+func (s *Server) allowRole(w http.ResponseWriter, r *http.Request, role oidc.Role) bool {
+	if role != oidc.RoleAdmin {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			http.Error(w, "forbidden: read-only role", http.StatusForbidden)
+			return false
+		}
+		if r.URL.Path == "/api/v1/fs/dirs" || r.URL.Path == "/ws/term" {
+			http.Error(w, "forbidden: admin role required", http.StatusForbidden)
+			return false
+		}
+	}
+	return true
 }
 
 func tokenEqual(a, b string) bool {
