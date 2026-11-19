@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 15
+const schemaVersion = 16
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -322,6 +322,9 @@ var migrations = []string{
 		note TEXT NOT NULL DEFAULT '',
 		approved_at TEXT NOT NULL
 	);`,
+	// 16: link a gate run to the Paperclip issue that triggered it.
+	`ALTER TABLE gate_runs ADD COLUMN issue_id TEXT NOT NULL DEFAULT '';
+	CREATE INDEX IF NOT EXISTS idx_gate_runs_issue ON gate_runs(issue_id);`,
 }
 
 // Store is the DockWeave registry.

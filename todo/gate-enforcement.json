@@ -329,7 +329,7 @@
         "Integration: Retry-Idempotenz",
         "Unit: Widerspruchserkennung"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "gate-032",
@@ -370,7 +370,7 @@
         "E2E: Dashboard mit Fake-API",
         "Unit: Aggregation"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "gate-034",

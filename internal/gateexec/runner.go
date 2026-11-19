@@ -48,6 +48,7 @@ type Runner struct {
 // Request is one gate execution.
 type Request struct {
 	Workspace string
+	IssueID   string
 	Image     string
 	Actor     string
 	Timeout   time.Duration
@@ -76,6 +77,7 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 	run := &model.GateRun{
 		ID:        newID("gate"),
 		Workspace: workspace,
+		IssueID:   strings.TrimSpace(req.IssueID),
 		Actor:     req.Actor,
 		StartedAt: time.Now().UTC(),
 		Status:    model.GateError,
@@ -110,13 +112,16 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		run.ImageDigest = digest
 	}
 
-	if blocked, warning := r.checkBudget(runCtx, cfg.Budget); blocked {
-		run.Status = model.GateFailed
-		run.Reason = warning
-		run.Warnings = append(run.Warnings, warning)
-		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
-		return run, nil
+	if b := r.checkBudget(runCtx, cfg.Budget); b != nil {
+		run.Budget = b
+		if b.Exceeded {
+			run.Status = model.GateFailed
+			run.Reason = b.Reason
+			run.Warnings = append(run.Warnings, b.Reason)
+			run.FinishedAt = time.Now().UTC()
+			r.record(ctx, run)
+			return run, nil
+		}
 	}
 
 	base := r.BaseDir
@@ -212,9 +217,12 @@ gateLoop:
 		}
 	}
 
-	if blocked, warning := r.checkBudget(runCtx, cfg.Budget); blocked {
-		run.Warnings = append(run.Warnings, warning)
-		run.Reason = warning
+	if b := r.checkBudget(runCtx, cfg.Budget); b != nil {
+		run.Budget = b
+		if b.Exceeded {
+			run.Warnings = append(run.Warnings, b.Reason)
+			run.Reason = b.Reason
+		}
 	}
 	run.Status = model.GatePassed
 	if tamper {
@@ -324,24 +332,40 @@ func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate ga
 	return res
 }
 
-func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) (bool, string) {
-	if budget == nil || budget.GrantID == "" || r.Broker == nil {
-		return false, ""
+func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *model.GateBudget {
+	if budget == nil || budget.GrantID == "" {
+		return nil
+	}
+	out := &model.GateBudget{
+		GrantID:        budget.GrantID,
+		MaxRequestsDay: budget.MaxRequestsDay,
+		MaxTokensDay:   budget.MaxTokensDay,
+		MaxCostDayUSD:  budget.MaxCostDayUSD,
+	}
+	if r.Broker == nil {
+		out.Reason = "budget check unavailable: broker not configured"
+		return out
 	}
 	usage, err := r.Broker.Usage(ctx, budget.GrantID)
 	if err != nil {
-		return false, "budget check unavailable: " + err.Error()
+		out.Reason = "budget check unavailable: " + err.Error()
+		return out
 	}
-	if budget.MaxRequestsDay > 0 && usage.RequestsDay >= budget.MaxRequestsDay {
-		return true, fmt.Sprintf("budget exhausted: %d/%d requests today for grant %s", usage.RequestsDay, budget.MaxRequestsDay, budget.GrantID)
+	out.RequestsDay = usage.RequestsDay
+	out.TokensDay = usage.TokensDay
+	out.CostDayUSD = usage.CostDayUSD
+	switch {
+	case budget.MaxRequestsDay > 0 && usage.RequestsDay >= budget.MaxRequestsDay:
+		out.Exceeded = true
+		out.Reason = fmt.Sprintf("budget exhausted: %d/%d requests today for grant %s", usage.RequestsDay, budget.MaxRequestsDay, budget.GrantID)
+	case budget.MaxTokensDay > 0 && usage.TokensDay >= budget.MaxTokensDay:
+		out.Exceeded = true
+		out.Reason = fmt.Sprintf("budget exhausted: %d/%d tokens today for grant %s", usage.TokensDay, budget.MaxTokensDay, budget.GrantID)
+	case budget.MaxCostDayUSD > 0 && usage.CostDayUSD >= budget.MaxCostDayUSD:
+		out.Exceeded = true
+		out.Reason = fmt.Sprintf("budget exhausted: %.2f/%.2f USD today for grant %s", usage.CostDayUSD, budget.MaxCostDayUSD, budget.GrantID)
 	}
-	if budget.MaxTokensDay > 0 && usage.TokensDay >= budget.MaxTokensDay {
-		return true, fmt.Sprintf("budget exhausted: %d/%d tokens today for grant %s", usage.TokensDay, budget.MaxTokensDay, budget.GrantID)
-	}
-	if budget.MaxCostDayUSD > 0 && usage.CostDayUSD >= budget.MaxCostDayUSD {
-		return true, fmt.Sprintf("budget exhausted: %.2f/%.2f USD today for grant %s", usage.CostDayUSD, budget.MaxCostDayUSD, budget.GrantID)
-	}
-	return false, ""
+	return out
 }
 
 func (r *Runner) record(ctx context.Context, run *model.GateRun) {

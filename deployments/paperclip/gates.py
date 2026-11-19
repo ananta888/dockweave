@@ -59,11 +59,12 @@ def run_sandbox(root, timeout_sec):
     cli = dockweave_cli()
     if not cli:
         return None
+    cmd = [cli, "gate", "run", root, "--json", "--timeout", str(timeout_sec)]
+    issue = os.environ.get("DOCKWEAVE_ISSUE_ID", "").strip()
+    if issue:
+        cmd += ["--issue", issue]
     try:
-        proc = subprocess.run(
-            [cli, "gate", "run", root, "--json", "--timeout", str(timeout_sec)],
-            capture_output=True, text=True, timeout=timeout_sec + 120,
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec + 120)
     except Exception as exc:  # noqa: BLE001 - report, never execute on the host
         return {"ok": False, "skipped": False,
                 "results": [{"id": "gate-runner", "ok": False, "output": str(exc)[:2000]}]}

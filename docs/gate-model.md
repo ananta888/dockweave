@@ -103,6 +103,9 @@ The same fields are derived from the 2D graph by `internal/gatesync`; see
 - A review PASS counts only when it is attributed to the review issue's
   assigned agent or to a human board user. Unattributed board comments are
   rejected unless `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1` is set explicitly.
+- Every accepted verdict is recorded exactly once as review evidence
+  (`kind=review`, one idempotency key per issue). A later contradictory verdict
+  is rejected as a conflict (`409`) and audited as `gate.review`.
 - Human approval requires **both** an accepted Paperclip `human_only`
   interaction **and** a DockWeave approval:
   `dockweave gate approve <issue>` (admin role, audited as `gate.approval`).

@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
 import { GateSyncStatus, GraphGateSyncResult, GraphService } from '../core/services/graph.service';
-import { GateRunView, GateService } from '../core/services/gate.service';
+import { GateReviewView, GateRunView, GateService } from '../core/services/gate.service';
 import { PaperclipService } from '../core/services/paperclip.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
@@ -572,14 +572,41 @@ interface GraphEdge {
                 <p class="muted">Letzte Läufe aus dem Daemon-Runner (<span class="mono">dockweave gate run</span>). Die Gates laufen in einem Wegwerf-Container, nicht auf dem Host.</p>
                 @if (gateRunError()) { <p class="muted">{{ gateRunError() }}</p> }
                 @for (run of gateRuns(); track run.id) {
-                  <div class="custom-edge">
+                  <div class="custom-edge gate-run-row" (click)="toggleGateRun(run.id)">
                     <span class="mono">{{ run.status }}</span>
                     <span class="muted">{{ run.passed }}/{{ run.gates }} · {{ run.duration_ms }}ms · {{ gateRunWhen(run) }}{{ run.tamper ? ' · TAMPER' : '' }}</span>
                     <span class="spacer"></span>
+                    <span class="muted mono">{{ run.issue_id || '—' }}</span>
                     @if (run.reason) { <span class="muted" [title]="run.reason">{{ run.reason }}</span> }
                   </div>
+                  @if (expandedGateRun() === run.id) {
+                    <div class="gate-detail">
+                      <div class="muted mono">run {{ run.id }} · {{ run.image }}{{ run.image_digest ? ' @ ' + run.image_digest : '' }}</div>
+                      @if (run.budget) {
+                        <div class="muted">Budget: {{ run.budget.requests_day }}{{ run.budget.max_requests_day ? '/' + run.budget.max_requests_day : '' }} req · {{ run.budget.tokens_day }}{{ run.budget.max_tokens_day ? '/' + run.budget.max_tokens_day : '' }} tok · {{ run.budget.cost_day_usd }}{{ run.budget.max_cost_day_usd ? '/' + run.budget.max_cost_day_usd : '' }} USD{{ run.budget.exceeded ? ' · EXCEEDED' : '' }}</div>
+                      }
+                      @for (r of run.results || []; track r.id) {
+                        <div class="muted mono">{{ r.status }} · {{ r.id }} · exit {{ r.exit }} · {{ r.duration_ms }}ms</div>
+                      }
+                      @if (run.diff?.out_of_scope?.length) { <div class="muted">Out of scope: {{ run.diff?.out_of_scope?.join(', ') }}</div> }
+                      @if (run.diff?.new_dependencies?.length) { <div class="muted">Neue Dependencies: {{ run.diff?.new_dependencies?.join(', ') }}</div> }
+                      @if (run.diff?.secrets?.length) { <div class="muted">Secrets: {{ run.diff?.secrets?.join(', ') }}</div> }
+                      @if (run.warnings?.length) { <div class="muted">{{ run.warnings?.join(' · ') }}</div> }
+                      <div class="muted mono">Evidence: {{ run.id }}</div>
+                    </div>
+                  }
                 }
                 @if (!gateRuns().length && !gateRunError()) { <p class="muted">Noch keine Läufe.</p> }
+                @if (gateReviews().length) {
+                  <h4 style="margin-top:.7rem">Reviews</h4>
+                  @for (rv of gateReviews(); track rv.issue_id) {
+                    <div class="custom-edge">
+                      <span class="mono">{{ rv.verdict }}</span>
+                      <span class="muted">{{ rv.issue_id }} · {{ rv.actor }} · {{ rv.recorded_at }}</span>
+                      @if (rv.note) { <span class="muted" [title]="rv.note">{{ rv.note }}</span> }
+                    </div>
+                  }
+                }
               </section>
 
               <section>
@@ -915,6 +942,8 @@ interface GraphEdge {
     .hint { font-size:.72rem; margin:.2rem 0 .5rem; }
     .file-button { display:inline-flex; align-items:center; border:1px solid #30363d; border-radius:6px; padding:.35rem .6rem; cursor:pointer; font-size:.75rem; }
     .custom-edge { display:flex; align-items:center; gap:.5rem; padding:.3rem 0; border-bottom:1px solid #21262d; font-size:.75rem; }
+    .gate-run-row { cursor:pointer; }
+    .gate-detail { display:flex; flex-direction:column; gap:.15rem; padding:.3rem 0 .4rem .8rem; border-bottom:1px solid #21262d; font-size:.72rem; }
     .small-select { padding:.2rem .35rem; font-size:.72rem; }
     .danger { background:#da3633; border-color:#f85149; color:#fff; }
     .context-menu { position:fixed; z-index:120; min-width:230px; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:.25rem; box-shadow:0 12px 32px #000a; display:flex; flex-direction:column; }
@@ -1064,6 +1093,8 @@ export class GraphComponent implements OnChanges {
   readonly paperclipSyncInfo = signal('');
   readonly gateSyncStatus = signal<GateSyncStatus | null>(null);
   readonly gateRuns = signal<GateRunView[]>([]);
+  readonly gateReviews = signal<GateReviewView[]>([]);
+  readonly expandedGateRun = signal<string | null>(null);
   readonly gateRunError = signal('');
   readonly paperclipIssues = signal<{ identifier?: string; title?: string; status?: string }[]>([]);
   readonly openReviews = computed(() => this.paperclipIssues()
@@ -1143,6 +1174,14 @@ export class GraphComponent implements OnChanges {
       next: (res) => { this.gateRuns.set(res?.runs ?? []); this.gateRunError.set(''); },
       error: () => { this.gateRuns.set([]); this.gateRunError.set('Gate-Historie nicht verfügbar'); },
     });
+    this.gateService.reviews(8).subscribe({
+      next: (res) => this.gateReviews.set(res?.reviews ?? []),
+      error: () => this.gateReviews.set([]),
+    });
+  }
+
+  toggleGateRun(id: string): void {
+    this.expandedGateRun.update(current => current === id ? null : id);
   }
 
   gateRunWhen(run: GateRunView): string {

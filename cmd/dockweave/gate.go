@@ -16,6 +16,7 @@ func gateCmd() *cobra.Command {
 
 	var image string
 	var timeoutSec int
+	var issueID string
 	run := &cobra.Command{
 		Use:   "run WORKSPACE",
 		Short: "Run <workspace>/.paperclip/gates.json in a sandbox container",
@@ -23,7 +24,7 @@ func gateCmd() *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			var out model.GateRun
 			err := client().Do(context.Background(), "POST", "/api/v1/gates/run", map[string]any{
-				"workspace": args[0], "image": image, "timeout_sec": timeoutSec,
+				"workspace": args[0], "issue_id": issueID, "image": image, "timeout_sec": timeoutSec,
 			}, &out)
 			if err != nil {
 				return err
@@ -48,6 +49,7 @@ func gateCmd() *cobra.Command {
 	}
 	run.Flags().StringVar(&image, "image", "", "gate runner image override")
 	run.Flags().IntVar(&timeoutSec, "timeout", 900, "global timeout in seconds")
+	run.Flags().StringVar(&issueID, "issue", "", "Paperclip issue identifier to link the run to")
 
 	var limit int
 	runs := &cobra.Command{
@@ -121,6 +123,54 @@ func gateCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(run, runs, approve, approval)
+	var verdict string
+	var reviewNote string
+	review := &cobra.Command{
+		Use:   "review ISSUE",
+		Short: "Record a review verdict (PASS|FAIL) for an issue, idempotently",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			var out model.GateReview
+			if err := client().Do(context.Background(), "POST", "/api/v1/gates/reviews", map[string]any{
+				"issue_id": args[0], "verdict": verdict, "note": reviewNote,
+			}, &out); err != nil {
+				return err
+			}
+			if jsonOut {
+				printJSON(out)
+				return nil
+			}
+			fmt.Printf("%s %s (evidence %s)\n", out.IssueID, out.Verdict, out.EvidenceID)
+			return nil
+		},
+	}
+	review.Flags().StringVar(&verdict, "verdict", "", "PASS or FAIL")
+	review.Flags().StringVar(&reviewNote, "note", "", "review note")
+	_ = review.MarkFlagRequired("verdict")
+
+	var reviewLimit int
+	reviews := &cobra.Command{
+		Use:   "reviews",
+		Short: "List recorded review verdicts",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			var out struct {
+				Reviews []model.GateReview `json:"reviews"`
+			}
+			if err := client().Do(context.Background(), "GET", fmt.Sprintf("/api/v1/gates/reviews?limit=%d", reviewLimit), nil, &out); err != nil {
+				return err
+			}
+			if jsonOut {
+				printJSON(out)
+				return nil
+			}
+			for _, r := range out.Reviews {
+				fmt.Printf("%-16s %-4s %-12s %s\n", r.IssueID, r.Verdict, r.Actor, r.RecordedAt.Format("2006-01-02 15:04"))
+			}
+			return nil
+		},
+	}
+	reviews.Flags().IntVar(&reviewLimit, "limit", 20, "maximum number of reviews")
+
+	cmd.AddCommand(run, runs, approve, approval, review, reviews)
 	return cmd
 }

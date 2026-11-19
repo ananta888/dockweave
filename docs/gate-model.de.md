@@ -108,6 +108,10 @@ Dieselben Felder leitet `internal/gatesync` aus dem 2D-Graphen ab; siehe
   Review-Issues oder einem menschlichen Board-User zugeordnet ist.
   Unattributierte Board-Kommentare werden abgelehnt, außer
   `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1` ist explizit gesetzt.
+- Jedes akzeptierte Verdict wird genau einmal als Review-Evidence
+  (`kind=review`, ein Idempotency-Key pro Issue) festgehalten. Ein späteres
+  widersprüchliches Verdict wird als Konflikt (`409`) abgelehnt und als
+  `gate.review` auditiert.
 - Menschliche Freigabe braucht **beides**: eine akzeptierte
   `human_only`-Interaction in Paperclip **und** eine DockWeave-Freigabe:
   `dockweave gate approve <issue>` (admin-Rolle, auditiert als

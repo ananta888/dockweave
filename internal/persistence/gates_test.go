@@ -65,3 +65,58 @@ func TestGateRunAndApprovalRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected approval: %+v", gotApproval)
 	}
 }
+
+func TestGateReviewIdempotencyAndConflict(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	pass := &model.GateReview{IssueID: "DOC-1", Verdict: "PASS", Actor: "reviewer"}
+	first, err := store.UpsertGateReview(ctx, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.EvidenceID == "" || first.Verdict != "PASS" {
+		t.Fatalf("unexpected review: %+v", first)
+	}
+	again, err := store.UpsertGateReview(ctx, &model.GateReview{IssueID: "DOC-1", Verdict: "PASS", Actor: "reviewer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.EvidenceID != first.EvidenceID {
+		t.Fatalf("idempotent review created a second evidence row: %s != %s", again.EvidenceID, first.EvidenceID)
+	}
+	conflict, err := store.UpsertGateReview(ctx, &model.GateReview{IssueID: "DOC-1", Verdict: "FAIL", Actor: "reviewer"})
+	if err != ErrConflict {
+		t.Fatalf("err = %v, want ErrConflict", err)
+	}
+	if !conflict.Conflict || conflict.Existing != "PASS" {
+		t.Fatalf("unexpected conflict payload: %+v", conflict)
+	}
+	got, err := store.GetGateReview(ctx, "DOC-1")
+	if err != nil || got.Verdict != "PASS" {
+		t.Fatalf("get review: %+v %v", got, err)
+	}
+	list, err := store.ListGateReviews(ctx, 10)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list reviews: %+v %v", list, err)
+	}
+}
+
+func TestGateEvidenceNeedsNoTask(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	inserted, err := store.AddEvidence(context.Background(), &model.Evidence{
+		Kind: model.EvidenceGate, Status: model.EvidencePassed, Verified: true,
+		IdempotencyKey: "gate-run:test",
+	})
+	if err != nil || !inserted {
+		t.Fatalf("gate evidence without task rejected: inserted=%v err=%v", inserted, err)
+	}
+}

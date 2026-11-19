@@ -32,10 +32,36 @@ type GateDiff struct {
 	Secrets         []string `json:"secrets,omitempty"`
 }
 
+// GateBudget is the broker usage snapshot used by the budget gate.
+type GateBudget struct {
+	GrantID        string  `json:"grant_id"`
+	RequestsDay    int     `json:"requests_day"`
+	TokensDay      int64   `json:"tokens_day"`
+	CostDayUSD     float64 `json:"cost_day_usd"`
+	MaxRequestsDay int     `json:"max_requests_day,omitempty"`
+	MaxTokensDay   int64   `json:"max_tokens_day,omitempty"`
+	MaxCostDayUSD  float64 `json:"max_cost_day_usd,omitempty"`
+	Exceeded       bool    `json:"exceeded"`
+	Reason         string  `json:"reason,omitempty"`
+}
+
+// GateReview is the DockWeave-side record of a Paperclip review verdict.
+type GateReview struct {
+	IssueID    string    `json:"issue_id"`
+	Verdict    string    `json:"verdict"` // PASS|FAIL
+	Actor      string    `json:"actor,omitempty"`
+	Note       string    `json:"note,omitempty"`
+	EvidenceID string    `json:"evidence_id,omitempty"`
+	RecordedAt time.Time `json:"recorded_at"`
+	Conflict   bool      `json:"conflict,omitempty"`
+	Existing   string    `json:"existing,omitempty"`
+}
+
 // GateRun records one sandboxed execution of a workspace gate config.
 type GateRun struct {
 	ID          string        `json:"id"`
 	Workspace   string        `json:"workspace"`
+	IssueID     string        `json:"issue_id,omitempty"`
 	Image       string        `json:"image"`
 	ImageDigest string        `json:"image_digest,omitempty"`
 	Status      GateRunStatus `json:"status"`
@@ -48,6 +74,7 @@ type GateRun struct {
 	Reason      string        `json:"reason,omitempty"`
 	Results     []GateResult  `json:"results,omitempty"`
 	Diff        *GateDiff     `json:"diff,omitempty"`
+	Budget      *GateBudget   `json:"budget,omitempty"`
 	Warnings    []string      `json:"warnings,omitempty"`
 	StartedAt   time.Time     `json:"started_at"`
 	FinishedAt  time.Time     `json:"finished_at"`

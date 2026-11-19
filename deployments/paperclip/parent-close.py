@@ -42,6 +42,22 @@ def dockweave_cli():
     return ""
 
 
+def dockweave_review(issue_id, verdict, note=""):
+    cli = dockweave_cli()
+    if not cli:
+        return False, "dockweave CLI not found"
+    cmd = [cli, "gate", "review", issue_id, "--verdict", verdict, "--json"]
+    if note:
+        cmd += ["--note", note]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)[:200]
+    if proc.returncode != 0:
+        return False, (proc.stderr or proc.stdout).strip()[:200]
+    return True, ""
+
+
 def dockweave_approval(issue_id):
     cli = dockweave_cli()
     if not cli:
@@ -170,6 +186,11 @@ def main():
             passed, detail = review_verdict(review)
             if not passed:
                 print("WAITING\treview\t%s (%s)" % (detail, review.get("identifier") or review.get("id")))
+                return 0
+            ident = review.get("identifier") or review.get("id")
+            ok, why = dockweave_review(ident, "PASS")
+            if not ok:
+                print("WAITING\treview\tDockWeave review sync failed: %s" % why)
                 return 0
 
     approval = (cfg.get("human_approval") or {}).get("required", False)

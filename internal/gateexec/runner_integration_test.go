@@ -142,4 +142,7 @@ func TestRunBudgetGate(t *testing.T) {
 	if run.Status != model.GateFailed || run.Reason == "" {
 		t.Fatalf("budget gate did not block: %+v", run)
 	}
+	if run.Budget == nil || !run.Budget.Exceeded || run.Budget.RequestsDay != 10 {
+		t.Fatalf("budget snapshot missing or wrong: %+v", run.Budget)
+	}
 }

@@ -2,9 +2,21 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
+export interface GateReviewView {
+  issue_id: string;
+  verdict: 'PASS' | 'FAIL' | string;
+  actor?: string;
+  note?: string;
+  evidence_id?: string;
+  recorded_at?: string;
+  conflict?: boolean;
+  existing?: string;
+}
+
 export interface GateRunView {
   id: string;
   workspace: string;
+  issue_id?: string;
   image?: string;
   image_digest?: string;
   status: 'passed' | 'failed' | 'error' | 'skipped' | string;
@@ -17,6 +29,17 @@ export interface GateRunView {
   reason?: string;
   results?: { id: string; command?: string; status: string; exit?: number; duration_ms?: number; output?: string; reason?: string }[];
   diff?: { changed?: string[]; out_of_scope?: string[]; new_dependencies?: string[]; secrets?: string[] };
+  budget?: {
+    grant_id?: string;
+    requests_day?: number;
+    tokens_day?: number;
+    cost_day_usd?: number;
+    max_requests_day?: number;
+    max_tokens_day?: number;
+    max_cost_day_usd?: number;
+    exceeded?: boolean;
+    reason?: string;
+  };
   warnings?: string[];
   started_at?: string;
   finished_at?: string;
@@ -31,5 +54,9 @@ export class GateService {
     const params = new URLSearchParams({ limit: String(limit) });
     if (workspace) params.set('workspace', workspace);
     return this.http.get<{ runs: GateRunView[] }>(`/api/v1/gates/runs?${params.toString()}`);
+  }
+
+  reviews(limit = 10): Observable<{ reviews: GateReviewView[] }> {
+    return this.http.get<{ reviews: GateReviewView[] }>(`/api/v1/gates/reviews?limit=${limit}`);
   }
 }

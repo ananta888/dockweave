@@ -271,7 +271,7 @@ print(m[-1] if m else "")' 2>/dev/null)
 
   # Deterministic gate: a self-reported DONE only counts if the project gate passes.
   if [ "$MODE" != "orchestrate" ] && [ "$STATUS" = "done" ]; then
-    GATE_JSON=$(python3 "$HELPER_DIR/gates.py" run "$HOST_WORKSPACE" 2>/dev/null || true)
+    GATE_JSON=$(DOCKWEAVE_ISSUE_ID="$ISSUE_ID" python3 "$HELPER_DIR/gates.py" run "$HOST_WORKSPACE" 2>/dev/null || true)
     GATE_OK=$(printf '%s' "$GATE_JSON" | python3 -c 'import json,sys
 try:
     print("yes" if json.load(sys.stdin).get("ok") else "no")
@@ -307,6 +307,11 @@ m = re.search(r"REASON:\s*(.+)", raw, re.I)
 print(m.group(1).strip() if m else "Review FAIL")' 2>/dev/null)
     REWORK=$(python3 "$HELPER_DIR/paperclip-gate.py" rework "$ISSUE_ID" "$REASON" 2>/dev/null || true)
     echo "[dockweave-run] review FAIL: $REWORK" >&2
+    # Mirror the verdict into DockWeave (idempotent, audited evidence).
+    DW_CLI="${DOCKWEAVE_CLI:-$(command -v dockweave 2>/dev/null || echo "$HOME/.local/bin/dockweave")}"
+    if [ -x "$DW_CLI" ]; then
+      "$DW_CLI" gate review "$ISSUE_ID" --verdict FAIL --note "$REASON" --json >/dev/null 2>&1 || true
+    fi
     NOTE="$NOTE\n\nRework: $REWORK"
   fi
 

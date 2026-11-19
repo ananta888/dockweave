@@ -290,6 +290,7 @@ const (
 	EventRecovery       EventType = "recovery"
 	EventGateRun        EventType = "gate.run"
 	EventGateApproval   EventType = "gate.approval"
+	EventGateReview     EventType = "gate.review"
 	EventSecurityDeny   EventType = "security.denied"
 	EventConflict       EventType = "monitor.conflict"
 	EventAuthOIDC       EventType = "auth.oidc"

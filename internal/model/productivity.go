@@ -314,7 +314,8 @@ func (e *Evidence) Validate() error {
 	default:
 		return fmt.Errorf("unsupported evidence status %q", e.Status)
 	}
-	if e.TaskID == "" {
+	// Gate and review evidence is project/issue-scoped, not task-scoped.
+	if e.TaskID == "" && e.Kind != EvidenceGate && e.Kind != EvidenceReview {
 		return errors.New("evidence needs a task_id")
 	}
 	for k := range e.Payload {
