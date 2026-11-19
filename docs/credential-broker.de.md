@@ -12,7 +12,7 @@ Session-Token, das nur für seinen expliziten Grant gilt.
 > Host-Gateway-Portfilterung per nftables, `restricted-development`,
 > echter Provider-E2E-Test und der SSH-Broker. Siehe
 > [egress-security.de.md](egress-security.de.md) und die offenen Aufgaben in
-> `todo/credential-vault.json`.
+> `todo/archive/credential-vault.json`.
 
 Sprache: Deutsch · [English](credential-broker.md)
 

@@ -108,7 +108,7 @@ dockweave broker session create opencode-01 openrouter-main --ttl 2h   # dws_…
 > per nftables und `restricted-development` sind noch offen. Siehe
 > [docs/credential-broker.de.md](docs/credential-broker.de.md),
 > [docs/egress-security.de.md](docs/egress-security.de.md) und
-> `todo/credential-vault.json`.
+> `todo/archive/credential-vault.json`.
 
 Die TUI ist mausfähig: die Menüleiste wechselt die Ansicht per Klick,
 Agenten bleiben kompakt — Klick (oder `enter`) auf eine Zeile blendet die

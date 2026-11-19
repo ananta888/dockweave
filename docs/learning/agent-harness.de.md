@@ -14,7 +14,7 @@ nachvollziehbar zu machen:
 > **Kein Produktionsversprechen.** DockWeave ist ein Lehrprojekt. Es ist nicht
 > gehärtet für Mehrbenutzerbetrieb, Hosting oder den Schutz gegen einen
 > kompromittierten Host-Root. Offene Punkte stehen ausdrücklich in
-> `todo/credential-vault.json` und in den Sicherheitsdokumenten.
+> `todo/archive/credential-vault.json` und in den Sicherheitsdokumenten.
 
 ## 1. Was ist ein Harness?
 
@@ -247,4 +247,4 @@ Gates und Providern explizit statt implizit.
 - `docs/threat-model-credential-broker.md` — Broker-Bedrohungsmodell
 - `docs/egress-security.md` — Egress-Konzept und offene Punkte
 - `docs/adr/0001-credential-broker.md` — Architekturvergleich mit Agent Vault
-- `todo/credential-vault.json` — offene Arbeiten mit Akzeptanzkriterien
+- `todo/archive/credential-vault.json` — offene Arbeiten mit Akzeptanzkriterien

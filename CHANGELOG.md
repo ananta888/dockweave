@@ -79,7 +79,7 @@ All notable changes to DockWeave are documented here. The format follows
   egress with an internal Docker network (verified by a privileged test).
   Host-gateway port filtering with nftables and `restricted-development`
   remain open. See `docs/egress-security.md` and
-  `todo/credential-vault.json`.
+  `todo/archive/credential-vault.json`.
 
 ## [0.1.0] — 2026-10-23
 

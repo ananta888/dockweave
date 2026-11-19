@@ -14,7 +14,7 @@ following understandable:
 > **Not a production promise.** DockWeave is a teaching project. It is not
 > hardened for multi-user operation, hosting or protection against a
 > compromised host root. Open items are tracked in
-> `todo/credential-vault.json` and the security documents.
+> `todo/archive/credential-vault.json` and the security documents.
 
 ## 1. What is a Harness?
 
@@ -240,4 +240,4 @@ of implicit.
 - `docs/threat-model-credential-broker.md` — broker threat model
 - `docs/egress-security.md` — egress concept and open items
 - `docs/adr/0001-credential-broker.md` — comparison with Agent Vault
-- `todo/credential-vault.json` — open work with acceptance criteria
+- `todo/archive/credential-vault.json` — open work with acceptance criteria

@@ -14,7 +14,7 @@ grant.
 > host-gateway port filtering with nftables, `restricted-development`,
 > OpenCode Go's extra session header, and the SSH broker. See
 > [egress-security.md](egress-security.md) and
-> `todo/credential-vault.json`.
+> `todo/archive/credential-vault.json`.
 
 Language: English · [Deutsch](credential-broker.de.md)
 
