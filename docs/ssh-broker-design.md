@@ -1,8 +1,11 @@
 # SSH Broker — Design (separate increment)
 
-Status: **design only** (2026-11-08). No SSH credential handling is
-implemented in the HTTP broker. SSH private keys must never be sent through an
-HTTP gateway.
+Status: **Phase 2 implemented** (2026-11-19). The CA key handling, DENY-by-default
+policy and short-lived certificate issuance live in `internal/sshbroker`, with a
+`cmd/dockweave-ssh` CLI (`init`/`grant`/`list`/`issue`) and an in-process SSH
+server test that verifies issued certs authenticate and non-issued keys are
+rejected. Phases 3-5 (Git integration, FIDO2, privileged egress tests) remain.
+SSH private keys are never sent through an HTTP gateway.
 
 Language: English · [Deutsch](ssh-broker-design.de.md)
 
@@ -118,7 +121,7 @@ checked on every signature/issuance.
 
 1. Design + TODO (this document). ✅
 2. CA key storage, policy, certificate issuance, wrapper and tests with a
-   local SSH server.
+   local SSH server. ✅ (2026-11-19, `internal/sshbroker` + `cmd/dockweave-ssh`)
 3. Git integration (`GIT_SSH_COMMAND`) and short-lived key cleanup.
 4. FIDO2 signer and hardware tests.
 5. Privileged/e2e tests: direct SSH without wrapper must fail under

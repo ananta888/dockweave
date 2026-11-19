@@ -1,7 +1,12 @@
 # SSH-Broker — Design (separates Inkrement)
 
-Status: **nur Design** (2026-11-08). Der HTTP-Broker implementiert keine
-SSH-Credentials. SSH-Private-Keys dürfen niemals über ein HTTP-Gateway laufen.
+Status: **Phase 2 implementiert** (2026-11-19). CA-Key-Verwaltung,
+DENY-by-default-Policy und kurzlebige Zertifikat-Ausstellung liegen in
+`internal/sshbroker`, mit einem `cmd/dockweave-ssh`-CLI
+(`init`/`grant`/`list`/`issue`) und einem In-Process-SSH-Server-Test, der
+belegt: ausgestellte Zertifikate authentifizieren, fremde Keys werden
+abgelehnt. Phasen 3-5 (Git-Integration, FIDO2, privilegierte Egress-Tests)
+bleiben. SSH-Private-Keys laufen niemals über ein HTTP-Gateway.
 
 Sprache: Deutsch · [English](ssh-broker-design.md)
 
