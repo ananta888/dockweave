@@ -133,8 +133,10 @@ Safety rules:
   absolute directory
 - only `<workspace>/.paperclip/gates.json` is written, atomically
 - a hand-maintained file is never replaced when the graph has no executable
-  gates; files written by DockWeave (`generatedBy: "dockweave-graph"`) are
-  cleared when the last gate is removed
+  gates; the first sync with executable gates **merges** into it (gates the
+  graph does not define are kept, graph entries win on the same id); files
+  written by DockWeave (`generatedBy: "dockweave-graph"`) are cleared when the
+  last gate is removed
 - a failed sync never fails the graph save: the result is returned as `gates`
   in the `PUT /graph` response and shown in the UI
 

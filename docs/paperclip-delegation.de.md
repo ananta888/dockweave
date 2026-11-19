@@ -135,7 +135,9 @@ Sicherheitsregeln:
   absolutes Verzeichnis sein
 - nur `<workspace>/.paperclip/gates.json` wird geschrieben, atomar
 - eine handgepflegte Datei wird nie ersetzt, wenn der Graph keine
-  ausfuehrbaren Gates hat; von DockWeave erzeugte Dateien (`generatedBy:
+  ausfuehrbaren Gates hat; der erste Sync mit ausfuehrbaren Gates **merged**
+  hinein (Gates, die der Graph nicht kennt, bleiben erhalten; bei gleicher ID
+  gewinnt der Graph); von DockWeave erzeugte Dateien (`generatedBy:
   "dockweave-graph"`) werden geleert, wenn das letzte Gate entfernt wird
 - ein fehlgeschlagener Sync laesst das Graph-Speichern nie scheitern: das
   Ergebnis kommt als `gates` in der `PUT /graph`-Antwort und wird in der UI

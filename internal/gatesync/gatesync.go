@@ -197,19 +197,38 @@ func Sync(raw []byte, roots []string) Result {
 	if old, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(old, &existing)
 	}
-	// Keep a hand-tuned issue matcher when the reviewer is required.
-	if cfg.Review.Required && existing.Review.IssueMatch != "" {
-		cfg.Review.IssueMatch = existing.Review.IssueMatch
-	}
+	ownsFile := existing.GeneratedBy == GeneratedBy
+	graphDerived := len(cfg.Gates) > 0 || cfg.Review.Required || cfg.HumanApproval.Required
 
-	empty := len(cfg.Gates) == 0 && !cfg.Review.Required && !cfg.HumanApproval.Required
-	if empty && existing.GeneratedBy != GeneratedBy {
+	if !graphDerived && !ownsFile {
 		return Result{
 			Skipped:   true,
 			Reason:    "no graph gates; existing hand-maintained config left untouched",
 			Workspace: canonical,
 			Path:      path,
 		}
+	}
+
+	if graphDerived && !ownsFile {
+		// First write over a hand-maintained file: keep gates and flags that
+		// the graph does not define (e.g. a manually configured "tests" gate),
+		// so turning the sync on never silently drops existing checks.
+		merged := append([]Gate{}, cfg.Gates...)
+		for _, old := range existing.Gates {
+			if !hasGateID(cfg.Gates, old.ID) {
+				merged = append(merged, old)
+			}
+		}
+		cfg.Gates = merged
+		cfg.Review.Required = cfg.Review.Required || existing.Review.Required
+		cfg.HumanApproval.Required = cfg.HumanApproval.Required || existing.HumanApproval.Required
+		if existing.Review.IssueMatch != "" {
+			cfg.Review.IssueMatch = existing.Review.IssueMatch
+		}
+	}
+
+	if cfg.Review.Required && cfg.Review.IssueMatch == "" {
+		cfg.Review.IssueMatch = "review"
 	}
 
 	cfg.Version = 1
@@ -280,6 +299,15 @@ func validateWorkspace(raw string, roots []string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("paperclip workspace %q is outside the allowed roots", canonical)
+}
+
+func hasGateID(gates []Gate, id string) bool {
+	for _, g := range gates {
+		if g.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func slug(s string) string {
