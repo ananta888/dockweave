@@ -153,6 +153,7 @@ func secretMigrateCmd(adminSocket *string) *cobra.Command {
 				fmt.Printf("env file disabled and moved to %s\n", backup)
 			}
 			fmt.Println("next: start the broker, set the agent's provider base URL to the broker and restart the agent")
+			fmt.Println("security: the migrated keys lived in a plaintext env file — rotate them in the provider console and update the vault")
 		},
 	}
 	f := c.Flags()
