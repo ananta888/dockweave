@@ -1,10 +1,11 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-19, letzter Commit `3b8ce2c` (gepusht nach `origin/main`).
+Stand: 2026-11-19, letzter Commit `6e6c732` (gepusht nach `origin/main`).
 Working Tree sauber, `main` == `origin/main`.
 
 Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
-weiterarbeiten kann. Sie wurde nach der Graph-/Gate-Session neu geschrieben.
+weiterarbeiten kann. Sie wurde nach der Graph-/Gate-Session neu geschrieben
+und um die Security-Hardening-Runde (Abschnitt 3.4) ergänzt.
 
 ---
 
@@ -116,8 +117,36 @@ Status-Semantik, Fail-closed-Regeln). TODO: `todo/gate-enforcement.json`
 - `internal/memory/memory.go`: `overrides`-Map ohne Lock → Daemon-Crash
   „concurrent map read and map write". `RWMutex` + Race-Test.
 
+### 3.4 Security-Hardening (Analyse-Runde, 2026-11-19)
+
+Eine Quellcode-Analyse deckte Stellen auf, an denen Code und Doku/Sicherheits-
+Kontrakt auseinanderliefen. Gepflegt in `todo/hardening-2026-11.json`
+(**6 done, 1 deferred**), Commits `7ebd92f` … `6e6c732`:
+
+- **mountd-TOCTOU geschlossen** (`internal/mounthelper`): Der Helper löste die
+  Bind-*Quelle* per `readlink` in einen Pfad-String zurück — der openat2-Schutz
+  des Daemons (Mount via `/proc/self/fd/<n>`) wurde im Helper-Betrieb wieder
+  aufgehoben. Jetzt wird die Quelle per `/proc/self/fd/<n>` gemountet
+  (gepinntes, verifiziertes Objekt).
+- **Explizites `MS_PRIVATE`** auf dem Staging-Mount vor dem RO-Remount
+  (`internal/mounts`) — zuvor beruhte die „Privatsphäre" nur auf der Lage.
+- **`MS_NOSYMFOLLOW` fail-closed**: Nichtverfügbarkeit liefert jetzt
+  `ErrSymlinkProtectionUnavailable` statt stiller Degradation.
+- **Web-Gateway Rollen-Durchsetzung** (`internal/webui`): `monitor` ist jetzt
+  wirklich nur lesend (GET/HEAD/OPTIONS); `/api/v1/fs/dirs` + `/ws/term` sind
+  admin-only. Token/Bearer/Cookie bleiben admin. (War in Abschnitt 8 als
+  „Offener Punkt Nr. 2" gelistet — jetzt erledigt.)
+- **Doku angeglichen**: `docs/mount-helper.md`(+`.de.md`) beschreibt den echten
+  fd-basierten Ablauf (kein `open_tree`/`move_mount`); `docs/security-decisions.md`
+  erhält **SD-019** und korrigiert SD-016/SD-018; `AGENTS.md` Regeln 2/4/7
+  präzisiert.
+- **Integrationstest-Regel gelockert** (`tests/integration`): `requireRoot`
+  prüft zusätzlich `CAP_SYS_ADMIN` (`CapEff`-Bit 21), skippt also sauber statt
+  zu scheitern. Läuft jetzt auch auf dezidierten Dev-Rechnern/VMs (nie auf
+  geteiltem/Produktiv-Host).
+
 Wichtige Commits dieser Session:
-`94b67a6`, `e0806cf`, `004b0fd`, `7b8a42d`, `3b8ce2c`.
+`94b67a6`, `e0806cf`, `004b0fd`, `7b8a42d`, `3b8ce2c`, `7ebd92f`…`6e6c732`.
 
 ---
 
@@ -241,9 +270,8 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 1. **`todo/gate-enforcement.json`:** 20 Tasks `done`; offen nur die bewussten
    Non-Goals `gate-040` (keine zweite Dependency-DB) und `gate-041` (kein
    eigenes Issue-Board), beide `deferred`.
-2. **Rollen-Durchsetzung am Web-Gateway** (monitor = nur lesen) ist weiterhin
-   nicht erzwungen; Rollen werden aus OIDC abgeleitet/gespeichert. Der Daemon
-   erzwingt seine Peer-Rollen bereits.
+2. **Rollen-Durchsetzung am Web-Gateway:** in dieser Session umgesetzt
+   (Abschnitt 3.4). Der Daemon erzwingt seine Peer-Rollen unverändert.
 3. **Paperclip-Pipeline:** Quotas (Codex/DeepSeek) beachten; Goal-Runs im Board
    prüfen. Review-PASS braucht jetzt Attribution + DockWeave-Sync.
 4. **Display-Modus-Bericht (alt):** Falls „Wechsel tut nichts" erneut kommt,
@@ -254,6 +282,10 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
    nicht gebaut.
 7. **Smoke-Daten:** `GATE-SMOKE-1` in `gate_reviews`/`gate_approvals` kann bei
    Bedarf entfernt werden (es gibt noch keinen Delete-Endpoint).
+8. **Broker-Proxy-Fläche (hard-007, deferred):** Der Broker leitet jeden
+   Upstream-Pfad unter `/p/{provider}/…` weiter; die Modell-Allowlist greift
+   nur, wenn der Body ein `model`-Feld trägt. Als bekannte Grenze in SD-019
+   dokumentiert; Endpoint-/Modell-Eingrenzung ist Folgearbeit.
 
 ---
 
