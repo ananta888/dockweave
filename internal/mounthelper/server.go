@@ -94,11 +94,17 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		src, err := source(0)
+		dst, err := path(1, true)
 		if err != nil {
 			return err
 		}
-		dst, err := path(1, true)
+		// Prefer open_tree/move_mount so the source is pinned to its verified
+		// fd (no path re-resolution = no TOCTOU). Fall back to the readlink
+		// path on kernels/filesystems without the new mount API.
+		if err := bindSourceFD(fds[0], dst, req); err == nil {
+			return nil
+		}
+		src, err := source(0)
 		if err != nil {
 			return err
 		}
@@ -184,6 +190,34 @@ func closeAll(fds []int) {
 			_ = unix.Close(fd)
 		}
 	}
+}
+
+// bindSourceFD binds a source directory via open_tree/move_mount so the source
+// is pinned to its received fd (no path re-resolution). It returns an error
+// when the new mount API is unavailable, so the caller can fall back to the
+// readlink-based bind. NOSYMFOLLOW is applied on the target mount to preserve
+// the symlink-planting protection (SD-016).
+func bindSourceFD(srcFD int, dst string, req Request) error {
+	flags := uint(unix.OPEN_TREE_CLONE | unix.OPEN_TREE_CLOEXEC | unix.AT_EMPTY_PATH)
+	if req.Recursive {
+		flags |= unix.AT_RECURSIVE
+	}
+	mfd, err := unix.OpenTree(srcFD, "", flags)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(mfd)
+	if err := unix.MoveMount(mfd, "", unix.AT_FDCWD, dst, unix.MOVE_MOUNT_F_EMPTY_PATH); err != nil {
+		return err
+	}
+	if req.Flags&unix.MS_NOSYMFOLLOW != 0 {
+		attr := &unix.MountAttr{Attr_set: unix.MOUNT_ATTR_NOSYMFOLLOW}
+		if err := unix.MountSetattr(unix.AT_FDCWD, dst, unix.AT_RECURSIVE, attr); err != nil {
+			_ = unix.Unmount(dst, 0)
+			return err
+		}
+	}
+	return nil
 }
 
 // resolveFD returns the path an fd refers to. The target must lie below the

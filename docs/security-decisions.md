@@ -305,15 +305,14 @@ root rejected, unknown op rejected) plus the existing mount tests.
 A code review of the security-critical paths found several places where the
 code fell short of its own documented contract. Fixed in this round:
 
-1. **Helper source resolution (fd-pin reverted).** An attempt to pin the bind
-   *source* via `/proc/self/fd/<n>` (matching the direct backend) was reverted:
-   the WSL2 deployment kernel rejects a `/proc/self/fd` bind source with
-   `EINVAL`. The helper therefore resolves the bind source via `readlink` to a
-   path string, which re-opens a small TOCTOU window between the daemon's
-   `openat2` verification and the helper's `mount(2)` (a path swap in that
-   window would redirect the mount). Accepted as a documented limitation on the
-   current deployment; a portable fd-pin would require a non-`/proc/self/fd`
-   mechanism (`open_tree`/`move_mount`).
+1. **Helper source resolution (open_tree/move_mount).** The helper originally
+   resolved the bind *source* via `readlink` (a small TOCTOU window: the path is
+   re-resolved between the daemon's `openat2` verification and `mount(2)`). A
+   `/proc/self/fd/<n>` bind source was rejected with `EINVAL` on the WSL2
+   kernel. The helper now prefers `open_tree`/`move_mount` (pin the received
+   source fd, Linux ≥ 5.2) and falls back to the readlink path where the new
+   mount API is unavailable. The `open_tree` path still needs privileged
+   verification on the deployment kernel.
 
 2. **Explicit private staging.** The RO-staging sequence bound into
    `<root>/.staging` but never set `MS_PRIVATE`; privacy relied on location
