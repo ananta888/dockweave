@@ -18,7 +18,6 @@ package mounts
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -292,14 +291,14 @@ func (m *Manager) List(agentID string) ([]model.MountState, error) {
 // host-side or cross-mount actor traverses the shared directory.
 //
 // MS_NOSYMFOLLOW requires Linux >= 5.10. On older kernels/filesystems the
-// mount degrades to a plain bind and the degradation is logged (audit); every
-// caller must treat that as security-relevant.
+// mount is refused with ErrSymlinkProtectionUnavailable instead of degrading
+// to a plain bind: the symlink protection is a hard security property, not a
+// best-effort one.
 func (m *Manager) mountNoSymfollow(src, target string, flags uintptr) error {
 	if err := m.sys.Bind(src, target, flags|unix.MS_NOSYMFOLLOW); err == nil {
 		return nil
 	} else if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
-		log.Printf("mounts: MS_NOSYMFOLLOW unavailable for %q (symlink protection disabled): %v", target, err)
-		return m.sys.Bind(src, target, flags)
+		return fmt.Errorf("%w (target %q): %v", ErrSymlinkProtectionUnavailable, target, err)
 	} else {
 		return err
 	}
@@ -389,9 +388,16 @@ func (m *Manager) Add(agentID, source, targetName string, mode model.AccessMode)
 		os.Remove(target)
 		return "", fmt.Errorf("stage bind %q: %w", canon, err)
 	}
+	// Make the staged bind private so it can never propagate into a shared
+	// tree the staging parent might belong to. Defense in depth on top of
+	// staging living outside the workspace tree (AGENTS.md rule 2).
+	if err := m.sys.Propagation(staging, unix.MS_PRIVATE|unix.MS_REC); err != nil {
+		cleanup()
+		return "", fmt.Errorf("make staging private %q: %w", staging, err)
+	}
 	if err := m.sys.Remount(staging, unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC|unix.MS_NOSYMFOLLOW); err != nil {
 		// MS_NOSYMFOLLOW may not survive the remount on some kernels; the
-		// stage bind above already applied it (or degraded audibly).
+		// stage bind above already applied it (fail-closed, so it is set).
 		if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.EPERM) {
 			if err = m.sys.Remount(staging, unix.MS_REMOUNT|unix.MS_BIND|unix.MS_RDONLY|unix.MS_REC); err != nil {
 				cleanup()

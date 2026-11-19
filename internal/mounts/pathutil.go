@@ -20,6 +20,12 @@ var ErrBusy = errors.New("mount target is busy (open files or working directorie
 // source (bind-source identity mismatch).
 var ErrConflict = errors.New("mount source conflict")
 
+// ErrSymlinkProtectionUnavailable reports that the kernel/filesystem does not
+// support MS_NOSYMFOLLOW, so the symlink-planting protection (SD-016) cannot
+// be enforced. Mounting is refused (fail-closed) rather than silently
+// degrading to a plain bind.
+var ErrSymlinkProtectionUnavailable = errors.New("MS_NOSYMFOLLOW unavailable: symlink protection cannot be enforced")
+
 // ResolveSource canonicalizes a user-supplied host path and enforces the
 // allowlist of permitted roots. Symlinks are resolved; the result must be a
 // directory beneath one of the allowed roots.

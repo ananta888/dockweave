@@ -70,3 +70,22 @@ func TestHelperRejectsUnknownOp(t *testing.T) {
 		t.Fatal("expected unknown-op error")
 	}
 }
+
+func TestFdSourceReturnsMagicLink(t *testing.T) {
+	// The bind source must be mounted via /proc/self/fd/<n> so the kernel
+	// resolves the open (already verified) descriptor, not a re-looked-up path
+	// string. This is the TOCTOU pin across the privilege boundary.
+	got, err := fdSourceLink([]int{-1, -1, -1, 5}, 3, "bind")
+	if err != nil {
+		t.Fatalf("fdSourceLink(3): %v", err)
+	}
+	if got != "/proc/self/fd/5" {
+		t.Fatalf("fdSourceLink(3) = %q, want /proc/self/fd/5", got)
+	}
+	if _, err := fdSourceLink([]int{-1}, 0, "bind"); err == nil {
+		t.Fatal("fdSourceLink must reject a negative fd")
+	}
+	if _, err := fdSourceLink(nil, 0, "bind"); err == nil {
+		t.Fatal("fdSourceLink must reject an out-of-range index")
+	}
+}

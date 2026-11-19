@@ -78,7 +78,18 @@ func dispatch(req Request, fds []int, root string) error {
 	path := func(i int, verify bool) (string, error) {
 		return resolveFD(fds[i], root, true, verify)
 	}
-	source := func(i int) (string, error) {
+	// fdSource returns a /proc/self/fd link so mount(2) resolves the *open
+	// descriptor* rather than re-looking-up a path string. The daemon passes a
+	// directory fd it already verified with openat2(RESOLVE_BENEATH); mounting
+	// via the fd pins that exact object across the privilege boundary and
+	// closes the TOCTOU window a re-resolved path string would reopen.
+	fdSource := func(i int) (string, error) {
+		return fdSourceLink(fds, i, req.Op)
+	}
+	// sourcePath resolves a source fd to a path string. Only used for MS_MOVE,
+	// whose source is a DockWeave-owned staging mountpoint under <root>/.staging
+	// (not attacker-controlled), so re-resolving its path is not a TOCTOU risk.
+	sourcePath := func(i int) (string, error) {
 		return resolveFD(fds[i], root, false, false)
 	}
 
@@ -89,7 +100,7 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		src, err := source(0)
+		src, err := fdSource(0)
 		if err != nil {
 			return err
 		}
@@ -111,7 +122,7 @@ func dispatch(req Request, fds []int, root string) error {
 		if err := need(2); err != nil {
 			return err
 		}
-		src, err := source(0)
+		src, err := sourcePath(0)
 		if err != nil {
 			return err
 		}
@@ -179,6 +190,16 @@ func closeAll(fds []int) {
 			_ = unix.Close(fd)
 		}
 	}
+}
+
+// fdSourceLink returns a /proc/self/fd path for a received source fd so
+// mount(2) pins the exact (already verified) object instead of re-resolving a
+// path string. See dispatch's fdSource for context.
+func fdSourceLink(fds []int, i int, op string) (string, error) {
+	if i >= len(fds) || fds[i] < 0 {
+		return "", fmt.Errorf("op %s needs a valid source fd", op)
+	}
+	return fmt.Sprintf("/proc/self/fd/%d", fds[i]), nil
 }
 
 // resolveFD returns the path an fd refers to. The target must lie below the
