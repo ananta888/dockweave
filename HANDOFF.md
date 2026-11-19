@@ -1,8 +1,10 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-19, letzter Commit `49bf61d` (Push nach `origin/main`).
-Diese Datei fasst den wichtigsten Stand zusammen, damit ein anderer Agent
-nahtlos weiterarbeiten kann.
+Stand: 2026-11-19, letzter Commit `3b8ce2c` (gepusht nach `origin/main`).
+Working Tree sauber, `main` == `origin/main`.
+
+Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
+weiterarbeiten kann. Sie wurde nach der Graph-/Gate-Session neu geschrieben.
 
 ---
 
@@ -10,11 +12,11 @@ nahtlos weiterarbeiten kann.
 
 `/home/krusty/dockweave` — Go-Backend + Angular-Web-UI + TUI. DockWeave führt
 KI-Agenten in isolierten Docker-Containern aus und verwaltet Mounts,
-Credentials und Agenten-Lebenszyklus. Zusätzlich gibt es inzwischen:
-Produktivitätsschicht, OIDC-Login, einen privilegierten Mount-Helper und eine
-Paperclip-Anbindung für Goal-Delegation.
+Credentials und den Agenten-Lebenszyklus. Zusätzlich: Produktivitätsschicht,
+OIDC-Login, privilegierter Mount-Helper (`dockweave-mountd`) und eine
+Paperclip-Anbindung für Goal-Delegation inkl. **sandboxed Gate-Ausführung**.
 
-**Sprachen/Toolchain:** Go ≥ 1.27, Node 24, Angular, Docker, systemd, SQLite
+**Toolchain:** Go ≥ 1.27, Node 24, Angular 20, Docker, systemd, SQLite
 (pure Go), Keycloak 26.1.
 
 ---
@@ -23,206 +25,239 @@ Paperclip-Anbindung für Goal-Delegation.
 
 | Dienst | Art | Zweck |
 |---|---|---|
-| `dockweaved` (system) | root→nein: läuft als User `dockweave` (uid 997) | Daemon, API, DB, Docker |
-| `dockweave-mountd` (system) | root, **nur** `CAP_SYS_ADMIN` | führt Mount-Syscalls auf FDs aus |
+| `dockweaved` (system) | User `dockweave` (uid 997) | Daemon, API, DB, Docker |
+| `dockweave-mountd` (system) | root, nur `CAP_SYS_ADMIN` | Mount-Syscalls per FD-Protokoll |
 | `dockweave-web` (user) | krusty | Angular-UI + API-Proxy auf `127.0.0.1:8790` |
-| `dockweave-broker` (user) | krusty | Credential-Vault/Broker, Socket `~/.local/share/dockweave/broker/{admin,broker}.sock`, TCP `172.17.0.1:8787` |
-| `dockweave-keycloak` (docker) | Container | IdP, `http://127.0.0.1:8080`, Realm `dockweave` |
-| Paperclip (user) | krusty | `http://127.0.0.1:3100`, Company `DockWeave Engineering` |
+| `dockweave-broker` (user) | krusty | Credential-Vault/Broker, Sockets unter `~/.local/share/dockweave/broker/`, TCP `172.17.0.1:8787` |
+| `dockweave-keycloak` (docker) | Container | IdP `http://127.0.0.1:8080`, Realm `dockweave` |
+| Paperclip (user) | krusty | `http://127.0.0.1:3100`, Company `43b81f94-5079-4e24-8500-2e9cd78732a6` |
 
 Sockets: `/run/dockweave/dockweaved.sock`, `dockweaved.term.sock`,
 `mountd.sock` (Gruppe `dockweave`, 0660).
 
 **Web-Zugang:** stabiler Token `dw-7607e59342eadecabb561e7d13594797e69a6b35762d1924`
-in `~/.config/dockweave/web.env` (nicht im Drop-in duplizieren!). Alternativ
-OIDC-Login.
+in `~/.config/dockweave/web.env`. Alternativ OIDC-Login.
+
+**Deploy-Stand (verifiziert):** `dockweaved` in `/usr/local/bin` ist der Build
+mit `3b8ce2c`; `gate approve`, `gate run`, `gate runs`, `gate reviews`
+funktionieren live. Web + CLI sind deployt.
 
 ---
 
-## 3. Security-Split (wichtig, SD-018)
+## 3. Letzte Session — was gebaut wurde
 
-- Daemon läuft **ohne** Capabilities; Mounts gehen über `dockweave-mountd`
-  (root, nur `CAP_SYS_ADMIN`) per FD-Protokoll (`SCM_RIGHTS`) über
-  `/run/dockweave/mountd.sock`.
-- Ziele müssen unter `/var/lib/dockweave` liegen; Quellen sind Workspaces
-  (vom Daemon validiert).
-- **Achtung:** `open_tree(OPEN_TREE_CLONE)` funktioniert nur, wenn die Quelle
-  bereits ein Mountpoint ist. Deshalb nutzt `bind` wieder `mount(2)` auf dem
-  aufgelösten Pfad; `move`/`remount`/`setattr` sind FD-/pfadbasiert.
-- Implementierung: `internal/mounthelper/`, `internal/mounts/backend.go`,
-  `cmd/dockweave-mountd/`.
-- Units: `deployments/systemd/dockweave-mountd.service`,
-  `deployments/systemd/dockweaved.service`.
-- Doku: `docs/mount-helper.md` / `.de.md`, `docs/security-decisions.md` (SD-018).
-- Migration: `scripts/migrate-unprivileged.sh` (sudo) +
-  `scripts/migrate-broker-user.sh` (user).
+### 3.1 2D-Graph (Angular)
 
-### Fallstricke, die schon aufgetreten sind
-- `/home/krusty/.local/share` ist `0700` → Daemon kann Broker-Socket nicht
-  erreichen. Fix: `sudo chmod o+x /home/krusty/.local/share`.
-- `/home/krusty` brauchte `o+x` (Workspace-Kanonisierung).
-- `/var/lib/dockweave/.staging` und `agents/` müssen `dockweave` gehören
-  (`.staging` 0750).
-- Mounts können `EBUSY` liefern, wenn aktive Agenten den Pfad nutzen →
-  `dockweave grant revoke <id> --force` (auditiert).
+Dateien:
+- `ui/web/src/app/core/graph-layout-optimizer.ts` (neu)
+- `ui/web/src/app/core/graph-edge-router.ts` (neu)
+- `ui/web/src/app/components/graph.component.ts` (stark erweitert)
+- `ui/web/e2e/graph-layout.spec.ts` (Modus `star` ergänzt)
 
----
+Features:
+- **Kreuzungsbewusste Nachoptimierung** nach Force/Stress: Kosten aus
+  Kanten-Kreuzungen, Kanten durch Knoten, Label-Überlappungen,
+  Knoten-Überlappungen, Kantenlänge. Koordinaten-Descent + Tausch
+  gleichartiger Knoten + Drift-Grenze + Mindestabstände.
+- **Satelliten** (Connector-/MCP-/Skill-Knoten) laufen bei Force/Stress durch
+  denselben Optimierer (gecacht, damit der 5-s-Refresh nicht neu rechnet).
+- **Dynamische Connectoren**: jede Kante bekommt einen eigenen Port am
+  Knotenrand, Position per Strahl-Rechteck-Schnitt (`borderPoint`).
+- **Kanten-Routing**: Kanten, die fremde Knoten schneiden, bekommen
+  Waypoints über einen Visibility-Graph (`routeAroundNodes`).
+- **Neuer Layout-Modus `star`** („Stern (Hubs)"): Hubs nach Grad, BFS-Zuordnung,
+  Ringradius aus Knotengrößen, Hub-Kreis ohne Ringüberlappung.
+- **Force-Gravitation** gegen ausreißende unverbundene Knoten.
+- **Fit nach der Animation**, damit Force/Stress nicht winzig gezoomt bleiben.
 
-## 4. OIDC / Keycloak
+### 3.2 Gate-Enforcement (Paperclip ↔ DockWeave)
 
-- Implementierung: `internal/oidc/` (DDD: `domain.go`, `provider.go`,
-  `session.go`, `service.go`).
-- Flow: Authorization Code + **PKCE + nonce** (nonce wird beim Callback
-  gegen `id_token` geprüft), AES-GCM-verschlüsseltes Session-Cookie
-  (`dockweave_oidc`), Rollen aus `groups` gemappt.
-- Routen: `GET /oauth/login`, `GET /oauth/callback`, `POST /oauth/logout`
-  (vom Token-Auth ausgenommen).
-- Audit: Login/Logout → `slog` + best-effort `POST /api/v1/audit`
-  (Event-Typ `auth.oidc`, nur `iss`+`sub`).
-- OIDC-Discovery hat **10s-Timeout** und fällt bei Fehler auf Token-Login
-  zurück (verhindert Gateway-Hänger).
-- Web-Flags: `--oidc-issuer/-client-id/-client-secret/-redirect-url/-scopes/
-  -roles-claim/-admin-groups/-monitor-groups/-session-key` (auch als
-  `DOCKWEAVE_OIDC_*`).
-- Keycloak-Standard: `deployments/keycloak/docker-compose.yml` +
-  `realm-dockweave.json`, Start mit `./scripts/keycloak-up.sh`.
-- **User:** `krusty`/`krusty` (Hauptadmin, Gruppe `dockweave-admin`),
-  `user`/`user`, `monitor`/`monitor`; Master-Admin `admin`/`admin`.
-  Client-Secret `dockweave-dev-secret` (Dev!).
-- Aktivierung im Web: Drop-in
-  `~/.config/systemd/user/dockweave-web.service.d/override.conf` mit den
-  `DOCKWEAVE_OIDC_*`-Variablen.
-- Doku: `docs/oidc.md` / `.de.md`.
+Doku: `docs/gate-model.md` / `.de.md` (Verantwortungsgrenze, Non-Goals,
+Status-Semantik, Fail-closed-Regeln). TODO: `todo/gate-enforcement.json`
+(**20 done, 2 deferred**).
 
----
+- **Graph → Paperclip-Sync** (`internal/gatesync`): aktivierte Gate-Connectoren
+  werden beim `PUT /graph` nach `<workspace>/.paperclip/gates.json` gespiegelt.
+  Merge beim ersten Sync, danach gehört die Datei DockWeave (`generatedBy`).
+  Drift-Erkennung über Sidecar `.paperclip/.gates.dockweave.json`.
+- **Sandbox-Runner** (`internal/gateexec` + `internal/dockerclient/sandbox.go`):
+  Gates laufen in einem Wegwerf-Container (Workspace-Kopie, kein Netz, keine
+  Caps, `no-new-privileges`, read-only Rootfs, `/tmp`-tmpfs, Limits, non-root).
+  Tamper-Hashes über geschützte Dateien, Diff-Scope, neue Dependencies,
+  Secret-Scan, Budget-Gate, Image-Digest, Phasen `pre_run/after_run/post_run`.
+- **Persistenz**: Migration **15** (`gate_runs`, `gate_approvals`) und
+  **16** (`gate_runs.issue_id`); `schemaVersion = 16`.
+- **API**: `POST /api/v1/gates/run`, `GET /api/v1/gates/runs`,
+  `POST/GET /api/v1/gates/approvals/...`, `POST/GET /api/v1/gates/reviews...`.
+- **CLI**: `dockweave gate run|runs|approve|approval|review|reviews`.
+- **Evidence/Audit**: jeder Lauf schreibt `gate_runs`, Evidence (`kind=gate`)
+  und ein Audit-Event (`gate.run`); Reviews `kind=review` + `gate.review`;
+  Freigaben `gate.approval`.
+- **Review-Sync**: PASS/FAIL wird genau einmal pro Issue gespeichert;
+  widersprüchliches Verdict → HTTP 409 + Audit.
+- **Paperclip-Wrapper**:
+  - `deployments/paperclip/gates.py` delegiert an `dockweave gate run`
+    (Host-Shell nur mit `DOCKWEAVE_GATE_HOST_FALLBACK=1`).
+  - `parent-close.py`: Review-PASS nur mit Attribution (zugewiesener
+    Reviewer-Agent oder menschlicher Board-User); Human Approval braucht
+    Paperclip-Interaction **und** `dockweave gate approve <issue>`.
+  - `dockweave-run.sh`: übergibt `DOCKWEAVE_ISSUE_ID`, schreibt FAIL-Verdicts
+    nach DockWeave.
+- **UI**: Gate-Contract-Felder (`command`, `cwd`, `timeout_sec`,
+  `runner_image`, `protected`, `allow_paths`, `deny_new_dependencies`,
+  `secret_scan`, `budget`, `review_required`, `human_approval_required`),
+  Paperclip-Sync-Einstellungen, Sync-Drift-Anzeige, Gate-Health-Panel
+  (aufklappbare Läufe mit Ergebnissen/Diff/Budget/Evidence) und Review-Liste.
 
-## 5. Produktivitätsschicht
+### 3.3 Behobene Bugs
 
-- Migration **14** (`internal/persistence/persistence.go`): `objectives`,
-  `tasks` (+`attempts`), `focus_sessions`, `work_events`, `evidence`,
-  `input_budgets`, `reviews`, `objective_revisions`.
-- Modelle: `internal/model/productivity.go`.
-- Store: `internal/persistence/productivity.go` (Fokus-Single-Session per
-  unique index, idempotente Events/Evidence, `done→verified` nur mit
-  verifiziertem Nachweis).
-- API: `internal/api/productivity.go` – u.a. `/objectives`, `/tasks`,
-  `/tasks/today`, `/focus/*`, `/work-events`, `/evidence`, `/budgets`,
-  `/reviews`, `/reviews/report`, `/calendar`, `/tasks/suggest`, Export,
-  `/tasks/rollover`, `/focus/switch`, `/productivity/prune`, `/api/v1/audit`.
-- Collector: `internal/productivity/collector.go` (Agentenlaufzeit per
-  Presence, Broker-Usage-Deltas → `llm`-Events).
-- CLI: `cmd/dockweave/productivity.go`
-  (`objective/task/focus/plan/event/evidence/budget/review/log/export/prune`).
-- Angular: `ui/web/src/app/components/productivity.component.ts` (Tab
-  „Productivity") + `core/services/productivity.service.ts`.
-- TUI: Focus-Tab in `ui/tui/tui.go`.
-- Todo: `todo/productivity.json` (27/27 done).
-- Doku: `docs/productivity.md` / `.de.md`.
+- `internal/api/auth.go`: Middleware schrieb die aufgelöste Rolle nicht in den
+  Request-Kontext → `gate approve` war für Admins 403. Jetzt im Kontext + Test.
+- `internal/memory/memory.go`: `overrides`-Map ohne Lock → Daemon-Crash
+  „concurrent map read and map write". `RWMutex` + Race-Test.
+
+Wichtige Commits dieser Session:
+`94b67a6`, `e0806cf`, `004b0fd`, `7b8a42d`, `3b8ce2c`.
 
 ---
 
-## 6. Paperclip / Agenten-Team
-
-- Paperclip-Company: `43b81f94-5079-4e24-8500-2e9cd78732a6` („DockWeave
-  Engineering"). Rollen: Lead, Backend, Frontend, Reviewer, Platform.
-- DockWeave-Agenten: `lead`, `demo-opencode`, `researcher`, `reviewer`,
-  `platform` — alle **OpenCode** mit Modell
-  `opencode/deepseek-v4.1-flash-free` (in `/memory/.config/opencode/opencode.json`).
-  `developer`, `claude-test`, `herdr-codex` sind gestoppt.
-- Delegation/Gates (Docs: `docs/paperclip-delegation.md` / `.de.md`):
-  - `deployments/paperclip/dockweave-run.sh` (Worker- + Orchestrate-Modus)
-  - `plan-extract.py`, `plan-delegate.py` (blockedByIssueIds, Rollen aus
-    `~/.config/dockweave/paperclip-roles.json`), `wake-ready.py`,
-    `blocked-check.py`, `gates.py` (Build-Gate aus
-    `<workspace>/.paperclip/gates.json`), `paperclip-gate.py` (Interactions,
-    Rework), `parent-close.py` (Abschluss nur mit Review-PASS + Human-Freigabe).
-  - `STATUS: DONE|BLOCKED|IN_PROGRESS`-Vertrag; Reviewer `VERDICT: PASS|FAIL`.
-- Bekannte Einschränkung: Codex/DeepSeek‑Quotas; damals auf freies
-  OpenCode-Modell gewechselt.
-
----
-
-## 7. 2D-Graph (Angular)
-
-- `ui/web/src/app/components/graph.component.ts` (große Komponente).
-- Layout-Modi: `mixed`, `hierarchy`, `columns`, `grid`, `radial`, `force`,
-  `stress` (SMACOF). Portanzahl in `ui/web/src/app/core/graph-schema.ts`.
-- Vorhanden: Layout-Caching (kein Re-Run bei 5s-Datenrefresh), Spinner mittig
-  mit „Abbrechen", Animation (easeOut) in neue Position, Barycenter-Ordnung
-  gegen Kantenkreuzungen, Port-Verteilung.
-- **Wichtig:** `portsForId` darf **nicht** `this.nodes()` lesen (verursacht
-  zirkuläre Computed-Dependency → Spinner hängt). Aktuell gelöst über
-  `kindOfId(id)` aus dem ID-Präfix.
-- Fallback: bei nicht-finiten/riesigen Koordinaten fällt das Layout auf Grid
-  zurück; Layout-Fehler werden geloggt und crashen die UI nicht.
-- E2E: `ui/web/e2e/graph-layout.spec.ts` + `ui/web/playwright.config.ts`,
-  Script `npm run e2e`. Prüft alle Layout-Modi **und** den Wechsel
-  Organisation↔Ressourcen (Spinner darf nicht hängen, keine Console-Errors,
-  `ResizeObserver`-Warnung wird ignoriert). Playwright-Chromium liegt unter
-  `~/.cache/ms-playwright` (Install: `npx playwright install chromium`).
-
----
-
-## 8. Bauen & Deployen
+## 4. Bauen & Deployen
 
 ```bash
 cd /home/krusty/dockweave
 go build ./... && go test ./... && go vet ./...
 
-# Web (Angular in Go-Binary einbetten)
+# Web (Angular in Go-Binary einbetten) + CLI
 cd ui/web && npm run build && cd ../..
 go build -o bin/dockweave ./cmd/dockweave
 cp bin/dockweave ~/.local/bin/dockweave
 systemctl --user restart dockweave-web
 
-# Daemon/Helper (braucht root)
+# Daemon (braucht root; kein passwortloses sudo)
 go build -o bin/dockweaved ./cmd/dockweaved
-go build -o bin/dockweave-mountd ./cmd/dockweave-mountd
 sudo install -m 0755 bin/dockweaved /usr/local/bin/
-sudo install -m 0755 bin/dockweave-mountd /usr/local/bin/
-sudo systemctl restart dockweave-mountd dockweaved
+sudo systemctl restart dockweaved
 ```
 
-E2E: `cd ui/web && npm run e2e` (App muss unter `127.0.0.1:8790` laufen).
+**Nach jedem Daemon-Restart:** kurz warten, bis der Socket wieder da ist —
+ein direkter `dockweave …`-Aufruf in derselben Shell-Zeile kann sonst
+„connect: no such file or directory" liefern.
+
+```bash
+sleep 1; ls -l /run/dockweave/dockweaved.sock
+```
 
 ---
 
-## 9. Wichtige Gotchas
+## 5. Gates benutzen / verifizieren
 
-- **CRLF-Rauschen:** `core.autocrlf=true`; viele `M`-Dateien sind nur
-  Zeilenenden. echte Änderungen prüfen mit
-  `git diff --ignore-cr-at-eol --stat`.
+```bash
+# Sandbox-Lauf (echtes Projekt)
+dockweave gate run /home/krusty/projects/crystal-run --issue DOC-63 --json
+dockweave gate runs --limit 5
+
+# Review + Freigabe (admin)
+dockweave gate review DOC-63 --verdict PASS --note "reviewed"
+dockweave gate reviews
+dockweave gate approve DOC-63 --note "ok"
+dockweave gate approval DOC-63
+```
+
+Erwartung beim Crystal-Run: `tests` + `build` laufen im Container (kein Host),
+`status=passed`, Image-Digest gesetzt, kein Tamper.
+
+Tests:
+
+```bash
+go test ./...
+go test -race ./internal/memory
+DOCKWEAVE_GATE_INTEGRATION=1 go test ./internal/gateexec -run TestRun -v
+DOCKWEAVE_GATE_INTEGRATION=1 DOCKWEAVE_GATE_WORKSPACE=/home/krusty/projects/crystal-run \
+  go test ./internal/gateexec -run TestRunRealWorkspace -v
+cd ui/web && npm run e2e
+```
+
+Hinweis: `internal/gateexec/runner_integration_test.go` nutzt echtes Docker und
+wird ohne `DOCKWEAVE_GATE_INTEGRATION=1` übersprungen.
+
+In der DB liegen Smoke-Datensätze `GATE-SMOKE-1` (Review PASS + Approval) und
+ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
+
+---
+
+## 6. Wichtige Dateien (neu/geändert)
+
+| Bereich | Datei |
+|---|---|
+| Graph-Optimierer | `ui/web/src/app/core/graph-layout-optimizer.ts` |
+| Kanten-Router | `ui/web/src/app/core/graph-edge-router.ts` |
+| Graph-UI | `ui/web/src/app/components/graph.component.ts` |
+| Gate-Sync | `internal/gatesync/gatesync.go` |
+| Gate-Runner | `internal/gateexec/{runner,hash,policy,util}.go` |
+| Sandbox-Container | `internal/dockerclient/sandbox.go` |
+| Gate-Persistenz | `internal/model/gate.go`, `internal/persistence/gates.go` |
+| Gate-API | `internal/api/gates.go` |
+| Gate-CLI | `cmd/dockweave/gate.go` |
+| Web-Sync-Status | `internal/webui/graph.go`, `internal/webui/server.go` |
+| Paperclip | `deployments/paperclip/{gates,parent-close}.py`, `dockweave-run.sh` |
+| Doku | `docs/gate-model.md` / `.de.md`, `docs/paperclip-delegation.md` / `.de.md` |
+| TODO | `todo/gate-enforcement.json` |
+
+---
+
+## 7. Wichtige Gotchas
+
+- **Kein passwortloses sudo.** Root-Schritte (Daemon installieren/starten)
+  muss der Nutzer ausführen.
+- **Paperclip-Wrapper ist fail-closed:** Ist der Daemon nicht erreichbar,
+  wird `STATUS: DONE` abgelehnt. Host-Ausführung nur mit
+  `DOCKWEAVE_GATE_HOST_FALLBACK=1`.
+- **Gate-Image:** Default `node:22-bookworm` (lokal vorhanden). Pro Workspace
+  über `runner_image` konfigurierbar. Fehlt das Image und kann nicht gepullt
+  werden, schlägt der Lauf fehl (kein Host-Fallback).
+- **Workspace-Kopie:** Gates laufen auf einer Kopie unter
+  `/var/lib/dockweave/gates`. Das Original wird nicht verändert. Große
+  `node_modules` kosten Kopierzeit (~185 MB crystal-run, Lauf ~12 s).
+- **Sandbox läuft als aktueller UID** (non-root), damit erzeugte Dateien
+  wieder löschbar sind. Kein Broker-/Docker-Socket, kein Netz.
+- **CRLF-Rauschen:** `core.autocrlf=true`; `M`-Dateien können reine
+  Zeilenenden sein. Prüfen mit `git diff --ignore-cr-at-eol`.
 - **Bash-History:** `!` in doppelt gequoteten Strings → „event not found";
-  `set +H` verwenden.
-- **sudo:** kein passwortloses sudo; root-Schritte muss der Nutzer ausführen.
-- **Skills-Warnung:** Daemon kann `/var/lib/dockweave/skills` nicht schreiben
-  („skill catalog disabled") — optional `chown dockweave:dockweave`.
-- **Broker-Permission:** siehe Abschnitt 3 (`chmod o+x .local/share`).
+  `set +H`.
+- **Skill-Katalog:** Daemon kann `/var/lib/dockweave/skills` nicht schreiben
+  („skill catalog disabled"). Optional:
+  `sudo chown -R dockweave:dockweave /var/lib/dockweave/skills`.
+- **Broker-Permission:** `/home/krusty/.local/share` braucht `o+x`, sonst
+  erreicht der Daemon den Broker-Socket nicht.
+- **Drift:** Wird `.paperclip/gates.json` manuell verändert, zeigt die UI
+  „Drift"; der nächste Sync überschreibt die Datei (bewusst).
+- **Review-Attribution:** Unattributierte `VERDICT: PASS`-Kommentare zählen
+  nicht (Override: `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1`).
 
 ---
 
-## 10. Offene Punkte / nächste Schritte
+## 8. Offene Punkte / nächste Schritte
 
-1. **User-Bericht (offen):** Beim Wechsel des *Darstellungsmodus*
-   (Organisation/Ressourcen) „passiert nichts". Der E2E-Test deckt genau
-   diesen Wechsel ab und ist grün, Deploy ist aktuell → Verdacht: veraltetes
-   Browser-Bundle. Nächster Schritt: Hard-Reload/Cache leeren; falls weiter
-   defekt, Console-Fehler + betroffenes Steuerelement vom Nutzer einholen.
-2. **Edge-Bundling** (Holten & van Wijk 2009) als Option gegen sichtbare
-   Kantenkreuzungen in Force/Stress (optional).
-3. **Dedizierter `dockweave`-User** ist umgesetzt; `chown` läuft über den
-   Helper. Verbleibende Alt-Eigentums-Feinheiten siehe Abschnitt 3.
-4. **Rollen-Durchsetzung** am Web-Gateway (monitor = nur lesen) ist noch
-   nicht erzwungen; Rollen werden nur abgeleitet/gespeichert.
-5. **Paperclip-Pipeline** weiter beachten: Quotas (Codex/DeepSeek), Gates
-   laufen über den Wrapper. Goal-Run 2/3 im Board prüfen
-   (`paperclipai issue list -C 43b81f94-…`).
-6. **Ananta-Import** und **LLM-Review-Agent** sind laut Spezifikation
-   optional und bewusst nicht gebaut.
+1. **`todo/gate-enforcement.json`:** 20 Tasks `done`; offen nur die bewussten
+   Non-Goals `gate-040` (keine zweite Dependency-DB) und `gate-041` (kein
+   eigenes Issue-Board), beide `deferred`.
+2. **Rollen-Durchsetzung am Web-Gateway** (monitor = nur lesen) ist weiterhin
+   nicht erzwungen; Rollen werden aus OIDC abgeleitet/gespeichert. Der Daemon
+   erzwingt seine Peer-Rollen bereits.
+3. **Paperclip-Pipeline:** Quotas (Codex/DeepSeek) beachten; Goal-Runs im Board
+   prüfen. Review-PASS braucht jetzt Attribution + DockWeave-Sync.
+4. **Display-Modus-Bericht (alt):** Falls „Wechsel tut nichts" erneut kommt,
+   erst Hard-Reload/Cache prüfen; der E2E deckt den Wechsel ab.
+5. **Optional:** Edge-Bundling für Force/Stress; Graph-Label-Positionen
+   dynamisch statt immer bei 0.5.
+6. **Ananta-Import / LLM-Review-Agent:** laut Spezifikation optional, bewusst
+   nicht gebaut.
+7. **Smoke-Daten:** `GATE-SMOKE-1` in `gate_reviews`/`gate_approvals` kann bei
+   Bedarf entfernt werden (es gibt noch keinen Delete-Endpoint).
 
 ---
 
-## 11. Schnellzugriff
+## 9. Schnellzugriff
 
 ```bash
 # Dienste
@@ -233,13 +268,15 @@ systemctl --user status dockweave-web dockweave-broker --no-pager
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8790/
 dockweave agent list
 dockweave broker status
+dockweave gate runs
 
-# Keycloak
+# Keycloak / Paperclip
 docker ps --filter name=dockweave-keycloak
-curl -s -o /dev/null -w "%{http_code}\n" \
-  http://127.0.0.1:8080/realms/dockweave/.well-known/openid-configuration
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/realms/dockweave/.well-known/openid-configuration
+/home/krusty/.local/bin/paperclipai issue list -C 43b81f94-5079-4e24-8500-2e9cd78732a6 --json
 
 # Logs
-journalctl -u dockweaved -n 30 --no-pager
+journalctl -u dockweaved -n 50 --no-pager
 journalctl -u dockweave-mountd -n 30 --no-pager
+journalctl --user -u dockweave-web -n 30 --no-pager
 ```
