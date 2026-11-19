@@ -87,3 +87,56 @@ The 2D graph in the Angular app stores the same gate contracts. Previously it
 lived in `localStorage`; `GET/PUT /graph` on the web gateway persists the whole
 document in `~/.local/share/dockweave/graph.json`, and the daemon exposes the
 same document as `GET/PUT /api/v1/graph` for non-browser clients.
+
+## Graph → Paperclip gate sync
+
+Enabled `kind: "gate"` connectors can be mirrored into the project workspace.
+The graph document carries a `paperclip` block:
+
+```json
+{
+  "paperclip": {
+    "workspace": "/home/krusty/projects/crystal-run",
+    "syncGates": true
+  }
+}
+```
+
+A gate contract may carry executable fields in addition to the descriptive
+ones:
+
+```json
+{
+  "expression": "npm run build == 0",
+  "on_true": "STATUS: DONE",
+  "on_false": "in_progress",
+  "command": "npm run build",
+  "cwd": ".",
+  "timeout_sec": 300,
+  "review_required": true,
+  "human_approval_required": true
+}
+```
+
+On every `PUT /graph` the web gateway calls `internal/gatesync` and writes
+`<workspace>/.paperclip/gates.json` atomically:
+
+- `command` becomes an entry in `gates[]` (`when` defaults to `after_run`,
+  `cwd` to `.`, `timeout_sec` to 300)
+- `review_required` sets `review.required` (default `issue_match: "review"`)
+- `human_approval_required` sets `human_approval.required`
+
+Safety rules:
+
+- writes are limited to the admin browser roots (`/home`, `/srv`,
+  `/opt/projects`, `/var/lib/dockweave`); the workspace must be an existing
+  absolute directory
+- only `<workspace>/.paperclip/gates.json` is written, atomically
+- a hand-maintained file is never replaced when the graph has no executable
+  gates; files written by DockWeave (`generatedBy: "dockweave-graph"`) are
+  cleared when the last gate is removed
+- a failed sync never fails the graph save: the result is returned as `gates`
+  in the `PUT /graph` response and shown in the UI
+
+The sync runs on the web gateway, which is the path used by the Angular app.
+`PUT /api/v1/graph` on the daemon only stores the document.

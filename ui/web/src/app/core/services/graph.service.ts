@@ -9,12 +9,31 @@ export interface GraphDocument {
   customEdges?: unknown[];
   ghosts?: unknown[];
   positions?: Record<string, { x: number; y: number }>;
+  paperclip?: {
+    /** Host path of the Paperclip workspace (gates.json lives in .paperclip/). */
+    workspace?: string;
+    syncGates?: boolean;
+  };
   [key: string]: unknown;
+}
+
+export interface GraphGateSyncResult {
+  written?: boolean;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+  workspace?: string;
+  path?: string;
+  gates?: number;
+  review?: boolean;
+  human_approval?: boolean;
+  warnings?: string[];
 }
 
 export interface GraphDocumentResponse {
   saved: boolean;
   body: GraphDocument | null;
+  gates?: GraphGateSyncResult;
 }
 
 // The graph document (layout, connectors, deterministic gates) is stored by the

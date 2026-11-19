@@ -90,3 +90,56 @@ Der 2D-Graph in der Angular-App speichert dieselben Gate-Contracts. Frueher
 lagen sie in `localStorage`; `GET/PUT /graph` am Web-Gateway persistiert das
 gesamte Dokument in `~/.local/share/dockweave/graph.json`, der Daemon bietet
 dasselbe Dokument als `GET/PUT /api/v1/graph` fuer Nicht-Browser-Clients.
+
+## Graph → Paperclip Gate-Sync
+
+Aktivierte `kind: "gate"`-Connectoren koennen in den Projekt-Workspace
+gespiegelt werden. Das Graph-Dokument traegt dazu einen `paperclip`-Block:
+
+```json
+{
+  "paperclip": {
+    "workspace": "/home/krusty/projects/crystal-run",
+    "syncGates": true
+  }
+}
+```
+
+Ein Gate-Contract kann zusaetzlich ausfuehrbare Felder tragen:
+
+```json
+{
+  "expression": "npm run build == 0",
+  "on_true": "STATUS: DONE",
+  "on_false": "in_progress",
+  "command": "npm run build",
+  "cwd": ".",
+  "timeout_sec": 300,
+  "review_required": true,
+  "human_approval_required": true
+}
+```
+
+Bei jedem `PUT /graph` ruft das Web-Gateway `internal/gatesync` auf und
+schreibt `<workspace>/.paperclip/gates.json` atomar:
+
+- `command` wird ein Eintrag in `gates[]` (`when` default `after_run`, `cwd`
+  default `.`, `timeout_sec` default 300)
+- `review_required` setzt `review.required` (Default `issue_match: "review"`)
+- `human_approval_required` setzt `human_approval.required`
+
+Sicherheitsregeln:
+
+- geschrieben wird nur unterhalb der Admin-Browser-Roots (`/home`, `/srv`,
+  `/opt/projects`, `/var/lib/dockweave`); der Workspace muss ein existierendes
+  absolutes Verzeichnis sein
+- nur `<workspace>/.paperclip/gates.json` wird geschrieben, atomar
+- eine handgepflegte Datei wird nie ersetzt, wenn der Graph keine
+  ausfuehrbaren Gates hat; von DockWeave erzeugte Dateien (`generatedBy:
+  "dockweave-graph"`) werden geleert, wenn das letzte Gate entfernt wird
+- ein fehlgeschlagener Sync laesst das Graph-Speichern nie scheitern: das
+  Ergebnis kommt als `gates` in der `PUT /graph`-Antwort und wird in der UI
+  angezeigt
+
+Der Sync laeuft am Web-Gateway, also auf dem Pfad der Angular-App.
+`PUT /api/v1/graph` am Daemon speichert nur das Dokument.

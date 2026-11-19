@@ -3,7 +3,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
-import { GraphService } from '../core/services/graph.service';
+import { GraphGateSyncResult, GraphService } from '../core/services/graph.service';
 import { PaperclipService } from '../core/services/paperclip.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
@@ -552,6 +552,20 @@ interface GraphEdge {
               </section>
 
               <section>
+                <h4>Paperclip-Sync (Gates)</h4>
+                <p class="muted">Schreibt aktivierte Gate-Connectoren beim Speichern nach <span class="mono">&lt;workspace&gt;/.paperclip/gates.json</span>. Gates ohne Shell-Befehl werden nicht ausgeführt; Review/Human-Freigabe wirken über die Flags.</p>
+                <div class="settings-grid">
+                  <label class="wide">Workspace (Host-Pfad)
+                    <input [ngModel]="paperclipWorkspace()" (ngModelChange)="setPaperclipWorkspace($event)" name="paperclipWorkspace" placeholder="/home/krusty/projects/crystal-run" />
+                  </label>
+                  <label>Bei jedem Speichern synchronisieren
+                    <input type="checkbox" [ngModel]="paperclipSync()" (ngModelChange)="setPaperclipSync($event)" name="paperclipSync" />
+                  </label>
+                </div>
+                @if (paperclipSyncInfo()) { <p class="muted mono">{{ paperclipSyncInfo() }}</p> }
+              </section>
+
+              <section>
                 <h4>Weitere Connectoren (lokal)</h4>
                 <div class="settings-grid">
                   <label>Art
@@ -585,6 +599,11 @@ interface GraphEdge {
                     <label class="wide">Condition / expression <input [(ngModel)]="gateExpression" name="gateExpression" placeholder="e.g. tests == green && budget < 5" /></label>
                     <label>On true <input [(ngModel)]="gateTrue" name="gateTrue" placeholder="allow / next agent" /></label>
                     <label>On false <input [(ngModel)]="gateFalse" name="gateFalse" placeholder="deny / retry" /></label>
+                    <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="gateCommand" name="gateCommand" placeholder="npm run build" /></label>
+                    <label>Arbeitsverzeichnis <input [(ngModel)]="gateCwd" name="gateCwd" placeholder="." /></label>
+                    <label>Timeout (s) <input type="number" [(ngModel)]="gateTimeout" name="gateTimeout" min="1" /></label>
+                    <label><input type="checkbox" [(ngModel)]="gateReview" name="gateReview" /> Review erforderlich</label>
+                    <label><input type="checkbox" [(ngModel)]="gateHuman" name="gateHuman" /> Menschliche Freigabe</label>
                   }
                   @if (connKind === 'custom') {
                     <label class="wide">JSON contract <textarea rows="4" [(ngModel)]="connContract" name="connContract"></textarea></label>
@@ -682,6 +701,11 @@ interface GraphEdge {
                     <label class="wide">Condition <input [(ngModel)]="ecExpression" name="ecExpression" placeholder="tests == green" /></label>
                     <label>On true <input [(ngModel)]="ecTrue" name="ecTrue" /></label>
                     <label>On false <input [(ngModel)]="ecFalse" name="ecFalse" /></label>
+                    <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="ecCommand" name="ecCommand" placeholder="npm run build" /></label>
+                    <label>Arbeitsverzeichnis <input [(ngModel)]="ecCwd" name="ecCwd" placeholder="." /></label>
+                    <label>Timeout (s) <input type="number" [(ngModel)]="ecTimeout" name="ecTimeout" min="1" /></label>
+                    <label><input type="checkbox" [(ngModel)]="ecReview" name="ecReview" /> Review erforderlich</label>
+                    <label><input type="checkbox" [(ngModel)]="ecHuman" name="ecHuman" /> Menschliche Freigabe</label>
                   }
                   @if (ecKind === 'custom') {
                     <label class="wide">JSON contract <textarea rows="5" [(ngModel)]="ecContract" name="ecContract"></textarea></label>
@@ -962,6 +986,11 @@ export class GraphComponent implements OnChanges {
   gateExpression = '';
   gateTrue = '';
   gateFalse = '';
+  gateCommand = '';
+  gateCwd = '';
+  gateTimeout = 300;
+  gateReview = false;
+  gateHuman = false;
   editAvatar = '';
   editAvatarSVG = '';
   avatarError = signal('');
@@ -979,6 +1008,11 @@ export class GraphComponent implements OnChanges {
   ecExpression = '';
   ecTrue = '';
   ecFalse = '';
+  ecCommand = '';
+  ecCwd = '';
+  ecTimeout = 300;
+  ecReview = false;
+  ecHuman = false;
   ecContract = '';
   connectOpen = signal(false);
   connectSource = signal<GraphNode | null>(null);
@@ -1007,6 +1041,9 @@ export class GraphComponent implements OnChanges {
   private readonly paperclip = inject(PaperclipService);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
+  readonly paperclipWorkspace = signal('');
+  readonly paperclipSync = signal(false);
+  readonly paperclipSyncInfo = signal('');
   readonly paperclipIssues = signal<{ identifier?: string; title?: string; status?: string }[]>([]);
   readonly openReviews = computed(() => this.paperclipIssues()
     .filter(i => /review/i.test(i.title || '') && i.status !== 'done' && i.status !== 'cancelled').length);
@@ -1035,9 +1072,47 @@ export class GraphComponent implements OnChanges {
           this.manualPositions = doc['positions'] as Record<string, { x: number; y: number }>;
           try { localStorage.setItem('dockweave.graphPositions', JSON.stringify(this.manualPositions)); } catch { /* ignore */ }
         }
+        const pc = doc['paperclip'] as { workspace?: string; syncGates?: boolean } | undefined;
+        if (pc) {
+          this.paperclipWorkspace.set(pc.workspace || '');
+          this.paperclipSync.set(!!pc.syncGates);
+          this.persistPaperclipSettings();
+        }
       },
       error: () => { /* offline: keep the local copy */ },
     });
+    try {
+      this.paperclipWorkspace.set(localStorage.getItem('dockweave.paperclipWorkspace') || '');
+      this.paperclipSync.set(localStorage.getItem('dockweave.paperclipSync') === '1');
+    } catch { /* ignore */ }
+  }
+
+  setPaperclipWorkspace(value: string): void {
+    this.paperclipWorkspace.set(value);
+    this.persistPaperclipSettings();
+    this.scheduleGraphSave();
+  }
+
+  setPaperclipSync(value: boolean): void {
+    this.paperclipSync.set(value);
+    this.persistPaperclipSettings();
+    this.scheduleGraphSave();
+  }
+
+  private persistPaperclipSettings(): void {
+    try {
+      localStorage.setItem('dockweave.paperclipWorkspace', this.paperclipWorkspace());
+      localStorage.setItem('dockweave.paperclipSync', this.paperclipSync() ? '1' : '0');
+    } catch { /* ignore */ }
+  }
+
+  private describeGateSync(result: GraphGateSyncResult | undefined): string {
+    if (!result) return '';
+    if (result.error) return `Paperclip-Sync fehlgeschlagen: ${result.error}`;
+    if (result.skipped) return result.reason ? `Paperclip-Sync übersprungen: ${result.reason}` : 'Paperclip-Sync übersprungen.';
+    const flags = [result.gates ? `${result.gates} Gate(s)` : '', result.review ? 'Review' : '', result.human_approval ? 'Human Approval' : '']
+      .filter(Boolean).join(', ');
+    return `Paperclip-Gates geschrieben${flags ? `: ${flags}` : ''}${result.path ? ` → ${result.path}` : ''}`;
   }
 
   /** Debounced push of the whole graph document to the gateway. */
@@ -1054,9 +1129,18 @@ export class GraphComponent implements OnChanges {
       customEdges: this.customEdges(),
       ghosts: this.ghosts(),
       positions: this.manualPositions,
+      paperclip: {
+        workspace: this.paperclipWorkspace().trim(),
+        syncGates: this.paperclipSync(),
+      },
       updatedAt: new Date().toISOString(),
     };
-    this.graphService.save(doc).subscribe({ error: () => { /* keep localStorage */ } });
+    this.graphService.save(doc).subscribe({
+      next: (res) => {
+        if (this.paperclipSync()) this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+      },
+      error: () => { /* keep localStorage */ },
+    });
   }
 
   dataVersion = signal(0);
@@ -1555,12 +1639,26 @@ export class GraphComponent implements OnChanges {
     this.ecExpression = '';
     this.ecTrue = '';
     this.ecFalse = '';
+    this.ecCommand = '';
+    this.ecCwd = '';
+    this.ecTimeout = 300;
+    this.ecReview = false;
+    this.ecHuman = false;
     if (c.kind === 'gate' && c.contract) {
       try {
-        const g = JSON.parse(c.contract) as { expression?: string; on_true?: string; on_false?: string };
+        const g = JSON.parse(c.contract) as {
+          expression?: string; on_true?: string; on_false?: string;
+          command?: string; cwd?: string; timeout_sec?: number;
+          review_required?: boolean; human_approval_required?: boolean;
+        };
         this.ecExpression = g.expression || '';
         this.ecTrue = g.on_true || '';
         this.ecFalse = g.on_false || '';
+        this.ecCommand = g.command || '';
+        this.ecCwd = g.cwd || '';
+        this.ecTimeout = g.timeout_sec || 300;
+        this.ecReview = !!g.review_required;
+        this.ecHuman = !!g.human_approval_required;
       } catch { /* ignore */ }
     }
   }
@@ -1572,7 +1670,17 @@ export class GraphComponent implements OnChanges {
       if (c.id !== id) return c;
       let contract = this.ecContract;
       if (this.ecKind === 'gate') {
-        contract = JSON.stringify({ expression: this.ecExpression.trim(), on_true: this.ecTrue.trim() || 'allow', on_false: this.ecFalse.trim() || 'deny' }, null, 2);
+        const gate: Record<string, unknown> = {
+          expression: this.ecExpression.trim(),
+          on_true: this.ecTrue.trim() || 'allow',
+          on_false: this.ecFalse.trim() || 'deny',
+        };
+        if (this.ecCommand.trim()) gate['command'] = this.ecCommand.trim();
+        if (this.ecCwd.trim()) gate['cwd'] = this.ecCwd.trim();
+        if (this.ecTimeout) gate['timeout_sec'] = Number(this.ecTimeout) || 300;
+        if (this.ecReview) gate['review_required'] = true;
+        if (this.ecHuman) gate['human_approval_required'] = true;
+        contract = JSON.stringify(gate, null, 2);
       }
       return { ...c, name: this.ecName.trim() || c.name, kind: this.ecKind, direction: this.ecDirection,
         targetAgentId: this.ecTarget || undefined, url: this.ecURL.trim() || undefined, contract };
@@ -1947,6 +2055,11 @@ export class GraphComponent implements OnChanges {
     this.gateExpression = '';
     this.gateTrue = '';
     this.gateFalse = '';
+    this.gateCommand = '';
+    this.gateCwd = '';
+    this.gateTimeout = 300;
+    this.gateReview = false;
+    this.gateHuman = false;
     this.connectorsOpen.set(true);
     this.loadAgentConfig(a.id);
   }
@@ -1961,12 +2074,18 @@ export class GraphComponent implements OnChanges {
       return;
     }
     let contractRaw = this.connContract.trim();
-    if (this.connKind === 'gate' && (this.gateExpression.trim() || this.gateTrue.trim() || this.gateFalse.trim())) {
-      contractRaw = JSON.stringify({
+    if (this.connKind === 'gate') {
+      const contract: Record<string, unknown> = {
         expression: this.gateExpression.trim(),
         on_true: this.gateTrue.trim() || 'allow',
         on_false: this.gateFalse.trim() || 'deny',
-      }, null, 2);
+      };
+      if (this.gateCommand.trim()) contract['command'] = this.gateCommand.trim();
+      if (this.gateCwd.trim()) contract['cwd'] = this.gateCwd.trim();
+      if (this.gateTimeout) contract['timeout_sec'] = Number(this.gateTimeout) || 300;
+      if (this.gateReview) contract['review_required'] = true;
+      if (this.gateHuman) contract['human_approval_required'] = true;
+      contractRaw = JSON.stringify(contract, null, 2);
     }
     if (contractRaw) {
       const parsed = this.parseJsonSafe(contractRaw);

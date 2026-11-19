@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/ananta888/dockweave/internal/gatesync"
 )
 
 // graphPath is where the browser graph document is persisted. It used to live
@@ -81,5 +83,16 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "body": body})
+	// Best-effort mirror of the graph gate connectors into the Paperclip
+	// workspace. A sync failure must never lose the graph document the user
+	// just saved, so it is reported in the response instead of failing PUT.
+	syncResult := gatesync.Sync(body, s.browseRoots)
+	if syncResult.Error != "" {
+		if s.cfg.Logger != nil {
+			s.cfg.Logger.Warn("paperclip gate sync failed", "error", syncResult.Error)
+		}
+	} else if syncResult.Written && s.cfg.Logger != nil {
+		s.cfg.Logger.Info("paperclip gates synced", "path", syncResult.Path, "gates", syncResult.Gates)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "body": body, "gates": syncResult})
 }
