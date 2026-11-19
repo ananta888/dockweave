@@ -44,3 +44,7 @@ Thumbs.db
 
 # Angular cache
 /.angular
+
+# Playwright
+/test-results/
+/playwright-report/
