@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Crystal Run</title>
+  </head>
+  <body>
+    <canvas id="world" aria-label="Crystal Run 3D-Spielfeld"></canvas>
+    <header>
+      <strong>CRYSTAL RUN</strong><span id="hud" role="status"></span
+      ><button id="pause" hidden>Pause</button>
+    </header>
+    <main id="panel">
+      <small>FLOATING ISLANDS · TIME TRIAL</small>
+      <h1>Crystal Run</h1>
+      <p id="message">
+        Sammle fünf Kristalle und erreiche das leuchtende Portal.
+      </p>
+      <p>WASD / Pfeiltasten · Leertaste: Springen · Esc: Pause</p>
+      <button id="start">Starten</button
+      ><button id="resume" hidden>Fortsetzen</button>
+      <p id="best"></p>
+    </main>
+    <footer>
+      Folge den Inseln zum Portal · Ein Absturz kostet Zeit, keine Kristalle.
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
