@@ -13,7 +13,7 @@ test('every layout mode completes and never leaves the spinner stuck', async ({ 
   await page.locator('f-flow').waitFor({ state: 'visible', timeout: 15000 });
 
   const select = page.locator('select.small-select').first();
-  for (const algo of ['mixed', 'hierarchy', 'columns', 'grid', 'radial', 'force', 'stress']) {
+  for (const algo of ['mixed', 'hierarchy', 'columns', 'grid', 'radial', 'force', 'stress', 'star']) {
     await select.selectOption(algo);
     // The spinner may flash briefly but must disappear quickly.
     await expect(page.locator('.layout-spinner')).toHaveCount(0, { timeout: 5000 });

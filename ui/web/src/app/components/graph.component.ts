@@ -7,10 +7,12 @@ import { GraphService } from '../core/services/graph.service';
 import { PaperclipService } from '../core/services/paperclip.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
+import { LayoutEdge, LayoutNode, borderPoint, optimizeLayout } from '../core/graph-layout-optimizer';
+import { RouterRect, routeAroundNodes } from '../core/graph-edge-router';
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
 
 type GraphMode = 'organization' | 'resources';
-type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'stress' | 'free' | 'mixed';
+type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'stress' | 'star' | 'free' | 'mixed';
 
 interface GraphPort {
   id: string;
@@ -97,7 +99,9 @@ interface GraphEdge {
   kind: string;
   sourceSide: Side;
   targetSide: Side;
-  type: 'segment' | 'bezier' | 'adaptive-curve';
+  type: 'segment' | 'straight' | 'bezier' | 'adaptive-curve';
+  /** Intermediate points used to steer the edge around unrelated nodes. */
+  waypoints?: { x: number; y: number }[];
 }
 
 @Component({
@@ -123,6 +127,7 @@ interface GraphEdge {
           <option value="mixed">Gemischt</option>
           <option value="force">Force (federnd)</option>
           <option value="stress">Stress (SMACOF)</option>
+          <option value="star">Stern (Hubs)</option>
           <option value="hierarchy">Hierarchie (hart)</option>
           <option value="columns">Spalten (hart)</option>
           <option value="grid">Grid</option>
@@ -184,6 +189,9 @@ interface GraphEdge {
                 <svg fMarker type="end-all-states" [width]="10" [height]="10" [refX]="10" [refY]="5" markerUnits="userSpaceOnUse" viewBox="0 0 10 10">
                   <path d="M0 0 L10 5 L0 10 L2.5 5 Z" fill="context-stroke"></path>
                 </svg>
+                @if (edge.waypoints?.length) {
+                  <f-connection-waypoints [waypoints]="edge.waypoints || []" [visibility]="false" />
+                }
                 <div fConnectionContent [position]="0.5" class="edge-content">
                   <span class="edge-label" [class]="'edge-' + edge.kind">{{ edge.label }}</span>
                   <span class="edge-actions">
@@ -335,7 +343,7 @@ interface GraphEdge {
                     <option value="radial">Radial</option>
                     <option value="force">Force (federnd)</option>
                     <option value="stress">Stress (SMACOF, überlappungsfrei)</option>
-          <option value="stress">Stress (SMACOF)</option>
+                    <option value="star">Stern (Hubs, Nachbarn im Kreis)</option>
                     <option value="free">Frei (manuell, Positionen bleiben)</option>
                   </select>
                   <button class="primary" (click)="cleanup()">Aufräumen</button>
@@ -921,6 +929,8 @@ export class GraphComponent implements OnChanges {
   private previousLayout: LayoutAlgorithm = 'mixed';
   private layoutCacheKey = '';
   private layoutCache = new Map<string, { x: number; y: number }>();
+  private fullLayoutCacheKey = '';
+  private fullLayoutCache = new Map<string, { x: number; y: number }>();
   schemaJson = '';
   schemaError = signal('');
   connSource = '';
@@ -1067,9 +1077,122 @@ export class GraphComponent implements OnChanges {
         id: g.id, kind: 'ghost' as const, title: g.title, subtitle: g.active ? 'active placeholder' : 'template placeholder',
         detail: g.active ? 'enabled' : 'disabled', position: g.position, ghost: true, active: g.active, templateId: g.templateId,
       }));
-    return [...nodes, ...this.connectorNodes(nodes), ...this.mcpNodes(nodes), ...this.skillNodes(nodes), ...ghosts];
+    const all = [...nodes, ...this.connectorNodes(nodes), ...this.mcpNodes(nodes), ...this.skillNodes(nodes), ...ghosts];
+    const algo = this.layout();
+    if (algo !== 'force' && algo !== 'stress') return all;
+    // Connector/MCP/skill nodes are attached at fixed offsets to their agent.
+    // In a position-driven layout those offsets pile up, so run the same
+    // crossing/clearance pass over the full set (it also separates the
+    // satellites and keeps their edges away from unrelated nodes). The result
+    // is cached by layout + positions so the periodic data refresh does not
+    // re-run the expensive pass every few seconds.
+    const key = algo + '|' + this.mode() + '|' +
+      all.map(n => `${n.id}:${n.position.x},${n.position.y}`).join(';');
+    let refined: GraphNode[];
+    if (key === this.fullLayoutCacheKey) {
+      refined = all.map(n => ({ ...n, position: this.fullLayoutCache.get(n.id) ?? n.position }));
+    } else {
+      refined = this.refineLayout(all);
+      this.fullLayoutCacheKey = key;
+      this.fullLayoutCache.clear();
+      for (const n of refined) this.fullLayoutCache.set(n.id, n.position);
+    }
+    return refined.map(n =>
+      this.manualPositions[n.id] ? { ...n, position: this.manualPositions[n.id] } : n);
   });
-  readonly edges = computed(() => { this.dataVersion(); this.schema(); this.customEdges(); return this.buildEdges(); });
+  // Per-edge connectors for position-driven layouts. Each edge gets its own
+  // port on the node border, at the point where the straight line to the other
+  // endpoint leaves the rectangle. Because the id is unique per edge, edges no
+  // longer pile up on a single shared port and the connectors visibly slide
+  // around the node as it moves.
+  private readonly dynamicPorts = computed<{
+    byNode: Map<string, GraphPort[]>;
+    byEdge: Map<string, { sourcePort: GraphPort; targetPort: GraphPort }>;
+  }>(() => {
+    const byNode = new Map<string, GraphPort[]>();
+    const byEdge = new Map<string, { sourcePort: GraphPort; targetPort: GraphPort }>();
+    if (!this.isPositionDriven()) return { byNode, byEdge };
+    const nodes = this.nodes();
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    const clamp = (v: number): number => Math.max(0, Math.min(100, v));
+    const portAt = (node: GraphNode, other: GraphNode, edgeId: string, type: 'in' | 'out'): GraphPort => {
+      const box = this.toLayoutNode(node);
+      const { side, point } = borderPoint(box, this.toLayoutNode(other));
+      const left = side === 'left' ? 0 : side === 'right' ? 100 : clamp(((point.x - node.position.x) / box.w) * 100);
+      const top = side === 'top' ? 0 : side === 'bottom' ? 100 : clamp(((point.y - node.position.y) / box.h) * 100);
+      return { id: `${node.id}:dyn:${edgeId}:${type}`, type, side, left, top };
+    };
+    for (const e of this.buildEdges()) {
+      const source = byId.get(e.source);
+      const target = byId.get(e.target);
+      if (!source || !target || source.id === target.id) continue;
+      const sourcePort = portAt(source, target, e.id, 'out');
+      const targetPort = portAt(target, source, e.id, 'in');
+      byEdge.set(e.id, { sourcePort, targetPort });
+      byNode.set(source.id, [...(byNode.get(source.id) ?? []), sourcePort]);
+      byNode.set(target.id, [...(byNode.get(target.id) ?? []), targetPort]);
+    }
+    return { byNode, byEdge };
+  });
+
+  // Waypoints for edges whose straight line would cut through an unrelated
+  // node. Only blocked edges are routed, so the common case stays a direct
+  // line and the visibility search stays cheap.
+  private readonly edgeRoutes = computed(() => {
+    const routes = new Map<string, { x: number; y: number }[]>();
+    if (!this.isPositionDriven()) return routes;
+    if (!this.dynamicPorts().byEdge.size) return routes;
+    const nodes = this.nodes();
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    const rects = new Map<string, RouterRect>();
+    for (const n of nodes) {
+      const s = this.nodeSize(n);
+      rects.set(n.id, { x: n.position.x, y: n.position.y, w: s.w, h: s.h });
+    }
+    for (const e of this.buildEdges()) {
+      const source = byId.get(e.source);
+      const target = byId.get(e.target);
+      if (!source || !target || source.id === target.id) continue;
+      const start = borderPoint(this.toLayoutNode(source), this.toLayoutNode(target)).point;
+      const end = borderPoint(this.toLayoutNode(target), this.toLayoutNode(source)).point;
+      const obstacles: RouterRect[] = [];
+      for (const n of nodes) {
+        if (n.id === source.id || n.id === target.id) continue;
+        const r = rects.get(n.id);
+        if (r) obstacles.push(r);
+      }
+      const waypoints = routeAroundNodes(start, end, obstacles);
+      if (waypoints.length) routes.set(e.id, waypoints);
+    }
+    return routes;
+  });
+
+  readonly edges = computed(() => {
+    this.dataVersion();
+    this.schema();
+    this.customEdges();
+    this.layout();
+    const base = this.buildEdges();
+    const dyn = this.dynamicPorts().byEdge;
+    if (!dyn.size) return base;
+    const routes = this.edgeRoutes();
+    // In position-driven layouts every edge gets its own connector placed
+    // where the straight line to its partner leaves the node border.
+    return base.map(e => {
+      const d = dyn.get(e.id);
+      if (!d) return e;
+      const waypoints = routes.get(e.id);
+      return {
+        ...e,
+        sourcePort: d.sourcePort.id,
+        targetPort: d.targetPort.id,
+        sourceSide: d.sourcePort.side,
+        targetSide: d.targetPort.side,
+        type: 'straight' as const,
+        ...(waypoints ? { waypoints } : {}),
+      };
+    });
+  });
   readonly unitSuggestions = computed(() => {
     const units = new Set(this.agents.map(a => a.org_unit).filter(Boolean) as string[]);
     ['Executive', 'Engineering', 'Quality', 'Operations', 'Research'].forEach(u => units.add(u));
@@ -1657,6 +1780,10 @@ export class GraphComponent implements OnChanges {
         this.animated.clear();
         this.animTick.update(v => v + 1);
         this.animId = null;
+        // Fit once more against the final positions: the early fit in
+        // setLayout() measures the animation start, which would leave
+        // position-driven layouts (force/stress) zoomed far out.
+        this.fit();
       }
     };
     this.animId = requestAnimationFrame(step);
@@ -2404,7 +2531,9 @@ export class GraphComponent implements OnChanges {
   }
 
   portsFor(node: GraphNode): GraphPort[] {
-    return this.buildPorts(node.id, node.kind);
+    const schemaPorts = this.buildPorts(node.id, node.kind);
+    const dynamic = this.dynamicPorts().byNode.get(node.id) ?? [];
+    return dynamic.length ? [...schemaPorts, ...dynamic] : schemaPorts;
   }
 
   private portPosition(side: Side, index: number, count: number): { left: number; top: number } {
@@ -2473,6 +2602,55 @@ export class GraphComponent implements OnChanges {
     return { w: 250, h: 110 };
   }
 
+  // Layouts where nodes are free in 2D: ports must follow the neighbour
+  // direction and edges may need routed detours.
+  private isPositionDriven(): boolean {
+    const algo = this.layout();
+    return algo === 'force' || algo === 'stress' || algo === 'free' || algo === 'star';
+  }
+
+  private toLayoutNode(n: GraphNode): LayoutNode {
+    const s = this.nodeSize(n);
+    return { id: n.id, x: n.position.x, y: n.position.y, w: s.w, h: s.h, kind: n.kind };
+  }
+
+  // Edges and their available port sides, restricted to the node set being
+  // optimised. Connector/MCP/skill nodes only take part when the full node set
+  // is passed in, which the force/stress pass does in `nodes`.
+  private optimizerEdges(ids: Set<string>): LayoutEdge[] {
+    const sides = (id: string, type: 'in' | 'out'): Side[] =>
+      [...new Set(this.portsForId(id, type).map(p => p.side))];
+    return this.buildEdges()
+      .filter(e => ids.has(e.source) && ids.has(e.target))
+      .map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceSides: sides(e.source, 'out'),
+        targetSides: sides(e.target, 'in'),
+        label: e.label,
+      }));
+  }
+
+  // Crossing/label/clearance refinement shared by force and stress. Both
+  // layouts only optimise distances, so edges still cross unnecessarily;
+  // this pass trades a little edge length for fewer crossings and edges that
+  // cut through unrelated nodes.
+  private refineLayout(laid: GraphNode[]): GraphNode[] {
+    if (laid.length < 3) return laid;
+    const ids = new Set(laid.map(n => n.id));
+    const input = laid.map(n => this.toLayoutNode(n));
+    const edges = this.optimizerEdges(ids);
+    if (edges.length < 2) return laid;
+    // perimeter: the renderer attaches each edge at the border point facing
+    // its partner, so measure the same geometry here.
+    const result = optimizeLayout(input, edges, { perimeter: true });
+    return laid.map(n => {
+      const pos = result.positions.get(n.id);
+      return pos ? { ...n, position: pos } : n;
+    });
+  }
+
   private applyLayout(nodes: GraphNode[]): GraphNode[] {
     const algo = this.layout();
     const key = this.mode() + '|' + this.layout() + '|' + this.schema().version + '|' +
@@ -2497,6 +2675,8 @@ export class GraphComponent implements OnChanges {
         laid = this.forceLayout(nodes);
       } else if (algo === 'stress') {
         laid = this.stressLayout(nodes);
+      } else if (algo === 'star') {
+        laid = this.starLayout(nodes);
       } else {
         laid = this.radialLayout(nodes);
       }
@@ -2661,6 +2841,131 @@ export class GraphComponent implements OnChanges {
     });
   }
 
+  // Hub-and-spoke ("star") layout: the highest-degree nodes become hub centres
+  // and their neighbours orbit them on a ring. Ring radii are sized from the
+  // node dimensions and the hub circle is enlarged until no two rings can
+  // overlap, so this mode is overlap-free by construction.
+  private starLayout(nodes: GraphNode[]): GraphNode[] {
+    if (nodes.length < 3) {
+      return nodes.map((n, i) => ({ ...n, position: { x: i * 280, y: 0 } }));
+    }
+    const ids = new Set(nodes.map(n => n.id));
+    const edges = this.buildEdges().filter(e => ids.has(e.source) && ids.has(e.target) && e.source !== e.target);
+    const adj = new Map<string, Set<string>>();
+    for (const n of nodes) adj.set(n.id, new Set());
+    for (const e of edges) {
+      adj.get(e.source)?.add(e.target);
+      adj.get(e.target)?.add(e.source);
+    }
+    const degree = (id: string): number => adj.get(id)?.size ?? 0;
+    const size = (n: GraphNode) => this.nodeSize(n);
+    const half = (n: GraphNode): number => Math.max(size(n).w, size(n).h) / 2;
+
+    // Hub selection: clearly above-average degree, capped for readability.
+    const ranked = [...nodes].filter(n => degree(n.id) >= 3)
+      .sort((a, b) => degree(b.id) - degree(a.id) || a.title.localeCompare(b.title));
+    const avg = nodes.reduce((s, n) => s + degree(n.id), 0) / Math.max(1, nodes.length);
+    const maxHubs = Math.max(1, Math.min(8, Math.round(Math.sqrt(nodes.length))));
+    let hubs = ranked.filter(n => degree(n.id) >= Math.max(3, avg * 1.15)).slice(0, maxHubs);
+    if (!hubs.length) hubs = ranked.slice(0, 1);
+    if (!hubs.length) return this.radialLayout(nodes);
+    const hubIds = new Set(hubs.map(h => h.id));
+
+    // Assign every other node to the graph-nearest hub (multi-source BFS).
+    // This also places nodes that are not directly attached to a hub (e.g. a
+    // memory store whose agent sits near a hub) with the right star instead of
+    // dumping them all onto the first hub.
+    const ring = new Map<string, GraphNode[]>(hubs.map(h => [h.id, []]));
+    const owner = new Map<string, string>();
+    const hop = new Map<string, number>();
+    const queue: string[] = [];
+    for (const h of hubs) { owner.set(h.id, h.id); hop.set(h.id, 0); queue.push(h.id); }
+    for (let qi = 0; qi < queue.length; qi++) {
+      const cur = queue[qi];
+      const d = hop.get(cur)!;
+      for (const nb of adj.get(cur) ?? []) {
+        if (hop.has(nb)) continue;
+        hop.set(nb, d + 1);
+        owner.set(nb, owner.get(cur)!);
+        queue.push(nb);
+      }
+    }
+    for (const n of nodes) {
+      if (hubIds.has(n.id)) continue;
+      const hub = owner.get(n.id) ?? hubs[0].id;
+      ring.get(hub)!.push(n);
+    }
+
+    // Ring radius: the circumference must fit every satellite with a gap.
+    const GAP = 72;
+    const ringRadius = new Map<string, number>();
+    for (const h of hubs) {
+      const members = ring.get(h.id)!;
+      if (!members.length) { ringRadius.set(h.id, 0); continue; }
+      const circumference = members.reduce((s, m) => s + 2 * half(m) + GAP, 0);
+      ringRadius.set(h.id, Math.max(
+        circumference / (2 * Math.PI),
+        half(h) + Math.max(...members.map(half)) + 90,
+      ));
+    }
+
+    // Hub centres on a circle large enough that neighbouring rings never touch.
+    const H = hubs.length;
+    let hubRing = 0;
+    if (H > 1) {
+      let maxPair = 0;
+      for (let i = 0; i < H; i++) for (let j = i + 1; j < H; j++) {
+        maxPair = Math.max(maxPair, ringRadius.get(hubs[i].id)! + ringRadius.get(hubs[j].id)! + 140);
+      }
+      hubRing = Math.max(320, maxPair / (2 * Math.sin(Math.PI / H)));
+    }
+    const hubCenter = new Map<string, { x: number; y: number }>();
+    hubs.forEach((h, i) => {
+      const a = (i / H) * 2 * Math.PI - Math.PI / 2;
+      hubCenter.set(h.id, { x: Math.cos(a) * hubRing, y: Math.sin(a) * hubRing });
+    });
+
+    const out: GraphNode[] = [];
+    const place = (n: GraphNode, cx: number, cy: number): void => {
+      const s = size(n);
+      out.push({ ...n, position: { x: Math.round(cx - s.w / 2), y: Math.round(cy - s.h / 2) } });
+    };
+    for (const h of hubs) {
+      const c = hubCenter.get(h.id)!;
+      place(h, c.x, c.y);
+    }
+    for (const h of hubs) {
+      const c = hubCenter.get(h.id)!;
+      const members = ring.get(h.id)!;
+      const r = ringRadius.get(h.id)!;
+      if (!members.length) continue;
+      // Order satellites by the direction of the other hub they also touch.
+      // Mapping that order onto evenly spaced ring slots keeps the long
+      // cross-star edges short and reduces spokes crossing each other.
+      const withAngle = members.map(m => {
+        let sx = 0, sy = 0, count = 0;
+        for (const nb of adj.get(m.id) ?? []) {
+          if (nb === h.id) continue;
+          const other = hubCenter.get(nb);
+          if (other) { sx += other.x - c.x; sy += other.y - c.y; count++; }
+        }
+        return { m, has: count > 0, angle: count ? Math.atan2(sy, sx) : 0 };
+      });
+      withAngle.sort((a, b) => {
+        if (a.has && b.has) return a.angle - b.angle;
+        if (a.has !== b.has) return a.has ? -1 : 1;
+        return a.m.title.localeCompare(b.m.title);
+      });
+      const outward = Math.atan2(c.y, c.x) || 0;
+      const step = (2 * Math.PI) / members.length;
+      withAngle.forEach((entry, i) => {
+        const a = outward + i * step;
+        place(entry.m, c.x + Math.cos(a) * r, c.y + Math.sin(a) * r);
+      });
+    }
+    return out;
+  }
+
   // Fruchterman-Reingold force layout with node-size aware collision
   // resolution. Connected nodes attract, all nodes repel; a final pass
   // separates overlaps.
@@ -2711,9 +3016,15 @@ export class GraphComponent implements OnChanges {
       }
       for (const n of nodes) {
         const d = disp.get(n.id)!;
+        const cur = pos.get(n.id)!;
+        // Weak gravity toward the origin keeps disconnected or low-degree
+        // nodes (e.g. an unmounted workspace) from being repelled into the
+        // far distance, which would otherwise blow up the fit-to-screen zoom.
+        d.x -= cur.x * 0.06;
+        d.y -= cur.y * 0.06;
         const dl = Math.hypot(d.x, d.y) || 0.01;
         const step = Math.min(dl, temp(t));
-        pos.set(n.id, { x: pos.get(n.id)!.x + (d.x / dl) * step, y: pos.get(n.id)!.y + (d.y / dl) * step });
+        pos.set(n.id, { x: cur.x + (d.x / dl) * step, y: cur.y + (d.y / dl) * step });
       }
     }
     // collision resolution: separate overlapping nodes by their radii
@@ -2739,7 +3050,8 @@ export class GraphComponent implements OnChanges {
       }
       if (!moved) break;
     }
-    return nodes.map(n => ({ ...n, position: { x: Math.round(pos.get(n.id)!.x), y: Math.round(pos.get(n.id)!.y) } }));
+    const laid = nodes.map(n => ({ ...n, position: { x: Math.round(pos.get(n.id)!.x), y: Math.round(pos.get(n.id)!.y) } }));
+    return this.refineLayout(laid);
   }
 
   // Constrained stress majorization (Gansner-Koren-North 2004, Dwyer 2009,
@@ -2828,7 +3140,8 @@ export class GraphComponent implements OnChanges {
         if (!moved) break;
       }
     }
-    return nodes.map((nd, i) => ({ ...nd, position: { x: Math.round(x[i]), y: Math.round(y[i]) } }));
+    const laid = nodes.map((nd, i) => ({ ...nd, position: { x: Math.round(x[i]), y: Math.round(y[i]) } }));
+    return this.refineLayout(laid);
   }
 
   // Solve the pinned weighted Laplacian system L x = b (node 0 fixed at 0)
