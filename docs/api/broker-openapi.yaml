@@ -1,0 +1,313 @@
+openapi: 3.1.0
+info:
+  title: DockWeave Credential Broker Admin API
+  version: v1
+  description: |
+    Operator-facing management API of the credential broker
+    (`dockweave-broker`). Served over a **unix socket** (default
+    `<data-dir>/admin.sock`) with **SO_PEERCRED** authentication: the
+    connecting process UID must be in the broker's admin allowlist
+    (`--admin-uids` / `DOCKWEAVE_BROKER_ADMIN_UIDS`). There is no bearer
+    token; authorization is per-peer-UID at the transport layer.
+
+    Secret **values are write-only**: they can be stored (PUT) but are never
+    returned by any endpoint — `GET /v1/secrets` returns metadata only.
+  license:
+    name: BSD-3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+
+paths:
+  /v1/status:
+    get:
+      summary: Broker health and counters (no secrets)
+      responses:
+        "200":
+          description: Status document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+
+  /v1/secrets:
+    get:
+      summary: List credential metadata (never values)
+      responses:
+        "200":
+          description: Secret metadata list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SecretMetadata"
+
+  /v1/secrets/{name}:
+    put:
+      summary: Store or replace a credential value (value in body, never returned)
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, value]
+              properties:
+                provider: { type: string }
+                value: { type: string }
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  name: { type: string }
+        "400":
+          description: Unknown provider or missing fields
+    delete:
+      summary: Delete a credential value
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Secret not found
+
+  /v1/grants:
+    get:
+      summary: List credential grants (optional ?agent= filter)
+      parameters:
+        - name: agent
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Grant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Grant"
+    post:
+      summary: Create or replace a grant (DENY-by-default policy)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrantInput"
+      responses:
+        "200":
+          description: Grant created/replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Grant"
+        "400":
+          description: Unknown credential/provider or invalid fields
+
+  /v1/grants/{id}:
+    delete:
+      summary: Revoke a grant by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Revoked
+        "404":
+          description: Grant not found
+
+  /v1/sessions:
+    get:
+      summary: List broker sessions (never tokens), optional ?agent= filter
+      parameters:
+        - name: agent
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Session info list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionInfo"
+    post:
+      summary: Mint a short-lived session token (returned exactly once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agent: { type: string }
+                grant_id: { type: string }
+                credential: { type: string }
+                ttl: { type: string }
+      responses:
+        "200":
+          description: Raw token plus session metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  session:
+                    $ref: "#/components/schemas/SessionInfo"
+        "404":
+          description: Grant not found
+
+  /v1/sessions/{id}:
+    delete:
+      summary: Revoke a session immediately
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Revoked
+        "404":
+          description: Session not found
+
+  /v1/requests:
+    get:
+      summary: Recent broker request log (secret-free)
+      responses:
+        "200":
+          description: Request log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RequestLogEntry"
+
+  /v1/usage:
+    get:
+      summary: Budget usage snapshot for a grant (?grant= required)
+      parameters:
+        - name: grant
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Usage counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
+
+components:
+  schemas:
+    Status:
+      type: object
+      properties:
+        status: { type: string }
+        secrets: { type: integer }
+        grants: { type: integer }
+        sessions: { type: integer }
+        providers:
+          type: array
+          items: { type: string }
+        egress: { type: string }
+
+    SecretMetadata:
+      type: object
+      properties:
+        name: { type: string }
+        provider: { type: string }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    Grant:
+      type: object
+      properties:
+        id: { type: string }
+        agent: { type: string }
+        credential: { type: string }
+        provider: { type: string }
+        models:
+          type: array
+          items: { type: string }
+        created_at: { type: string }
+        updated_at: { type: string }
+        expires_at: { type: string, nullable: true }
+
+    GrantInput:
+      type: object
+      properties:
+        agent: { type: string }
+        credential: { type: string }
+        provider: { type: string }
+        models:
+          type: array
+          items: { type: string }
+        limits:
+          type: object
+          properties:
+            max_requests_per_minute: { type: integer }
+            max_concurrent: { type: integer }
+            max_requests_per_day: { type: integer }
+            max_requests_per_month: { type: integer }
+            max_tokens_per_day: { type: integer }
+            max_tokens_per_month: { type: integer }
+            max_cost_usd_per_day: { type: number }
+            max_cost_usd_per_month: { type: number }
+        expires_at: { type: string, nullable: true }
+
+    SessionInfo:
+      type: object
+      properties:
+        id: { type: string }
+        agent: { type: string }
+        grant_id: { type: string }
+        expires_at: { type: string }
+        revoked_at: { type: string, nullable: true }
+
+    RequestLogEntry:
+      type: object
+      properties:
+        time: { type: string }
+        agent: { type: string }
+        provider: { type: string }
+        credential: { type: string }
+        method: { type: string }
+        path: { type: string }
+        model: { type: string }
+        status: { type: integer }
+        denied: { type: boolean }
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+        duration_ms: { type: integer }
+
+    Usage:
+      type: object
+      properties:
+        grant_id: { type: string }
+        requests_day: { type: integer }
+        requests_month: { type: integer }
+        tokens_day: { type: integer }
+        tokens_month: { type: integer }
+        cost_day_usd: { type: number }
+        cost_month_usd: { type: number }
