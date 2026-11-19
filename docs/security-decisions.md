@@ -214,11 +214,12 @@ privilegierterer Akteur dem Link folgt.
 
 **Korrektur:** Die Projekt-Mounts (`internal/mounts`) werden mit
 `MS_NOSYMFOLLOW` (Linux ≥ 5.10) gebunden, sodass der Kernel Symlinks unter dem
-Mount nicht mehr auflöst. Auf älteren Kernels degradiert der Mount auf einen
-normalen Bind (geloggt, auditiert). Restrisiko: `nosymfollow` schützt nur die
-Mount-Sicht; Host-seitige Werkzeuge müssen zusätzlich vermeiden, Symlinks in
-Workspace-Verzeichnissen zu folgen (dokumentiert, nicht als vollständige
-Isolation behauptet).
+Mount nicht mehr auflöst. Seit 2026-11-19 schlägt der Bind fehl, wenn
+`MS_NOSYMFOLLOW` nicht verfügbar ist (`ErrSymlinkProtectionUnavailable`,
+fail-closed statt stiller Degradation — siehe SD-019). Restrisiko:
+`nosymfollow` schützt nur die Mount-Sicht; Host-seitige Werkzeuge müssen
+zusätzlich vermeiden, Symlinks in Workspace-Verzeichnissen zu folgen
+(dokumentiert, nicht als vollständige Isolation behauptet).
 
 **Testfall:** `docs/validation/symlink-planting.md` — Pentest-Reproduktion,
 Nachweis dass (a) die direkte Exfiltration blockiert wird und (b) der
@@ -274,12 +275,15 @@ daemon does not directly grant host mount control.
 **Boundary of the helper:**
 - Targets must resolve below the state root (`/var/lib/dockweave`); anything
   else is rejected before the syscall.
-- The helper never resolves caller-supplied paths — it only uses the received
-  fds, so a path swap after validation cannot redirect a mount.
+- The bind *source* is mounted via `/proc/self/fd/<n>`, so the kernel resolves
+  the open (daemon-verified) descriptor; targets are resolved from the received
+  fd via `readlink` with a state-root check (and, for `bind`, an inode check
+  against swapping). See SD-019.
 - Source paths are validated by the daemon (allowlist + `openat2`), matching
   the existing TOCTOU model (SD-001, SD-016).
-- The helper implements the RO-staging sequence itself; callers cannot skip
-  the read-only enforcement.
+- The RO-staging sequence (bind → make private → remount ro → `mount_setattr`
+  → move) is orchestrated by the daemon; the helper only executes the
+  individual syscalls it is asked to run.
 - The socket is `0660`, and `--uid` restricts the client.
 
 **Residual risks:** (a) the helper trusts the daemon's source validation; a
@@ -287,12 +291,53 @@ compromised daemon can mount any directory it can open, but not over arbitrary
 targets. (b) The Docker socket remains root-equivalent unless a socket proxy or
 rootless Docker is used — this decision does not change that. (c) The helper
 itself still holds CAP_SYS_ADMIN and is therefore a small, auditable attack
-surface; it must stay minimal. Bind/remount/move/setattr use
-`open_tree`/`move_mount`/`mount_setattr` with `AT_EMPTY_PATH` (no path
-resolution); only unmount and propagation resolve the fd, with a state-root
-check, so no `CAP_DAC_*` capability is needed.
+surface; it must stay minimal. Mounts use plain `mount(2)`/`umount(2)`/
+`mount_setattr(2)`; there is no `open_tree`/`move_mount`/`AT_EMPTY_PATH` (see
+SD-019).
 
 **Fallback:** without `MOUNTD_SOCKET` the daemon keeps the direct root backend.
 
 **Tests:** `internal/mounthelper/helper_test.go` (ping, target outside state
 root rejected, unknown op rejected) plus the existing mount tests.
+
+## SD-019 — Mount/gateway hardening round (2026-11-19)
+
+A code review of the security-critical paths found several places where the
+code fell short of its own documented contract. Fixed in this round:
+
+1. **Helper TOCTOU.** `dockweave-mountd` resolved the bind *source* fd back to
+   a path string (`readlink`) before `mount(2)`, reopening the TOCTOU window
+   that the daemon's `/proc/self/fd/<n>` mount closes. The bind source is now
+   mounted via `/proc/self/fd/<n>` (the open, daemon-verified descriptor);
+   `move` keeps the readlink-resolved staging path (DockWeave-owned, not
+   attacker-controlled). `docs/mount-helper.md` was corrected accordingly.
+
+2. **Explicit private staging.** The RO-staging sequence bound into
+   `<root>/.staging` but never set `MS_PRIVATE`; privacy relied on location
+   alone. The staged bind is now made private with `MS_PRIVATE|MS_REC` before
+   the read-only remount (defense in depth on top of the location guarantee).
+
+3. **`MS_NOSYMFOLLOW` fail-closed.** The symlink-planting protection (SD-016)
+   silently degraded to a plain bind on kernels/filesystems without
+   `MS_NOSYMFOLLOW` (log only). It now returns
+   `ErrSymlinkProtectionUnavailable` and the mount fails — a hard security
+   property is not silently dropped.
+
+4. **Web gateway role enforcement.** The gateway computed OIDC roles but never
+   enforced them, so a `monitor` (read-only) user had full daemon write access
+   via the proxy (the daemon sees only the gateway process UID). The gateway
+   now enforces: token/bearer/cookie holders are admin; an OIDC principal
+   without the admin role is read-only (GET/HEAD/OPTIONS only), and
+   `/api/v1/fs/dirs` plus `/ws/term` are admin-only. This closes the
+   "monitor = nur lesen" gap at the web layer.
+
+5. **Broker proxy surface (accepted limitation).** The broker forwards any
+   upstream path under `/p/{provider}/...` and the model allowlist only
+   applies when the body carries a `model` field. Models are enforced when
+   present, but an agent could call non-LLM endpoints or omit the field.
+   Restricting the surface is a design change with breakage risk for running
+   agents; tracked as a follow-up (todo/hardening-2026-11.json hard-007).
+
+**Tests:** `internal/mounts/hardening_test.go` (staging sequence + fail-closed
+NOSYMFOLLOW), `internal/mounthelper/helper_test.go` (fd source link),
+`internal/webui/server_test.go` (role enforcement).

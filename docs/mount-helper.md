@@ -56,9 +56,16 @@ mount namespace, and mounts made there would never reach the host or the
 containers. The daemon runs as the dedicated `dockweave` user; `--uid` in the
 helper unit must match that uid.
 
-Mounts use `open_tree`/`move_mount`/`mount_setattr` with `AT_EMPTY_PATH`, so
-no path resolution is needed for bind/remount/move/setattr. Only `umount` and
-propagation resolve a path, from the received fd, with a state-root check.
+Mounts use plain `mount(2)`/`umount(2)`/`mount_setattr(2)`. The bind *source*
+is mounted via `/proc/self/fd/<n>`, so the kernel resolves the open
+(daemon-verified) descriptor instead of re-looking-up a path string — this
+pins the verified object across the privilege boundary and closes the TOCTOU
+window (no `open_tree`/`move_mount`/`AT_EMPTY_PATH` is involved). Targets are
+resolved from the received fd via `readlink(/proc/self/fd/N)` with a state-root
+check; `bind` additionally verifies the target inode was not swapped between
+check and syscall. `move` resolves the source path the same way (the source is
+the DockWeave-owned staging mount under `<root>/.staging`, not an
+attacker-controlled path).
 
 ## Without the helper
 

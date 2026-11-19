@@ -38,8 +38,12 @@ Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
 6. **Keine SQLite-Datei wird von mehreren Agenten gleichzeitig beschrieben.**
    Memory-Verzeichnisse haben eigene Identitäten und genau einen
    Schreibinhaber; Attach/Detach an Ersatzagenten nur im gestoppten Zustand.
-7. Der Daemon entfernt bei Recovery niemals Mounts, die nicht eindeutig von
-   DockWeave stammen (Label-/Registry-Prüfung).
+7. Der Daemon entfernt bei Recovery niemals Mounts: unbekannte Mounts unter
+   dem Workspace-Tree werden nur als „orphaned" gemeldet, nie entfernt.
+   Entfernt wird ausschließlich beim Agent-Prune und nur innerhalb des
+   DockWeave-eigenen Workspace-Trees (Pfad-Präfix-Grenze). Es existiert keine
+   Label-/Registry-Prüfung für Mounts (die Docker-Labels gelten nur für
+   Container/Netzwerke).
 8. **Socket-Zugriff ist zweistufig:** SO_PEERCRED identifiziert den Peer,
    die UID→Rollen-Policy (`ADMIN_UIDS`/`MONITOR_UIDS`) autorisiert;
    unbekannte UIDs sind gesperrt, die Monitor-Rolle ist nur lesend.
@@ -55,16 +59,22 @@ go test -race ./...                 # Race Detector
 go vet ./... && staticcheck ./...   # Statische Analyse
 ```
 
-Privilegierte Integrationstests (echte Mounts) laufen ausschließlich
-in der dafür vorgesehenen Container-Umgebung:
+Privilegierte Integrationstests (echte `mount(2)`-Aufrufe) laufen in einer
+wegwerfbaren, privilegierten Umgebung (Container/CI):
 
 ```bash
-make test-integration    # baut + startet privilegierten Testcontainer
+make test-integration    # startet einen privilegierten Wegwerf-Container
 ```
 
-Niemals privilegierte Mount-Tests direkt auf einem Entwickler-Host
-ausführen. Tests, die `CAP_SYS_ADMIN` benötigen, prüfen
-`os.Geteuid()==0` + Capability und skippen sonst mit `t.Skip`.
+Nie auf einem geteilten oder Produktiv-Host ausführen: Die Tests mutieren
+die Mount-Tabelle des jeweiligen Mount-Namespace (rshared-Trees, echte
+Bind-Mounts, `mount --move`) und können bei Abbruch verwaiste Mounts
+hinterlassen. Auf einem dezidierten Entwicklungsrechner/VM sind sie
+unkritisch und auch ohne Container lauffähig, sofern root mit
+`CAP_SYS_ADMIN` verfügbar ist. Tests, die `CAP_SYS_ADMIN` benötigen, prüfen
+`os.Geteuid()==0` **und** die effektive Capability (`CapEff` in
+`/proc/self/status`); sonst skippen sie mit `t.Skip` (überspringen sich,
+statt zu scheitern).
 
 ## Struktur
 

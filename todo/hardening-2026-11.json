@@ -1,0 +1,112 @@
+{
+  "domain": "hardening-2026-11",
+  "updated": "2026-11-19",
+  "tasks": [
+    {
+      "id": "hard-001",
+      "title": "mountd: Bind-Quelle per /proc/self/fd statt readlink-String",
+      "description": "Der Helper löst den per SCM_RIGHTS empfangenen Quell-FD per readlink in einen Pfad-String zurück und mountet diesen. Damit wird der openat2-TOCTOU-Schutz des Daemons (Mount via /proc/self/fd/N) im Helper-Betrieb wieder aufgehoben. Fix: OpBind nutzt für die Quelle direkt den Magic-Link /proc/self/fd/N, damit mount(2) den offenen, bereits verifizierten Deskriptor auflöst statt den Pfad erneut nachzuschlagen. OpMove bleibt readlink-basiert (Quelle ist der DockWeave-eigene Staging-Mount unter <root>/.staging, kein Angreifer-kontrollierter Pfad).",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/mounthelper"
+      ],
+      "acceptance": "dispatch() von OpBind nutzt /proc/self/fd/<n> als Quelle; OpMove/OpUnmount/OpRemount/OpPropagation/OpSetReadonly verhalten sich unverändert; Helper-Tests grün.",
+      "tests": [
+        "Unit: fdSource liefert Magic-Link; OpBind-Quellpfad ist ein fd-Link"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "hard-002",
+      "title": "Staging-Mount explizit MS_PRIVATE machen",
+      "description": "AGENTS.md-Regel 2 verlangt 'privat binden'. Der Code bindet in <root>/.staging, setzt aber nie MS_PRIVATE; die Privatsphäre beruht allein auf der Lage außerhalb des rshared Workspace-Trees. Fix: nach dem Stage-Bind wird der Staging-Mount explizit mit MS_PRIVATE|MS_REC als privat markiert (Defense-in-Depth).",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/mounts"
+      ],
+      "acceptance": "RO-Staging-Sequenz = Bind -> Propagation(MS_PRIVATE|MS_REC) -> Remount ro -> SetReadonly -> Move; Reihenfolge per Recording-Backend getestet.",
+      "tests": [
+        "Unit: Recording-Backend prüft Aufrufsequenz inkl. Propagation(MS_PRIVATE|MS_REC)"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "hard-003",
+      "title": "MS_NOSYMFOLLOW-Degradation fail-closed",
+      "description": "mountNoSymfollow degradiert bei ENOSYS/EINVAL/EPERM still zu einem normalen Bind (nur log.Printf). Der Paketkommentar verlangt, dass Aufrufer das als sicherheitsrelevant behandeln; Add tut das nicht. Fix: Degradation liefert einen typisierten Fehler ErrSymlinkProtectionUnavailable statt still weiterzumachen; Add propagiert ihn (RW- und RO-Pfad).",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/mounts"
+      ],
+      "acceptance": "Bei nicht unterstütztem MS_NOSYMFOLLOW schlägt der Bind fehl (kein stiller Fallback); der Fehler ist typisiert und diagnostizierbar.",
+      "tests": [
+        "Unit: fake backend liefert EINVAL für NOSYMFOLLOW -> ErrSymlinkProtectionUnavailable, kein Fallback"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "hard-004",
+      "title": "Web-Gateway: Rollen-Durchsetzung (monitor = nur lesen)",
+      "description": "Das Web-Gateway berechnet OIDC-Rollen, setzt sie aber nicht durch: jede gültige Session (auch monitor) erhält volle Daemon-Schreibrechte, und der Gateway-eigene fs/dirs-Endpoint sowie /ws/term sind ohne Admin-Check. Fix: auth() leitet die Rolle ab (Token/Bearer/Cookie = admin; OIDC-Principal ohne admin-Rolle = monitor) und erzwingt: monitor nur GET/HEAD/OPTIONS; /api/v1/fs/dirs und /ws/term sind admin-only.",
+      "priority": "critical",
+      "dependencies": [],
+      "components": [
+        "internal/webui"
+      ],
+      "acceptance": "monitor-Session: POST/PUT/DELETE -> 403, GET ok, GET /api/v1/fs/dirs -> 403, /ws/term -> 403; admin-Session: voller Zugriff; Token/Bearer/Cookie bleiben admin.",
+      "tests": [
+        "Unit: auth-Middleware mit Fake-OIDC (monitor vs. admin) über httptest"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "hard-005",
+      "title": "docs/mount-helper.md an den Ist-Zustand angleichen",
+      "description": "docs/mount-helper.md behauptet, Mounts liefen über open_tree/move_mount/AT_EMPTY_PATH und 'nur umount und propagation lösen einen Pfad auf'. Tatsächlich nutzt der Code mount(2) auf readlink-aufgelöste Pfad-Strings. Nach hard-001 wird die Bind-Quelle per /proc/self/fd gemountet. Die Doku wird auf den tatsächlichen Ablauf korrigiert.",
+      "priority": "medium",
+      "dependencies": [
+        "hard-001"
+      ],
+      "components": [
+        "docs"
+      ],
+      "acceptance": "docs/mount-helper.md (+ .de.md) beschreibt den echten Ablauf (SCM_RIGHTS, readlink für Ziel, /proc/self/fd für Bind-Quelle, State-Root-Prüfung).",
+      "tests": [],
+      "status": "done"
+    },
+    {
+      "id": "hard-006",
+      "title": "security-decisions.md + AGENTS.md präzisieren",
+      "description": "AGENTS.md-Regeln 2/4/7 weichen teils vom Code ab (kein MS_PRIVATE, openat2 nur für die Quelle, keine Label-/Registry-Prüfung bei Mount-Entfernung, Recovery entfernt nie Mounts). Nach den Code-Fixes hard-002/hard-003 wird der Sicherheitsentscheid in docs/security-decisions.md dokumentiert und AGENTS.md präzisiert, sodass Doku und Code übereinstimmen. Zusätzlich wird die Broker-Proxysurface (gesamte Provider-API, Modell-Allowlist nur bei vorhandenem model-Feld) als bekannte Grenze dokumentiert.",
+      "priority": "medium",
+      "dependencies": [
+        "hard-002",
+        "hard-003"
+      ],
+      "components": [
+        "docs"
+      ],
+      "acceptance": "docs/security-decisions.md erhält einen Eintrag (Mount-Härtung + Broker-Grenze); AGENTS.md Regeln 2/4/7 stimmen mit dem Code überein.",
+      "tests": [],
+      "status": "done"
+    },
+    {
+      "id": "hard-007",
+      "title": "Broker: Provider-API-Fläche und Modell-Allowlist eingrenzen",
+      "description": "Der Broker-Proxy leitet jeden Upstream-Pfad unter /p/{provider}/ weiter und die Modell-Allowlist greift nur, wenn der Body ein model-Feld trägt (leeres Feld umgeht eine leere Allowlist). Das ist eine Designentscheidung mit Bruchrisiko für laufende Agenten; die Modelle werden bei vorhandenem Feld bereits erzwungen. Daher bewusst nicht in dieser Runde umgesetzt, sondern als bekannte Grenze dokumentiert (hard-006) und hier als Folgeaufgabe geführt.",
+      "priority": "medium",
+      "dependencies": [
+        "hard-006"
+      ],
+      "components": [
+        "internal/credentialbroker"
+      ],
+      "acceptance": "Entscheidung dokumentiert; ggf. spätere Runde: Endpoint-Allowlist oder strikte Modell-Pflicht für LLM-Endpunkte.",
+      "tests": [],
+      "status": "deferred"
+    }
+  ]
+}
