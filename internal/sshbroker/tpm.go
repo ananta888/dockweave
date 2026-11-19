@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 
@@ -17,13 +18,21 @@ import (
 // TPMSigner signs SSH certificates with a non-exportable ECDSA P-256 key held
 // in a TPM 2.0. The private key never leaves the TPM.
 type TPMSigner struct {
-	tpm    transport.TPMCloser
+	tpm    transport.TPM
+	closer io.Closer
 	handle tpm2.TPMHandle
 	pub    ssh.PublicKey
 }
 
-// TPMAvailable reports whether a TPM 2.0 device is present.
+// TPMAvailable reports whether a TPM 2.0 device is reachable. It honours
+// DOCKWEAVE_TPM_DEVICE (a device path, e.g. a swtpm CUSE device) in addition
+// to the standard /dev/tpmrm0 and /dev/tpm0.
 func TPMAvailable() bool {
+	if p := os.Getenv("DOCKWEAVE_TPM_DEVICE"); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
 	for _, p := range []string{"/dev/tpmrm0", "/dev/tpm0"} {
 		if _, err := os.Stat(p); err == nil {
 			return true
@@ -33,12 +42,31 @@ func TPMAvailable() bool {
 }
 
 // NewTPMSigner creates a non-exportable ECDSA P-256 signing key in the TPM's
-// owner hierarchy and returns a Signer backed by it.
+// owner hierarchy. It uses DOCKWEAVE_TPM_DEVICE when set, else /dev/tpmrm0.
 func NewTPMSigner() (*TPMSigner, error) {
-	t, err := transport.OpenTPM()
+	path := os.Getenv("DOCKWEAVE_TPM_DEVICE")
+	var (
+		t   transport.TPMCloser
+		err error
+	)
+	if path != "" {
+		t, err = transport.OpenTPM(path)
+	} else {
+		t, err = transport.OpenTPM()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("sshbroker: open TPM: %w", err)
 	}
+	return newTPMSigner(t, t)
+}
+
+// NewTPMSignerFromReadWriter builds a signer over a raw TPM2 command/response
+// stream (e.g. a swtpm socket). rw is closed by Close.
+func NewTPMSignerFromReadWriter(rw io.ReadWriteCloser) (*TPMSigner, error) {
+	return newTPMSigner(transport.FromReadWriter(rw), rw)
+}
+
+func newTPMSigner(t transport.TPM, closer io.Closer) (*TPMSigner, error) {
 	tmpl := tpm2.TPMTPublic{
 		Type:    tpm2.TPMAlgECC,
 		NameAlg: tpm2.TPMAlgSHA256,
@@ -70,25 +98,25 @@ func NewTPMSigner() (*TPMSigner, error) {
 	}
 	rsp, err := create.Execute(t)
 	if err != nil {
-		_ = t.Close()
+		_ = closer.Close()
 		return nil, fmt.Errorf("sshbroker: create TPM signing key: %w", err)
 	}
 	pubTPMT, err := rsp.OutPublic.Contents()
 	if err != nil {
-		_ = t.Close()
+		_ = closer.Close()
 		return nil, fmt.Errorf("sshbroker: read TPM public key: %w", err)
 	}
 	pub, err := eccPublicKey(pubTPMT)
 	if err != nil {
-		_ = t.Close()
+		_ = closer.Close()
 		return nil, err
 	}
 	sshPub, err := ssh.NewPublicKey(pub)
 	if err != nil {
-		_ = t.Close()
+		_ = closer.Close()
 		return nil, fmt.Errorf("sshbroker: marshal TPM public key: %w", err)
 	}
-	return &TPMSigner{tpm: t, handle: rsp.ObjectHandle, pub: sshPub}, nil
+	return &TPMSigner{tpm: t, closer: closer, handle: rsp.ObjectHandle, pub: sshPub}, nil
 }
 
 // eccPublicKey extracts an *ecdsa.PublicKey from a TPM ECC public area.
@@ -159,12 +187,12 @@ func (s *TPMSigner) Verify(cert *ssh.Certificate) bool {
 	return s.pub.Verify(certBytesForSigning(cert), cert.Signature) == nil
 }
 
-// Close closes the TPM device.
+// Close closes the TPM device or socket.
 func (s *TPMSigner) Close() error {
-	if s.tpm == nil {
+	if s.closer == nil {
 		return nil
 	}
-	return s.tpm.Close()
+	return s.closer.Close()
 }
 
 var _ Signer = (*TPMSigner)(nil)
