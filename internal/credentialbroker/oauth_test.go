@@ -139,7 +139,7 @@ func TestOAuthBundleRefreshesAndPersists(t *testing.T) {
 	}
 
 	// A second request must reuse the fresh token, not refresh again.
-	if resp := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{}`, nil); resp.StatusCode != 200 {
+	if resp := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{"model":"m"}`, nil); resp.StatusCode != 200 {
 		t.Fatalf("second status = %d", resp.StatusCode)
 	}
 	if got := tokenCalls.Load(); got != 1 {
@@ -165,7 +165,7 @@ func TestOAuthValidTokenSkipsRefresh(t *testing.T) {
 	b := oauthBundle{Type: "oauth", AccessToken: "valid-token", ExpiresAt: time.Now().Add(time.Hour)}
 	raw, _ := b.marshal()
 	f := newOAuthFixture(t, raw, prov)
-	if resp := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{}`, nil); resp.StatusCode != 200 {
+	if resp := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{"model":"m"}`, nil); resp.StatusCode != 200 {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 }
@@ -185,7 +185,7 @@ func TestOAuthRefreshFailureIsBadGateway(t *testing.T) {
 	b := oauthBundle{Type: "oauth", AccessToken: "old", RefreshToken: "r", ExpiresAt: time.Now().Add(-time.Hour)}
 	raw, _ := b.marshal()
 	f := newOAuthFixture(t, raw, prov)
-	if got := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{}`, nil).StatusCode; got != http.StatusBadGateway {
+	if got := f.do(t, http.MethodPost, "/p/codex-chatgpt/responses", `{"model":"m"}`, nil).StatusCode; got != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", got)
 	}
 	if strings.Contains(fmtRecent(f), "old") {
@@ -207,7 +207,7 @@ func TestProviderHeadersInjectedForStaticSecret(t *testing.T) {
 	prov := Provider{Name: "openrouter", BaseURL: upstream.URL, AuthHeader: "Authorization",
 		AuthPrefix: "Bearer ", Headers: map[string]string{"X-Static": "yes"}}
 	f := newOAuthFixture(t, "plain-key", prov)
-	if resp := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil); resp.StatusCode != 200 {
+	if resp := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil); resp.StatusCode != 200 {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 }

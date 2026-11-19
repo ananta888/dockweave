@@ -149,11 +149,11 @@ func TestBrokerRejectsInvalidAndRevokedSession(t *testing.T) {
 	defer fake.Close()
 	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
 	f.token = "dws_not-a-real-token"
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != 401 {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != 401 {
 		t.Fatalf("invalid token status = %d, want 401", got)
 	}
 	f.token = ""
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != 401 {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != 401 {
 		t.Fatalf("missing token status = %d, want 401", got)
 	}
 }
@@ -169,7 +169,7 @@ func TestBrokerRevocationIsImmediate(t *testing.T) {
 	if err := f.sessions.Revoke(sessions[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != 401 {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != 401 {
 		t.Fatalf("revoked session status = %d, want 401", got)
 	}
 }
@@ -180,10 +180,10 @@ func TestBrokerBudgetLimit(t *testing.T) {
 	}))
 	defer fake.Close()
 	f := newFixture(t, fake, Limits{MaxRequestsPerMinute: 100, MaxConcurrent: 4, MaxRequestsPerDay: 1}, []string{"*"})
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != 200 {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != 200 {
 		t.Fatalf("first status = %d", got)
 	}
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != http.StatusTooManyRequests {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != http.StatusTooManyRequests {
 		t.Fatalf("second status = %d, want 429", got)
 	}
 }
@@ -201,10 +201,10 @@ func TestBrokerConcurrencyLimit(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil)
+		f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil)
 	}()
 	time.Sleep(50 * time.Millisecond)
-	if got := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil).StatusCode; got != http.StatusTooManyRequests {
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil).StatusCode; got != http.StatusTooManyRequests {
 		t.Fatalf("concurrent status = %d, want 429", got)
 	}
 	close(block)
@@ -225,7 +225,7 @@ func TestBrokerDoesNotFollowRedirects(t *testing.T) {
 	}))
 	defer fake.Close()
 	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
-	resp := f.do(t, http.MethodPost, "/p/openrouter/chat", `{}`, nil)
+	resp := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{"model":"m"}`, nil)
 	if resp.StatusCode != http.StatusTemporaryRedirect {
 		t.Fatalf("status = %d, want 307", resp.StatusCode)
 	}
@@ -262,7 +262,7 @@ func TestBrokerRejectsPathTraversalAndUnknownProvider(t *testing.T) {
 	defer fake.Close()
 	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
 	for _, p := range []string{"/p/unknown/chat", "/p/openrouter/../../etc/passwd", "/p/openrouter"} {
-		if got := f.do(t, http.MethodPost, p, `{}`, nil).StatusCode; got != 404 {
+		if got := f.do(t, http.MethodPost, p, `{"model":"m"}`, nil).StatusCode; got != 404 {
 			t.Errorf("%s status = %d, want 404", p, got)
 		}
 	}
@@ -332,5 +332,28 @@ func TestAdminRejectsForeignPeerUID(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("foreign peer status = %d, want 403", rec.Code)
+	}
+}
+
+func TestBrokerRejectsUnknownUpstreamPath(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer fake.Close()
+	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
+	// /files is not in the default allowlist.
+	if got := f.do(t, http.MethodPost, "/p/openrouter/files", `{"model":"m"}`, nil).StatusCode; got != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", got)
+	}
+	// /models metadata is allowed.
+	if got := f.do(t, http.MethodGet, "/p/openrouter/models", "", nil).StatusCode; got != 200 {
+		t.Fatalf("/models status = %d, want 200", got)
+	}
+}
+
+func TestBrokerRequiresModelForCompletion(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer fake.Close()
+	f := newFixture(t, fake, DefaultLimits(), []string{"*"})
+	if got := f.do(t, http.MethodPost, "/p/openrouter/chat/completions", `{}`, nil).StatusCode; got != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (model required)", got)
 	}
 }

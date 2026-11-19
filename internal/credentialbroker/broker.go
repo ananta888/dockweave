@@ -30,6 +30,9 @@ type Config struct {
 	Logger       *slog.Logger
 	// AllowInsecureHTTP permits http:// provider BaseURLs. Only for tests.
 	AllowInsecureHTTP bool
+	// AllowedPaths restricts which upstream paths the proxy forwards
+	// (prefix match). Nil defaults to DefaultAllowedPaths; ["/"] allows all.
+	AllowedPaths []string
 }
 
 // RequestLogEntry is a secret-free audit record of one broker request.
@@ -83,6 +86,9 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = 32 << 20
 	}
+	if cfg.AllowedPaths == nil {
+		cfg.AllowedPaths = DefaultAllowedPaths
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -99,6 +105,43 @@ func NewServer(cfg Config) (*Server, error) {
 		}
 	}
 	return &Server{cfg: cfg, client: client, maxLogs: 512}, nil
+}
+
+// DefaultAllowedPaths are the upstream paths the proxy forwards by default.
+// Everything else (files, fine-tuning, admin, …) is denied so a grant cannot
+// reach the provider's full API surface. "/" allows everything.
+var DefaultAllowedPaths = []string{
+	"/chat/completions",
+	"/completions",
+	"/responses",
+	"/messages",
+	"/models",
+	"/embeddings",
+}
+
+// isAllowedPath reports whether the upstream path is covered by the allowlist
+// (prefix match, so "/models/…" is covered by "/models"). An empty allowlist
+// denies everything (fail closed).
+func isAllowedPath(upstream string, allowed []string) bool {
+	for _, p := range allowed {
+		p = strings.TrimSuffix(p, "/")
+		if p == "" || p == "/" || upstream == p || strings.HasPrefix(upstream, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// isCompletionEndpoint reports whether the upstream path is an LLM completion
+// endpoint. These must carry a model field so the model allowlist applies
+// (otherwise an agent could omit the model and hit the provider's default).
+func isCompletionEndpoint(upstream string) bool {
+	switch upstream {
+	case "/chat/completions", "/completions", "/responses", "/messages":
+		return true
+	default:
+		return false
+	}
 }
 
 // ServeHTTP implements the agent-facing gateway.
@@ -137,6 +180,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown provider")
 		return
 	}
+	if !isAllowedPath(upstreamPath, s.cfg.AllowedPaths) {
+		entry.Status, entry.Denied = http.StatusForbidden, true
+		s.record(entry)
+		writeError(w, http.StatusForbidden, "upstream path not allowed")
+		return
+	}
 
 	body, err := readLimited(r.Body, s.cfg.MaxBodyBytes)
 	if err != nil {
@@ -147,6 +196,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	model := extractModel(body)
 	entry.Model = model
+	if isCompletionEndpoint(upstreamPath) && model == "" {
+		entry.Status, entry.Denied = http.StatusBadRequest, true
+		s.record(entry)
+		writeError(w, http.StatusBadRequest, "model is required for completion endpoints")
+		return
+	}
 
 	grant, err := s.cfg.Policy.Match(sess.Agent, providerName, model, start)
 	if err != nil {
