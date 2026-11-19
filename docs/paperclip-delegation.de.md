@@ -86,6 +86,22 @@ Der Wrapper setzt vier Gates durch, bevor ein Issue als erledigt gilt:
    akzeptierte `human_only`-Interaction vorliegt. Sonst bleibt das Eltern-Issue
    `in_review` mit einer offenen Karte im Paperclip-Inbox.
 
+### Ausfuehrung, Attribution und Freigabe
+
+Gates werden von `dockweave gate run <workspace>` in einem kurzlebigen
+Sandbox-Container ausgefuehrt, nicht auf dem Host (siehe
+`docs/gate-model.de.md`). Ist der Daemon nicht erreichbar, meldet der Wrapper
+ein fehlgeschlagenes Gate; Host-Ausfuehrung ist nur mit
+`DOCKWEAVE_GATE_HOST_FALLBACK=1` moeglich.
+
+- Ein Review-PASS zaehlt nur, wenn es dem zugewiesenen Agenten des
+  Review-Issues oder einem menschlichen Board-User zugeordnet ist.
+  Unattributierte Kommentare werden abgelehnt, ausser
+  `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1` ist gesetzt.
+- Menschliche Freigabe braucht eine akzeptierte Paperclip-`human_only`-
+  Interaction **und** `dockweave gate approve <issue>` (admin-Rolle,
+  auditiert als `gate.approval`).
+
 Der 2D-Graph in der Angular-App speichert dieselben Gate-Contracts. Frueher
 lagen sie in `localStorage`; `GET/PUT /graph` am Web-Gateway persistiert das
 gesamte Dokument in `~/.local/share/dockweave/graph.json`, der Daemon bietet

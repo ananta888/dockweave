@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 14
+const schemaVersion = 15
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -297,6 +297,31 @@ var migrations = []string{
 		UNIQUE(objective_id, revision)
 	);
 	CREATE INDEX IF NOT EXISTS idx_objective_revisions ON objective_revisions(objective_id, revision);`,
+	// 15: sandboxed gate runs and DockWeave-side human approvals.
+	`CREATE TABLE IF NOT EXISTS gate_runs (
+		id TEXT PRIMARY KEY,
+		workspace TEXT NOT NULL,
+		image TEXT NOT NULL DEFAULT '',
+		image_digest TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL,
+		gates INTEGER NOT NULL DEFAULT 0,
+		passed INTEGER NOT NULL DEFAULT 0,
+		duration_ms INTEGER NOT NULL DEFAULT 0,
+		gates_hash TEXT NOT NULL DEFAULT '',
+		tamper INTEGER NOT NULL DEFAULT 0,
+		actor TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT '{}',
+		started_at TEXT NOT NULL,
+		finished_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_gate_runs_workspace ON gate_runs(workspace, started_at);
+	CREATE TABLE IF NOT EXISTS gate_approvals (
+		issue_id TEXT PRIMARY KEY,
+		actor TEXT NOT NULL,
+		role TEXT NOT NULL,
+		note TEXT NOT NULL DEFAULT '',
+		approved_at TEXT NOT NULL
+	);`,
 }
 
 // Store is the DockWeave registry.

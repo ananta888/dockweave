@@ -30,6 +30,7 @@ import (
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/knowledge"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
@@ -206,6 +207,17 @@ func run(cfgPath string) error {
 	}
 	if cfg.BrokerAdminSocket != "" {
 		apiSrv.Broker = brokerclient.New(cfg.BrokerAdminSocket)
+	}
+	var usage gateexec.UsageChecker
+	if apiSrv.Broker != nil {
+		usage = apiSrv.Broker
+	}
+	apiSrv.Gates = &gateexec.Runner{
+		Docker:       docker,
+		Store:        store,
+		Broker:       usage,
+		BaseDir:      filepath.Join(cfg.Root, "gates"),
+		AllowedRoots: cfg.AllowedRoots,
 	}
 	apiSrv.ConfigIO = &configio.Service{
 		Store:      store,

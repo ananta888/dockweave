@@ -272,6 +272,7 @@ const (
 	EvidenceReview     EvidenceKind = "review"
 	EvidenceArtifact   EvidenceKind = "artifact"
 	EvidenceAcceptance EvidenceKind = "acceptance"
+	EvidenceGate       EvidenceKind = "gate"
 )
 
 // EvidenceStatus is the outcome a proof reports.
@@ -301,7 +302,7 @@ type Evidence struct {
 func (e *Evidence) Validate() error {
 	switch e.Kind {
 	case EvidenceCommit, EvidencePR, EvidenceFile, EvidenceTest, EvidenceBuild,
-		EvidenceSecurity, EvidenceReview, EvidenceArtifact, EvidenceAcceptance:
+		EvidenceSecurity, EvidenceReview, EvidenceArtifact, EvidenceAcceptance, EvidenceGate:
 	default:
 		return fmt.Errorf("unsupported evidence kind %q", e.Kind)
 	}

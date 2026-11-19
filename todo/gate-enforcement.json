@@ -13,7 +13,7 @@
       ],
       "acceptance": "docs/gate-model.md und docs/gate-model.de.md existieren; jede Zuständigkeit ist genau einer Seite zugeordnet; Redundanzen sind mit Sync-Richtung benannt; verlinkt aus paperclip-delegation.md und HANDOFF.",
       "tests": [],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-002",
@@ -69,7 +69,7 @@
         "Unit: Hash-Vergleich",
         "E2E: Sync-Status sichtbar"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-010",
@@ -91,7 +91,7 @@
         "Integration: Timeout und Exit-Code",
         "Unit: Ergebnis-Schema"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-011",
@@ -111,7 +111,7 @@
         "Persistence: Insert/List/Prune",
         "API: Historie und Evidence-Verknüpfung"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-012",
@@ -130,7 +130,7 @@
         "Integration: Gate nach Manipulation",
         "Unit: Hash-Set-Bildung"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-013",
@@ -151,7 +151,7 @@
         "Integration: Wrapper gegen Test-Daemon",
         "E2E: Paperclip-Run mit fehlschlagendem Gate"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-014",
@@ -172,7 +172,7 @@
         "Integration: PASS/FAIL-Pfad",
         "Unit: Audit-Event"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-015",
@@ -192,7 +192,7 @@
         "Unit: Phasen-Validierung",
         "Integration: Reihenfolge"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-020",
@@ -211,7 +211,7 @@
         "Unit: Autor-Mapping",
         "Integration: fremder vs. zugewiesener Reviewer"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-021",
@@ -231,7 +231,7 @@
         "Unit: Rollenprüfung",
         "Integration: Freigabe-Pfad mit OIDC"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-022",
@@ -251,7 +251,7 @@
         "Unit: Budget-Auswertung",
         "Integration: Lauf über Limit"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-023",
@@ -270,7 +270,7 @@
         "Unit: Pfad-/Dependency-/Secret-Regeln",
         "Integration: manipulierter Diff"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-024",
@@ -289,7 +289,7 @@
         "Integration: Digest im Ergebnis",
         "Integration: Offline-Lauf"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-030",
@@ -308,7 +308,7 @@
       "tests": [
         "Unit: Mapping/Idempotenz (falls Sync)"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-031",
@@ -329,7 +329,7 @@
         "Integration: Retry-Idempotenz",
         "Unit: Widerspruchserkennung"
       ],
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "gate-032",
@@ -349,7 +349,7 @@
         "Unit: Status-Mapping",
         "Integration: Recovery vs. Dependency"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-033",
@@ -370,7 +370,7 @@
         "E2E: Dashboard mit Fake-API",
         "Unit: Aggregation"
       ],
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "id": "gate-034",
@@ -389,7 +389,7 @@
         "Unit: Hash-Kette",
         "Integration: Event pro Entscheidung"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": "gate-040",

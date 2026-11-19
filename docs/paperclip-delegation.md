@@ -83,6 +83,19 @@ The wrapper enforces four gates before an issue counts as done:
    `human_only` interaction exists. Otherwise the parent stays `in_review` with
    a pending card in the Paperclip inbox.
 
+### Execution, attribution and approval
+
+Gates are executed by `dockweave gate run <workspace>` in a short-lived
+sandbox container, not on the host (see `docs/gate-model.md`). The wrapper
+reports a failed gate when the daemon is unreachable; host execution is only
+possible with `DOCKWEAVE_GATE_HOST_FALLBACK=1`.
+
+- A review PASS counts only when it is attributed to the review issue's
+  assigned agent or to a human board user. Unattributed comments are rejected
+  unless `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1` is set.
+- Human approval requires an accepted Paperclip `human_only` interaction **and**
+  `dockweave gate approve <issue>` (admin role, audited as `gate.approval`).
+
 The 2D graph in the Angular app stores the same gate contracts. Previously it
 lived in `localStorage`; `GET/PUT /graph` on the web gateway persists the whole
 document in `~/.local/share/dockweave/graph.json`, and the daemon exposes the

@@ -288,6 +288,8 @@ const (
 	EventUnmountFailed  EventType = "mount.unmount_failed"
 	EventUnmountForced  EventType = "mount.unmount_forced" // audited MNT_DETACH (force flag)
 	EventRecovery       EventType = "recovery"
+	EventGateRun        EventType = "gate.run"
+	EventGateApproval   EventType = "gate.approval"
 	EventSecurityDeny   EventType = "security.denied"
 	EventConflict       EventType = "monitor.conflict"
 	EventAuthOIDC       EventType = "auth.oidc"

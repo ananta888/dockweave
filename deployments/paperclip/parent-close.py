@@ -5,22 +5,58 @@ Usage: parent-close.py <issue-id> [workspace-root]
 
 Checks, in order:
   1. every child issue is done/cancelled
-  2. review: the child matching review.issue_match is done and its last comment
-     contains "VERDICT: PASS" (skipped when review.required is false)
+  2. review: the child matching review.issue_match is done and carries a
+     "VERDICT: PASS" comment from the assigned reviewer agent or a human board
+     user (skipped when review.required is false). A self-authored or
+     unattributed PASS no longer counts unless
+     DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1 is set.
   3. human approval: when human_approval.required, an accepted human_only
-     interaction exists on the parent - otherwise it is created and the parent
-     stays in_review
+     interaction exists on the parent AND a DockWeave-side approval
+     (`dockweave gate approve <issue>`) is recorded. Otherwise the interaction
+     is created and the parent stays in_review.
 
 Prints PARENT/WAITING/ERR lines. Never fails the agent run.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
 CLI = os.environ.get("PAPERCLIPAI_BIN") or "/home/krusty/.local/bin/paperclipai"
 HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "paperclip-gate.py")
 FINISHED = {"done", "cancelled", "canceled"}
+
+
+def dockweave_cli():
+    candidate = os.environ.get("DOCKWEAVE_CLI", "")
+    if candidate:
+        return candidate
+    found = shutil.which("dockweave")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for path in (os.path.join(home, ".local", "bin", "dockweave"), "/usr/local/bin/dockweave"):
+        if os.path.exists(path):
+            return path
+    return ""
+
+
+def dockweave_approval(issue_id):
+    cli = dockweave_cli()
+    if not cli:
+        return None
+    try:
+        proc = subprocess.run([cli, "gate", "approval", issue_id, "--json"],
+                              capture_output=True, text=True, timeout=30)
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except Exception:
+        return None
 
 
 def run(args):
@@ -42,15 +78,39 @@ def load_config(root):
     return {}
 
 
-def comments(ident):
+def comment_items(ident):
     p = run(["issue", "comments", ident, "--json"])
     if p.returncode != 0:
-        return ""
+        return []
     try:
         data = json.loads(p.stdout)
     except Exception:
-        return ""
-    return "\n".join(str(c.get("body") or "") for c in data)
+        return []
+    return data if isinstance(data, list) else data.get("comments") or data.get("data") or []
+
+
+def review_verdict(review_issue):
+    """Return (passed, detail) for an attributed VERDICT: PASS comment."""
+    ident = review_issue.get("identifier") or review_issue.get("id")
+    assignee = review_issue.get("assigneeAgentId")
+    allow_unattributed = os.environ.get("DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW", "") in ("1", "true", "yes")
+    seen_unattributed = False
+    for comment in comment_items(ident):
+        body = str(comment.get("body") or "").upper()
+        if "VERDICT: PASS" not in body:
+            continue
+        author_agent = comment.get("authorAgentId")
+        author_user = comment.get("authorUserId")
+        if author_agent and assignee and author_agent == assignee:
+            return True, "reviewer-agent"
+        if author_user and author_user not in ("local-board", "system", ""):
+            return True, "human:" + str(author_user)
+        if allow_unattributed:
+            return True, "unattributed (override)"
+        seen_unattributed = True
+    if seen_unattributed:
+        return False, "PASS is not attributed to the assigned reviewer"
+    return False, "no PASS verdict"
 
 
 def gate(action, *args):
@@ -106,24 +166,32 @@ def main():
         if any((k.get("status") or "") not in FINISHED for k in review_issues):
             print("WAITING\treview\topen")
             return 0
-        verdicts = [comments(k.get("identifier") or k.get("id")) for k in review_issues]
-        if not any("VERDICT: PASS" in v.upper() for v in verdicts):
-            print("WAITING\treview\tno PASS verdict")
-            return 0
+        for review in review_issues:
+            passed, detail = review_verdict(review)
+            if not passed:
+                print("WAITING\treview\t%s (%s)" % (detail, review.get("identifier") or review.get("id")))
+                return 0
 
     approval = (cfg.get("human_approval") or {}).get("required", False)
     if approval:
         state = gate("status", issue_id)
         items = state.get("interactions") or []
         accepted = [i for i in items if (i.get("state") or "") in ("accepted", "approved", "resolved")]
-        if not accepted:
-            pending = [i for i in items if (i.get("state") or "") in ("pending", "open")]
-            if not pending:
-                gate("human-request", issue_id, "Goal abschliessen?")
+        dockweave_ok = dockweave_approval(issue_id) is not None
+        if not accepted or not dockweave_ok:
+            if not accepted:
+                pending = [i for i in items if (i.get("state") or "") in ("pending", "open")]
+                if not pending:
+                    gate("human-request", issue_id, "Goal abschliessen?")
+            missing = []
+            if not accepted:
+                missing.append("Paperclip-Interaction")
+            if not dockweave_ok:
+                missing.append("DockWeave-Freigabe (`dockweave gate approve %s`)" % issue_id)
             run(["issue", "update", issue_id, "--status", "in_review",
-                 "--comment", "Alle Kinder gruen. Warte auf menschliche Freigabe (Interaction im Inbox).",
+                 "--comment", "Alle Kinder gruen. Warte auf: " + ", ".join(missing) + ".",
                  "--json"])
-            print("WAITING\thuman\tapproval requested")
+            print("WAITING\thuman\tapproval missing: %s" % ", ".join(missing))
             return 0
 
     lines = ["Alle Child-Issues sind abgeschlossen:"]

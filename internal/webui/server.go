@@ -202,6 +202,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/fs/dirs", s.listDirs)
 	mux.HandleFunc("GET /graph", s.getGraph)
 	mux.HandleFunc("PUT /graph", s.putGraph)
+	mux.HandleFunc("GET /graph/gates/status", s.getGateStatus)
 	mux.HandleFunc("GET /paperclip/config", s.paperclipConfig)
 	mux.HandleFunc("GET /paperclip/status", s.paperclipStatus)
 	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)

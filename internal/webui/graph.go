@@ -54,6 +54,26 @@ func (s *Server) getGraph(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "body": body})
 }
 
+// getGateStatus reports whether the workspace gates.json still matches the
+// file DockWeave wrote (drift detection).
+func (s *Server) getGateStatus(w http.ResponseWriter, r *http.Request) {
+	path, err := graphPath()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err)
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		writeJSON(w, http.StatusOK, gatesync.StatusResult{Enabled: false})
+		return
+	}
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gatesync.Status(raw, s.browseRoots))
+}
+
 func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	var body json.RawMessage
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {

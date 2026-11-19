@@ -13,6 +13,8 @@
 package gatesync
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,15 +56,29 @@ type Document struct {
 
 // Contract is the JSON stored in Connector.Contract for gate connectors.
 type Contract struct {
-	Expression            string `json:"expression"`
-	OnTrue                string `json:"on_true"`
-	OnFalse               string `json:"on_false"`
-	Command               string `json:"command"`
-	Cwd                   string `json:"cwd"`
-	TimeoutSec            int    `json:"timeout_sec"`
-	When                  string `json:"when"`
-	ReviewRequired        bool   `json:"review_required"`
-	HumanApprovalRequired bool   `json:"human_approval_required"`
+	Expression            string   `json:"expression"`
+	OnTrue                string   `json:"on_true"`
+	OnFalse               string   `json:"on_false"`
+	Command               string   `json:"command"`
+	Cwd                   string   `json:"cwd"`
+	TimeoutSec            int      `json:"timeout_sec"`
+	When                  string   `json:"when"`
+	ReviewRequired        bool     `json:"review_required"`
+	HumanApprovalRequired bool     `json:"human_approval_required"`
+	RunnerImage           string   `json:"runner_image"`
+	Protected             []string `json:"protected"`
+	AllowPaths            []string `json:"allow_paths"`
+	DenyNewDependencies   bool     `json:"deny_new_dependencies"`
+	SecretScan            bool     `json:"secret_scan"`
+	Budget                *Budget  `json:"budget"`
+}
+
+// Budget is an optional broker-backed limit checked before/after a gate run.
+type Budget struct {
+	GrantID        string  `json:"grant_id"`
+	MaxRequestsDay int     `json:"max_requests_day"`
+	MaxTokensDay   int64   `json:"max_tokens_day"`
+	MaxCostDayUSD  float64 `json:"max_cost_day_usd"`
 }
 
 // Config is the Paperclip gates.json shape.
@@ -73,6 +89,14 @@ type Config struct {
 	Gates         []Gate   `json:"gates"`
 	GeneratedBy   string   `json:"generatedBy,omitempty"`
 	GeneratedAt   string   `json:"generatedAt,omitempty"`
+
+	// Execution options consumed by internal/gateexec (not by gates.py).
+	RunnerImage         string   `json:"runner_image,omitempty"`
+	Protected           []string `json:"protected,omitempty"`
+	AllowPaths          []string `json:"allow_paths,omitempty"`
+	DenyNewDependencies bool     `json:"deny_new_dependencies,omitempty"`
+	SecretScan          bool     `json:"secret_scan,omitempty"`
+	Budget              *Budget  `json:"budget,omitempty"`
 }
 
 type Review struct {
@@ -104,6 +128,7 @@ type Result struct {
 	Review        bool     `json:"review"`
 	HumanApproval bool     `json:"human_approval"`
 	WrittenAt     string   `json:"written_at,omitempty"`
+	Hash          string   `json:"hash,omitempty"`
 	Warnings      []string `json:"warnings,omitempty"`
 }
 
@@ -127,6 +152,16 @@ func Derive(doc Document) (Config, []string) {
 		}
 		cfg.Review.Required = cfg.Review.Required || ct.ReviewRequired
 		cfg.HumanApproval.Required = cfg.HumanApproval.Required || ct.HumanApprovalRequired
+		if ct.RunnerImage != "" && cfg.RunnerImage == "" {
+			cfg.RunnerImage = strings.TrimSpace(ct.RunnerImage)
+		}
+		cfg.Protected = mergeUnique(cfg.Protected, ct.Protected)
+		cfg.AllowPaths = mergeUnique(cfg.AllowPaths, ct.AllowPaths)
+		cfg.DenyNewDependencies = cfg.DenyNewDependencies || ct.DenyNewDependencies
+		cfg.SecretScan = cfg.SecretScan || ct.SecretScan
+		if ct.Budget != nil && cfg.Budget == nil {
+			cfg.Budget = ct.Budget
+		}
 
 		command := strings.TrimSpace(ct.Command)
 		if command == "" {
@@ -251,6 +286,11 @@ func Sync(raw []byte, roots []string) Result {
 		_ = os.Remove(tmp)
 		return Result{Workspace: canonical, Path: path, Error: "replace gates: " + err.Error()}
 	}
+	sum := sha256.Sum256(data)
+	hash := hex.EncodeToString(sum[:])
+	// Sidecar for drift detection: it records the hash of the file we wrote.
+	_ = os.WriteFile(filepath.Join(filepath.Dir(path), ".gates.dockweave.json"),
+		[]byte(fmt.Sprintf("{\"hash\":%q,\"generatedAt\":%q}\n", hash, cfg.GeneratedAt)), 0o644)
 
 	return Result{
 		Written:       true,
@@ -260,8 +300,64 @@ func Sync(raw []byte, roots []string) Result {
 		Review:        cfg.Review.Required,
 		HumanApproval: cfg.HumanApproval.Required,
 		WrittenAt:     cfg.GeneratedAt,
+		Hash:          hash,
 		Warnings:      warnings,
 	}
+}
+
+// StatusResult reports the sync state of a workspace without changing it.
+type StatusResult struct {
+	Workspace   string `json:"workspace,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Exists      bool   `json:"exists"`
+	Managed     bool   `json:"managed"`
+	Drifted     bool   `json:"drifted"`
+	Hash        string `json:"hash,omitempty"`
+	GeneratedAt string `json:"generatedAt,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// Status compares the current gates.json with the hash written by the last
+// sync, so the UI can show drift instead of silently overwriting manual edits.
+func Status(raw []byte, roots []string) StatusResult {
+	var doc Document
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return StatusResult{Error: "graph document is not JSON: " + err.Error()}
+	}
+	if doc.Paperclip == nil || !doc.Paperclip.enabled() {
+		return StatusResult{Enabled: false}
+	}
+	workspace := strings.TrimSpace(doc.Paperclip.Workspace)
+	if workspace == "" {
+		return StatusResult{Enabled: true, Error: "no paperclip workspace configured"}
+	}
+	canonical, err := validateWorkspace(workspace, roots)
+	if err != nil {
+		return StatusResult{Enabled: true, Workspace: workspace, Error: err.Error()}
+	}
+	path := filepath.Join(canonical, filepath.FromSlash(gatesRelPath))
+	out := StatusResult{Enabled: true, Workspace: canonical, Path: path}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	out.Exists = true
+	sum := sha256.Sum256(data)
+	out.Hash = hex.EncodeToString(sum[:])
+	var sidecar struct {
+		Hash        string `json:"hash"`
+		GeneratedAt string `json:"generatedAt"`
+	}
+	if side, err := os.ReadFile(filepath.Join(filepath.Dir(path), ".gates.dockweave.json")); err == nil {
+		_ = json.Unmarshal(side, &sidecar)
+	}
+	var cfg Config
+	_ = json.Unmarshal(data, &cfg)
+	out.Managed = cfg.GeneratedBy == GeneratedBy
+	out.GeneratedAt = sidecar.GeneratedAt
+	out.Drifted = out.Managed && (sidecar.Hash == "" || sidecar.Hash != out.Hash)
+	return out
 }
 
 // validateWorkspace canonicalises the path and enforces the allowlist. Writing
@@ -299,6 +395,25 @@ func validateWorkspace(raw string, roots []string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("paperclip workspace %q is outside the allowed roots", canonical)
+}
+
+func mergeUnique(dst, src []string) []string {
+	seen := make(map[string]bool, len(dst)+len(src))
+	out := make([]string, 0, len(dst)+len(src))
+	for _, list := range [][]string{dst, src} {
+		for _, v := range list {
+			v = strings.TrimSpace(v)
+			if v == "" || seen[v] {
+				continue
+			}
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func hasGateID(gates []Gate, id string) bool {

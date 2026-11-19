@@ -17,6 +17,7 @@ import (
 	"github.com/ananta888/dockweave/internal/agents"
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/configio"
+	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/monitor"
@@ -82,6 +83,10 @@ type Server struct {
 	// Broker is optional. When set, read-only broker metadata is exposed
 	// through admin/monitor GET endpoints. No secret values cross this API.
 	Broker *brokerclient.Client
+
+	// Gates executes workspace gates in a sandbox. Optional: without it the
+	// gate endpoints return 501 and the Paperclip wrapper falls back.
+	Gates *gateexec.Runner
 
 	// Sessions drives the running agent terminals for the OpenAI-compatible
 	// endpoint (optional; when nil the endpoint returns 501).
@@ -172,6 +177,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/mounts", s.listMounts)
 	s.mux.HandleFunc("GET /api/v1/graph", s.getGraph)
 	s.mux.HandleFunc("PUT /api/v1/graph", s.putGraph)
+	s.mux.HandleFunc("POST /api/v1/gates/run", s.runGate)
+	s.mux.HandleFunc("GET /api/v1/gates/runs", s.listGateRuns)
+	s.mux.HandleFunc("POST /api/v1/gates/approvals", s.createGateApproval)
+	s.mux.HandleFunc("GET /api/v1/gates/approvals/{issue}", s.getGateApproval)
 	s.mux.HandleFunc("GET /api/v1/objectives", s.listObjectives)
 	s.mux.HandleFunc("POST /api/v1/objectives", s.createObjective)
 	s.mux.HandleFunc("PATCH /api/v1/objectives/{id}", s.updateObjective)

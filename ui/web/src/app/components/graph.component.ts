@@ -3,7 +3,8 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
-import { GraphGateSyncResult, GraphService } from '../core/services/graph.service';
+import { GateSyncStatus, GraphGateSyncResult, GraphService } from '../core/services/graph.service';
+import { GateRunView, GateService } from '../core/services/gate.service';
 import { PaperclipService } from '../core/services/paperclip.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
@@ -563,6 +564,22 @@ interface GraphEdge {
                   </label>
                 </div>
                 @if (paperclipSyncInfo()) { <p class="muted mono">{{ paperclipSyncInfo() }}</p> }
+                <p class="muted mono">{{ gateSyncLabel() }}</p>
+              </section>
+
+              <section>
+                <h4>Gate-Health (Sandbox)</h4>
+                <p class="muted">Letzte Läufe aus dem Daemon-Runner (<span class="mono">dockweave gate run</span>). Die Gates laufen in einem Wegwerf-Container, nicht auf dem Host.</p>
+                @if (gateRunError()) { <p class="muted">{{ gateRunError() }}</p> }
+                @for (run of gateRuns(); track run.id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ run.status }}</span>
+                    <span class="muted">{{ run.passed }}/{{ run.gates }} · {{ run.duration_ms }}ms · {{ gateRunWhen(run) }}{{ run.tamper ? ' · TAMPER' : '' }}</span>
+                    <span class="spacer"></span>
+                    @if (run.reason) { <span class="muted" [title]="run.reason">{{ run.reason }}</span> }
+                  </div>
+                }
+                @if (!gateRuns().length && !gateRunError()) { <p class="muted">Noch keine Läufe.</p> }
               </section>
 
               <section>
@@ -1038,12 +1055,16 @@ export class GraphComponent implements OnChanges {
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly graphService = inject(GraphService);
+  private readonly gateService = inject(GateService);
   private readonly paperclip = inject(PaperclipService);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
   readonly paperclipWorkspace = signal('');
   readonly paperclipSync = signal(false);
   readonly paperclipSyncInfo = signal('');
+  readonly gateSyncStatus = signal<GateSyncStatus | null>(null);
+  readonly gateRuns = signal<GateRunView[]>([]);
+  readonly gateRunError = signal('');
   readonly paperclipIssues = signal<{ identifier?: string; title?: string; status?: string }[]>([]);
   readonly openReviews = computed(() => this.paperclipIssues()
     .filter(i => /review/i.test(i.title || '') && i.status !== 'done' && i.status !== 'cancelled').length);
@@ -1085,6 +1106,10 @@ export class GraphComponent implements OnChanges {
       this.paperclipWorkspace.set(localStorage.getItem('dockweave.paperclipWorkspace') || '');
       this.paperclipSync.set(localStorage.getItem('dockweave.paperclipSync') === '1');
     } catch { /* ignore */ }
+    this.loadGateSyncStatus();
+    // Gate runs are fetched lazily when the settings panel opens: the daemon
+    // endpoint may not exist on an older daemon and a background 404 would only
+    // add console noise.
   }
 
   setPaperclipWorkspace(value: string): void {
@@ -1104,6 +1129,34 @@ export class GraphComponent implements OnChanges {
       localStorage.setItem('dockweave.paperclipWorkspace', this.paperclipWorkspace());
       localStorage.setItem('dockweave.paperclipSync', this.paperclipSync() ? '1' : '0');
     } catch { /* ignore */ }
+  }
+
+  loadGateSyncStatus(): void {
+    this.graphService.gateStatus().subscribe({
+      next: (status) => this.gateSyncStatus.set(status),
+      error: () => this.gateSyncStatus.set(null),
+    });
+  }
+
+  loadGateHealth(): void {
+    this.gateService.runs(this.paperclipWorkspace().trim(), 8).subscribe({
+      next: (res) => { this.gateRuns.set(res?.runs ?? []); this.gateRunError.set(''); },
+      error: () => { this.gateRuns.set([]); this.gateRunError.set('Gate-Historie nicht verfügbar'); },
+    });
+  }
+
+  gateRunWhen(run: GateRunView): string {
+    return run.started_at ? run.started_at.replace('T', ' ').slice(0, 19) : '';
+  }
+
+  gateSyncLabel(): string {
+    const s = this.gateSyncStatus();
+    if (!s || !s.enabled) return 'Sync inaktiv';
+    if (s.error) return 'Status: ' + s.error;
+    if (!s.exists) return 'Noch keine gates.json';
+    if (!s.managed) return 'Manuelle gates.json (nicht von DockWeave)';
+    if (s.drifted) return 'Drift: gates.json wurde seit dem Sync verändert';
+    return 'Synchronisiert' + (s.hash ? ' · ' + s.hash.slice(0, 12) : '');
   }
 
   private describeGateSync(result: GraphGateSyncResult | undefined): string {
@@ -1138,6 +1191,8 @@ export class GraphComponent implements OnChanges {
     this.graphService.save(doc).subscribe({
       next: (res) => {
         if (this.paperclipSync()) this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+        this.loadGateSyncStatus();
+        this.loadGateHealth();
       },
       error: () => { /* keep localStorage */ },
     });
@@ -2529,6 +2584,8 @@ export class GraphComponent implements OnChanges {
     this.schemaJson = JSON.stringify(this.schema(), null, 2);
     this.schemaError.set('');
     this.settingsOpen.set(true);
+    this.loadGateSyncStatus();
+    this.loadGateHealth();
   }
 
   applySchemaJson(): void {
