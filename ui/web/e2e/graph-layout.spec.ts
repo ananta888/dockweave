@@ -20,5 +20,13 @@ test('every layout mode completes and never leaves the spinner stuck', async ({ 
     await page.waitForTimeout(300);
   }
 
+  // Display-mode switch must also stay responsive.
+  await page.getByRole('button', { name: 'Ressourcen', exact: true }).click();
+  await page.waitForTimeout(600);
+  await expect(page.locator('.layout-spinner')).toHaveCount(0, { timeout: 5000 });
+  await page.getByRole('button', { name: 'Organisation', exact: true }).click();
+  await page.waitForTimeout(600);
+  await expect(page.locator('.layout-spinner')).toHaveCount(0, { timeout: 5000 });
+
   expect(errors).toEqual([]);
 });
