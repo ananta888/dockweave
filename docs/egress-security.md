@@ -1,11 +1,13 @@
 # Egress Security — Design and Current Status
 
-> **Status 2026-11-08:** `offline` and `broker-only` are enforced with Docker
+> **Status 2026-11-19:** `offline` and `broker-only` are enforced with Docker
 > networks. `broker-only` uses an internal Docker network (no external
 > route) and is verified by a privileged integration test: external egress
 > fails (`ENETUNREACH`) while the host gateway stays reachable for the
-> broker. **Still open:** host-gateway port filtering (nftables), DNS/IMDS
-> hardening beyond the internal network, and `restricted-development`.
+> broker. **nftables enforcement (`egress-003`) is implemented** as an
+> opt-in, fail-closed host firewall (`EGRESS_NFTABLES=true`); the full
+> bypass suite still needs a privileged run. `restricted-development`
+> remains unimplemented (fail closed).
 
 Language: English · [Deutsch](egress-security.de.md)
 
@@ -57,14 +59,46 @@ Run it with `go test -tags integration ./tests/integration -run Egress`.
 - **Container recreation/daemon restart:** reconcile is provided by the
   per-start `EnsureNetwork`; stale-network cleanup is not automated.
 
-## Required next steps (`egress-003`)
+## Host firewall (`egress-003`)
 
-1. nftables table with an explicit DockWeave label; allow only the broker
-   port on the gateway, drop host-private ranges and IMDS explicitly.
-2. Fail closed if rules are missing; reconcile on daemon restart.
-3. Privileged suite: direct curl/Python/Node to provider must fail; broker
-   must succeed; IPv6/DNS rebinding/private IP/IMDS must fail.
-4. Document host firewall interactions and WSL2 limits.
+Implemented in `internal/egress` and wired into the daemon behind
+`EGRESS_NFTABLES=true` (off by default). When enabled, starting a
+`broker-only` agent applies a DockWeave-owned nftables table
+(`inet dockweave-egress`) that:
+
+1. filters only traffic arriving on the broker-only bridge interface,
+2. allows the broker port on the gateway address,
+3. drops private ranges, link-local/metadata (IMDS), IPv6 ULA/link-local/
+   multicast and DNS,
+4. drops everything else arriving from that bridge (default deny).
+
+Application is fail-closed: missing `nft`, non-root, or a failed apply
+refuses the agent start. The table is idempotent (`nft list table` check).
+
+Residual: the full bypass suite (direct curl/Python/Node to a provider must
+fail while the broker path succeeds; IPv6/DNS-rebinding/private-IP/IMDS
+matrix) is a privileged test (`tests/integration/egress_nftables_test.go`
+currently covers table round-trip only) and must run in the privileged CI
+environment.
+
+## Platform compatibility (WSL2 / Windows)
+
+DockWeave is **Linux-only**. There is no native Windows support: the daemon
+relies on `mount(2)`, `openat2`, `/proc`, `SO_PEERCRED` and a Linux Docker
+Engine, none of which exist natively on Windows.
+
+| Environment | Status |
+|---|---|
+| Linux (native, kernel ≥ 5.12) | Supported; reference platform. |
+| Linux in a VM | Supported; behaves like native Linux. |
+| WSL2 (Ubuntu etc.) | Works with Docker Desktop (WSL2 backend) for the agent runtime and network profiles, with caveats: |
+|  | — host-level nftables rules (`egress-003`) apply inside the WSL2 VM, not the Windows host; enforcement is per-WSL2-distro. |
+|  | — Docker Desktop's internal network topology can differ between versions; `broker-only` isolation must be re-verified per version (the privileged egress test does this). |
+|  | — the broker must bind an address reachable from agent containers (`127.0.0.1` on the same distro, or the WSL2 VM gateway). |
+| macOS / Windows (native) | Not supported. Docker Desktop runs a Linux VM; DockWeave would have to run inside that VM, never on the host OS. |
+
+The privilege split (daemon + `mountd`) and the mount manager require a Linux
+host with `CAP_SYS_ADMIN`. On WSL2 that means running inside the WSL2 VM.
 
 ## Network profiles contract
 

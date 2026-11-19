@@ -42,6 +42,7 @@ type DockerOps interface {
 	EnsureImage(ctx context.Context, ref string, out io.Writer) error
 	EnsureNetwork(ctx context.Context, name string, internal bool) (string, error)
 	NetworkGateway(ctx context.Context, name string) (string, error)
+	NetworkInterface(ctx context.Context, name string) (string, error)
 	Create(ctx context.Context, spec dockerclient.ContainerSpec) (string, error)
 	Start(ctx context.Context, containerID string) error
 	Stop(ctx context.Context, containerID string, timeoutSec int) error
@@ -51,11 +52,21 @@ type DockerOps interface {
 	ExecOutput(ctx context.Context, containerID string, cmd []string) (string, error)
 }
 
+// EgressOps enforces host-side egress for broker-only agents (optional). The
+// *egress.Manager implements it; nil disables nftables enforcement (the
+// Docker internal network alone is then the only isolation).
+type EgressOps interface {
+	Ensure(ctx context.Context, iface string, addrs []string) error
+}
+
 // Service manages agent identities and their containers.
 type Service struct {
 	Store  *persistence.Store
 	Mounts MountOps
 	Docker DockerOps
+	// Egress enforces host-side egress for broker-only agents. Optional:
+	// nil means no nftables enforcement (see egress-003).
+	Egress EgressOps
 	// Memory performs snapshot/restore on agent memory directories.
 	// Optional: if nil, memory operations return an error.
 	Memory *memory.Manager
@@ -1349,6 +1360,18 @@ func (s *Service) applyNetworkProfile(ctx context.Context, a *model.Agent) error
 		}
 		a.NetworkMode = dockerclient.NetworkBrokerOnly
 		a.Env = append(a.Env, fmt.Sprintf("DOCKWEAVE_BROKER_BASE_URL=http://%s:%d", gw, BrokerProfilePort))
+		// Host-side firewall: restrict what the container can reach on the
+		// gateway to the broker port. Fail closed when nftables enforcement
+		// is configured but cannot be applied.
+		if s.Egress != nil {
+			iface, err := s.Docker.NetworkInterface(ctx, dockerclient.NetworkBrokerOnly)
+			if err != nil {
+				return fmt.Errorf("egress interface: %w (refusing to start; fail closed)", err)
+			}
+			if err := s.Egress.Ensure(ctx, iface, []string{gw}); err != nil {
+				return fmt.Errorf("egress nftables: %w (refusing to start; fail closed)", err)
+			}
+		}
 		return nil
 	case model.NetProfileRestricted:
 		return errors.New("network profile restricted-development is not implemented; refusing to start (fail closed)")

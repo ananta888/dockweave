@@ -156,6 +156,24 @@ func networkGateway(n network.Inspect) string {
 	return ""
 }
 
+// NetworkInterface returns the host bridge interface name of a Docker bridge
+// network (the "br-<shortid>" convention). Used by egress enforcement to scope
+// nftables rules to the broker-only bridge.
+func (c *Client) NetworkInterface(ctx context.Context, name string) (string, error) {
+	insp, err := c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		return "", fmt.Errorf("inspect network %q: %w", name, err)
+	}
+	if insp.ID == "" {
+		return "", fmt.Errorf("network %q has no id", name)
+	}
+	id := insp.ID
+	if len(id) > 12 {
+		id = id[:12]
+	}
+	return "br-" + id, nil
+}
+
 // RemoveNetwork removes a DockWeave-created network (used by tests and
 // uninstall cleanup). It refuses to remove networks without the label.
 func (c *Client) RemoveNetwork(ctx context.Context, name string) error {

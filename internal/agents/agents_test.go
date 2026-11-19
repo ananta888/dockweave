@@ -113,6 +113,9 @@ func (f *fakeDocker) EnsureNetwork(context.Context, string, bool) (string, error
 func (f *fakeDocker) NetworkGateway(context.Context, string) (string, error) {
 	return "172.31.250.1", nil
 }
+func (f *fakeDocker) NetworkInterface(context.Context, string) (string, error) {
+	return "br-dockweave", nil
+}
 func (f *fakeDocker) Create(context.Context, dockerclient.ContainerSpec) (string, error) {
 	return "cid", nil
 }

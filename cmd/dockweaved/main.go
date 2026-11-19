@@ -30,6 +30,7 @@ import (
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/configio"
 	"github.com/ananta888/dockweave/internal/dockerclient"
+	"github.com/ananta888/dockweave/internal/egress"
 	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/knowledge"
 	"github.com/ananta888/dockweave/internal/memory"
@@ -117,6 +118,11 @@ func run(cfgPath string) error {
 		DefaultUID: cfg.AgentUID, DefaultGID: cfg.AgentGID,
 		AllowRootContainer: cfg.AllowRootContainer,
 		KnowledgeDir:       cfg.KnowledgeDir,
+	}
+	// Optional host-side nftables enforcement for broker-only agents
+	// (egress-003). Off by default; fail-closed when enabled.
+	if cfg.EgressNftables {
+		agentSvc.Egress = egress.New(egress.Config{BrokerPort: agents.BrokerProfilePort})
 	}
 	// Shared knowledge store: ensure it exists and carries its usage guide.
 	if cfg.KnowledgeDir != "" {

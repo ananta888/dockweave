@@ -47,6 +47,12 @@ type Config struct {
 	// must be in the broker's admin UID allowlist (root usually is not by
 	// default; configure BROKER_ADMIN_UIDS=0 with --admin-uids).
 	BrokerAdminSocket string
+
+	// EgressNftables enables host-side nftables enforcement for broker-only
+	// agents (egress-003). Disabled by default; when enabled, the daemon
+	// applies a DockWeave-owned nftables table and refuses the agent start
+	// (fail closed) if it cannot.
+	EgressNftables bool
 }
 
 // Default returns the default configuration.
@@ -132,6 +138,8 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.AllowRootContainer = v == "true" || v == "1"
 		case "KNOWLEDGE_DIR":
 			cfg.KnowledgeDir = v
+		case "EGRESS_NFTABLES":
+			cfg.EgressNftables = v == "true" || v == "1"
 		}
 	}
 }

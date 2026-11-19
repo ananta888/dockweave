@@ -1,12 +1,14 @@
 # Egress-Sicherheit — Design und aktueller Stand
 
-> **Stand 2026-11-08:** `offline` und `broker-only` werden mit
+> **Stand 2026-11-19:** `offline` und `broker-only` werden mit
 > Docker-Netzwerken erzwungen. `broker-only` nutzt ein internes Docker-Netz
 > (keine externe Route); ein privilegierter Integrationstest belegt:
 > externer Egress schlägt fehl (`ENETUNREACH`), der Host-Gateway bleibt für
-> den Broker erreichbar. **Noch offen:** Port-Filterung am Host-Gateway
-> (nftables), DNS-/IMDS-Härtung über das interne Netz hinaus und
-> `restricted-development`.
+> den Broker erreichbar. **Die nftables-Durchsetzung (`egress-003`) ist
+> implementiert** als opt-in, fail-closed Host-Firewall
+> (`EGRESS_NFTABLES=true`); die vollständige Bypass-Suite braucht noch einen
+> privilegierten Lauf. `restricted-development` bleibt unimplementiert
+> (fail closed).
 
 Sprache: Deutsch · [English](egress-security.md)
 
@@ -58,14 +60,49 @@ Aufruf: `go test -tags integration ./tests/integration -run Egress`.
 - **Container-Neuerstellung/Daemon-Neustart:** `EnsureNetwork` prüft bei
   jedem Start; automatisches Aufräumen veralteter Netze fehlt.
 
-## Nächste Schritte (`egress-003`)
+## Host-Firewall (`egress-003`)
 
-1. nftables-Tabelle mit eigenem DockWeave-Label; nur Broker-Port am Gateway
-   erlauben, Host-private Bereiche und IMDS explizit droppen.
-2. Fail-Closed bei fehlenden Regeln; Reconcile bei Daemon-Neustart.
-3. Privilegierte Suite: direktes curl/Python/Node zum Provider scheitert;
-   Broker funktioniert; IPv6/DNS-Rebinding/private IP/IMDS scheitern.
-4. Wechselwirkungen mit Host-Firewall und WSL2-Grenzen dokumentieren.
+Implementiert in `internal/egress` und in den Daemon hinter
+`EGRESS_NFTABLES=true` verdrahtet (standardmäßig aus). Ist es aktiv, legt der
+Start eines `broker-only`-Agenten eine DockWeave-eigene nftables-Tabelle
+(`inet dockweave-egress`) an, die:
+
+1. nur Traffic auf der broker-only-Bridge filtert,
+2. den Broker-Port auf der Gateway-Adresse erlaubt,
+3. private Bereiche, Link-Local/Metadata (IMDS), IPv6-ULA/Link-Local/
+   Multicast und DNS droppt,
+4. alles andere von dieser Bridge droppt (Default-Deny).
+
+Das Anwenden ist fail-closed: fehlendes `nft`, kein root oder ein fehlgeschla-
+genes Anwenden verweigert den Agentenstart. Die Tabelle ist idempotent
+(Prüfung per `nft list table`).
+
+Restrisiko: Die vollständige Bypass-Suite (direktes curl/Python/Node zum
+Provider muss scheitern, der Broker-Pfad funktioniert; IPv6/DNS-Rebinding/
+Private-IP/IMDS-Matrix) ist ein privilegierter Test
+(`tests/integration/egress_nftables_test.go` deckt derzeit nur den
+Tabellen-Roundtrip ab) und muss in der privilegierten CI-Umgebung laufen.
+
+## Plattform-Kompatibilität (WSL2 / Windows)
+
+DockWeave ist **nur unter Linux** lauffähig. Es gibt keine native
+Windows-Unterstützung: Der Daemon nutzt `mount(2)`, `openat2`, `/proc`,
+`SO_PEERCRED` und eine Linux-Docker-Engine — all das existiert unter Windows
+nicht nativ.
+
+| Umgebung | Status |
+|---|---|
+| Linux (nativ, Kernel ≥ 5.12) | Unterstützt; Referenzplattform. |
+| Linux in einer VM | Unterstützt; verhält sich wie natives Linux. |
+| WSL2 (Ubuntu etc.) | Funktioniert mit Docker Desktop (WSL2-Backend) für Agenten-Runtime und Netzwerkprofile, mit Einschränkungen: |
+|  | — Host-seitige nftables-Regeln (`egress-003`) wirken in der WSL2-VM, nicht auf dem Windows-Host; Enforcement gilt je WSL2-Distribution. |
+|  | — Die interne Netztopologie von Docker Desktop kann je Version abweichen; `broker-only`-Isolation ist pro Version neu zu verifizieren (der privilegierte Egress-Test tut das). |
+|  | — Der Broker muss eine aus Agentencontainern erreichbare Adresse binden (`127.0.0.1` in derselben Distribution oder das WSL2-VM-Gateway). |
+| macOS / Windows (nativ) | Nicht unterstützt. Docker Desktop betreibt eine Linux-VM; DockWeave müsste in dieser VM laufen, nie auf dem Host-Betriebssystem. |
+
+Die Privilegientrennung (Daemon + `mountd`) und der Mount-Manager setzen einen
+Linux-Host mit `CAP_SYS_ADMIN` voraus. Unter WSL2 bedeutet das: innerhalb der
+WSL2-VM, nicht auf dem Windows-Host.
 
 ## Profil-Vertrag
 
