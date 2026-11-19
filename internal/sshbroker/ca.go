@@ -86,8 +86,8 @@ func (c *CA) signer() (ssh.Signer, error) {
 	return s, nil
 }
 
-// signCert signs a certificate with the CA key.
-func (c *CA) signCert(cert *ssh.Certificate) error {
+// SignCert signs a certificate with the CA key (Signer interface).
+func (c *CA) SignCert(cert *ssh.Certificate) error {
 	signer, err := c.signer()
 	if err != nil {
 		return err
@@ -111,6 +111,9 @@ func (c *CA) Verify(cert *ssh.Certificate) bool {
 	out = out[:len(out)-4]
 	return c.PublicKey().Verify(out, cert.Signature) == nil
 }
+
+// CA implements the hardware-agnostic Signer interface (software ed25519).
+var _ Signer = (*CA)(nil)
 
 // keysEqual compares two public keys by their wire encoding.
 func keysEqual(a, b ssh.PublicKey) bool {

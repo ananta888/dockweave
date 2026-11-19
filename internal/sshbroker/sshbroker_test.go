@@ -66,7 +66,7 @@ func TestPolicyRejectsBadTTL(t *testing.T) {
 
 func TestIssueCertProperties(t *testing.T) {
 	ca, _ := GenerateCA()
-	issued, err := ca.Issue(IssueRequest{Agent: "opencode-01", Host: "github.com", User: "git"})
+	issued, err := Issue(ca, IssueRequest{Agent: "opencode-01", Host: "github.com", User: "git"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestBrokerEnforcesPolicy(t *testing.T) {
 
 func TestIssueMaxTTL(t *testing.T) {
 	ca, _ := GenerateCA()
-	issued, err := ca.Issue(IssueRequest{Agent: "a", Host: "h", User: "u", TTL: 48 * time.Hour})
+	issued, err := Issue(ca, IssueRequest{Agent: "a", Host: "h", User: "u", TTL: 48 * time.Hour})
 	if err != nil {
 		t.Fatal(err)
 	}

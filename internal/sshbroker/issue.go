@@ -37,8 +37,8 @@ type IssueRequest struct {
 
 // Issue signs a short-lived user certificate for the requested destination.
 // Policy is enforced by the caller (Broker.Issue); this only performs the
-// crypto and marshalling.
-func (c *CA) Issue(req IssueRequest) (*IssuedCert, error) {
+// crypto and marshalling. signer may be software- or hardware-backed.
+func Issue(signer Signer, req IssueRequest) (*IssuedCert, error) {
 	if req.Agent == "" || req.User == "" {
 		return nil, fmt.Errorf("sshbroker: agent and user are required")
 	}
@@ -77,7 +77,7 @@ func (c *CA) Issue(req IssueRequest) (*IssuedCert, error) {
 			},
 		},
 	}
-	if err := c.signCert(cert); err != nil {
+	if err := signer.SignCert(cert); err != nil {
 		return nil, err
 	}
 

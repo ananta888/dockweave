@@ -1,11 +1,12 @@
 # SSH Broker — Design (separate increment)
 
-Status: **Phase 2 implemented** (2026-11-19). The CA key handling, DENY-by-default
-policy and short-lived certificate issuance live in `internal/sshbroker`, with a
-`cmd/dockweave-ssh` CLI (`init`/`grant`/`list`/`issue`) and an in-process SSH
-server test that verifies issued certs authenticate and non-issued keys are
-rejected. Phases 3-5 (Git integration, FIDO2, privileged egress tests) remain.
-SSH private keys are never sent through an HTTP gateway.
+Status: **Phases 2–4 implemented** (2026-11-19). CA key handling, DENY-by-default
+policy, short-lived certificate issuance, a `Signer` interface with software
+and TPM 2.0 backends, and a `cmd/dockweave-ssh` CLI
+(`init`/`grant`/`list`/`issue`/`run`/`git-ssh`) are in place, with in-process
+SSH-server tests (issued certs authenticate; foreign/expired certs are
+rejected). Phase 5 (privileged egress tests) remains CI-bound. SSH private keys
+are never sent through an HTTP gateway.
 
 Language: English · [Deutsch](ssh-broker-design.de.md)
 
@@ -125,9 +126,11 @@ checked on every signature/issuance.
 3. Git integration (`GIT_SSH_COMMAND`) and short-lived key cleanup. ✅
    (`dockweave-ssh git-ssh` as a drop-in `GIT_SSH_COMMAND`; key cleanup via
    0700 temp dir removed on exit.)
-4. FIDO2 signer and hardware tests. ⏳ hardware-backed signer required; not
-   implementable without a FIDO2/PIV token. Left as a separate, hardware-only
-   increment.
+4. Hardware-backed CA key (TPM 2.0 / PIV / cloud KMS). ✅ TPM 2.0 backend
+   implemented (`TPMSigner`, non-exportable ECDSA P-256 via
+   `github.com/google/go-tpm`); the `Signer` interface makes PIV (needs the
+   PCSC library / cgo) and cloud KMS drop-in backends. Runtime verification
+   requires the respective hardware (TPM device, PIV token, or a KMS).
 5. Privileged/e2e tests: direct SSH without wrapper must fail under
    broker-only egress; wrapper SSH succeeds; revoked/expired certs fail.
    ⏳ needs the privileged CI environment (broker + agent container + egress).

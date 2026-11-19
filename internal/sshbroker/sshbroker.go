@@ -8,25 +8,25 @@ import (
 	"time"
 )
 
-// Broker issues destination-bound certificates under a CA and a
+// Broker issues destination-bound certificates under a CA signer and a
 // DENY-by-default policy. It is the safe entry point: policy is always
 // enforced before any key material is created.
 type Broker struct {
-	CA     *CA
+	Signer Signer
 	Policy *Policy
 }
 
-// New builds a Broker.
-func New(ca *CA, policy *Policy) *Broker {
-	return &Broker{CA: ca, Policy: policy}
+// New builds a Broker. signer may be software- or hardware-backed.
+func New(signer Signer, policy *Policy) *Broker {
+	return &Broker{Signer: signer, Policy: policy}
 }
 
 // Issue authorizes the request against policy and, on success, returns a
 // short-lived certificate + ephemeral key. No key material is produced for a
 // denied request.
 func (b *Broker) Issue(agent, host, user string, ttl time.Duration) (*IssuedCert, error) {
-	if b.CA == nil || b.Policy == nil {
-		return nil, errors.New("sshbroker: broker not configured (ca or policy missing)")
+	if b.Signer == nil || b.Policy == nil {
+		return nil, errors.New("sshbroker: broker not configured (signer or policy missing)")
 	}
 	grant, ok := b.Policy.Match(agent, host, user)
 	if !ok {
@@ -41,7 +41,7 @@ func (b *Broker) Issue(agent, host, user string, ttl time.Duration) (*IssuedCert
 	if eff <= 0 {
 		eff = DefaultTTL
 	}
-	return b.CA.Issue(IssueRequest{Agent: agent, Host: host, User: user, TTL: eff})
+	return Issue(b.Signer, IssueRequest{Agent: agent, Host: host, User: user, TTL: eff})
 }
 
 // policyFile is the on-disk shape of a policy.

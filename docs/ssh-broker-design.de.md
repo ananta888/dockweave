@@ -1,12 +1,12 @@
 # SSH-Broker — Design (separates Inkrement)
 
-Status: **Phase 2 implementiert** (2026-11-19). CA-Key-Verwaltung,
-DENY-by-default-Policy und kurzlebige Zertifikat-Ausstellung liegen in
-`internal/sshbroker`, mit einem `cmd/dockweave-ssh`-CLI
-(`init`/`grant`/`list`/`issue`) und einem In-Process-SSH-Server-Test, der
-belegt: ausgestellte Zertifikate authentifizieren, fremde Keys werden
-abgelehnt. Phasen 3-5 (Git-Integration, FIDO2, privilegierte Egress-Tests)
-bleiben. SSH-Private-Keys laufen niemals über ein HTTP-Gateway.
+Status: **Phasen 2–4 implementiert** (2026-11-19). CA-Key-Verwaltung,
+DENY-by-default-Policy, kurzlebige Zertifikat-Ausstellung, ein
+`Signer`-Interface mit Software- und TPM-2.0-Backend, ein
+`cmd/dockweave-ssh`-CLI (`init`/`grant`/`list`/`issue`/`run`/`git-ssh`) und
+Tests (In-Process-SSH-Server: ausgestellte Zertifikate authentifizieren,
+fremde/abgelaufene werden abgelehnt). Phase 5 (privilegierte Egress-Tests)
+bleibt CI-gebunden. SSH-Private-Keys laufen niemals über ein HTTP-Gateway.
 
 Sprache: Deutsch · [English](ssh-broker-design.md)
 
@@ -118,9 +118,13 @@ jeder Signatur/Ausstellung geprüft.
 
 1. Design + TODO (dieses Dokument). ✅
 2. CA-Key-Speicherung, Policy, Zertifikatsausstellung, Wrapper und Tests
-   gegen einen lokalen SSH-Server.
-3. Git-Integration (`GIT_SSH_COMMAND`) und Key-Cleanup.
-4. FIDO2-Signer und Hardware-Tests.
+   gegen einen lokalen SSH-Server. ✅ (`internal/sshbroker`, `cmd/dockweave-ssh`)
+3. Git-Integration (`GIT_SSH_COMMAND`) und Key-Cleanup. ✅ (`dockweave-ssh git-ssh`)
+4. Hardware-gebundener CA-Key (TPM 2.0 / PIV / Cloud-KMS). ✅ TPM-2.0-Backend
+   implementiert (`TPMSigner`, nicht exportierbarer ECDSA-P-256 via
+   `github.com/google/go-tpm`); das `Signer`-Interface macht PIV (benötigt
+   PCSC/cgo) und Cloud-KMS zu Drop-in-Backends. Laufzeitverifikation braucht
+   die jeweilige Hardware.
 5. Privilegierte/E2E-Tests: direktes SSH ohne Wrapper scheitert im
    broker-only-Egress; Wrapper-SSH funktioniert; widerrufene/abgelaufene
    Zertifikate scheitern.
