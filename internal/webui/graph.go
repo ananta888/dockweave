@@ -3,6 +3,7 @@ package webui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/gatesync"
+	"github.com/ananta888/dockweave/pkg/sdk"
 )
 
 // graphPath is where the browser graph document is persisted. It used to live
@@ -160,6 +162,10 @@ type PipelineSync struct {
 	Edges    int      `json:"edges"`
 	Warnings []string `json:"warnings,omitempty"`
 	Error    string   `json:"error,omitempty"`
+	// Code is the daemon's structured error code for a failed push, e.g.
+	// stale_revision (an older graph than enforced) or revision_conflict
+	// (different content at the enforced revision), forbidden, unavailable.
+	Code string `json:"code,omitempty"`
 	// InvalidConnector names the gate connector whose contract stopped the
 	// sync; the previously enforced edges stay in place (RF-001).
 	InvalidConnector *InvalidConnector `json:"invalid_connector,omitempty"`
@@ -190,6 +196,12 @@ func (s *Server) syncPipeline(ctx context.Context, body []byte, rev int, reset b
 		defer cancel()
 		if err := s.pushPipeline(pctx, rev, reset, edges); err != nil {
 			out.Error = "pipeline transfer to the daemon failed: " + err.Error()
+			var apiErr *sdk.APIError
+			if errors.As(err, &apiErr) {
+				out.Code = apiErr.Code
+			} else {
+				out.Code = "unavailable"
+			}
 		} else {
 			out.Pushed = true
 		}

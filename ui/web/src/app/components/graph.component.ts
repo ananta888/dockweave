@@ -618,6 +618,7 @@ interface GraphEdge {
                 <p class="muted">Gate-Connectoren mit Ziel-Agent werden beim Speichern an den Daemon übertragen. Der Ziel-Agent arbeitet nur, wenn das Gate auf dem aktuellen Workspace-Stand bestanden ist.</p>
                 @if (pipelineSync(); as ps) {
                   @if (ps.error) { <div class="notice error" role="alert">{{ ps.error }}</div> }
+                  @if (syncHint(ps.code); as hint) { <div class="notice warn pipeline-sync-hint">{{ hint }}</div> }
                   @if (ps.invalid_connector; as ic) {
                     <div class="notice error invalid-connector" role="alert">Ungültiger Gate-Vertrag in Connector „{{ connectorName(ic.connector_id) }}“{{ ic.target_agent_id ? ' → ' + ic.target_agent_id : '' }}: {{ ic.message }}. Die bisher erzwungene Pipeline bleibt unverändert.</div>
                   }
@@ -1553,6 +1554,16 @@ export class GraphComponent implements OnChanges, OnDestroy {
     if (this.pipelinePoll) clearInterval(this.pipelinePoll);
     if (this.saveTimer) clearTimeout(this.saveTimer);
     for (const t of Object.values(this.exprTimers)) clearTimeout(t);
+  }
+
+  syncHint(code?: string): string {
+    switch (code) {
+      case 'stale_revision': return 'Der Daemon erzwingt eine neuere Graph-Revision. Seite neu laden; die bisherige Pipeline bleibt aktiv.';
+      case 'revision_conflict': return 'Bei gleicher Revision ist im Daemon ein anderer Inhalt gespeichert. Serverstand laden und erneut speichern.';
+      case 'forbidden': return 'Das Web-Gateway darf die Pipeline nicht ändern (kein Admin-Peer). Die bisherige Pipeline bleibt aktiv.';
+      case 'unavailable': return 'Daemon nicht erreichbar. Synchronisierung später erneut versuchen; die bisherige Pipeline bleibt aktiv.';
+      default: return '';
+    }
   }
 
   connectorName(id: string): string {

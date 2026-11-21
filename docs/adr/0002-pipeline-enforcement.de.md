@@ -138,3 +138,11 @@ begrenzen den Aufwand; bei Überschreitung gilt `fingerprint_unavailable`
   bisherigen Kanten (die Durchsetzung wird durch eine fehlgeschlagene
   Übertragung nie still schwächer).
 - Sicherheitsentscheidung als SD-020 in `docs/security-decisions.md`.
+- Nachtrag 21.11.2026 (RF-018/RF-020): Kantenersatz, Override-Anlage und
+  Override-Verbrauch werden in einer Transaktion zusammen mit ihrem
+  Audit-Ereignis geschrieben; scheitert das Audit, ändert sich nichts. Eine
+  Wiederholung der gespeicherten Revision mit identischen Kanten ist ein
+  No-op (kein Zeitstempel, kein Ereignis); anderer Inhalt bei gleicher
+  Revision ergibt `409 revision_conflict`, eine ältere Revision
+  `409 stale_revision`. Das Web-Gateway meldet diese Codes
+  (`pipeline_sync.code`), der Editor zeigt die passende Handlung.

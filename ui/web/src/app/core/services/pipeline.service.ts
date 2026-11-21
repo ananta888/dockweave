@@ -35,6 +35,8 @@ export interface PipelineSyncResult {
   edges: number;
   warnings?: string[];
   error?: string;
+  /** Daemon error code of a failed push (stale_revision, revision_conflict, forbidden, unavailable). */
+  code?: string;
   /** Gate connector whose contract stopped the sync (enforcement unchanged). */
   invalid_connector?: { connector_id: string; target_agent_id?: string; message: string };
 }

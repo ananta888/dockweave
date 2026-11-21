@@ -128,8 +128,8 @@
     {
       "id": "M3",
       "title": "Persistenz, Admission-API und Auditierung",
-      "status": "in_progress",
-      "progress_percent": 95.0,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-018",
         "RF-019",
@@ -1220,10 +1220,10 @@
       "milestone": "M3",
       "type": "bug",
       "title": "Gleiche Pipeline-Revision nur für identische Wiederholung akzeptieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "ReplacePipelineEdges weist nur ältere Revisionen zurück. Eine andere Kantenliste mit derselben Revision löscht und ersetzt den bestehenden Zustand, obwohl der Kommentar diese Wiederholung als idempotent beschreibt.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1265,13 +1265,12 @@
         "go test -race ./internal/persistence ./internal/api ./pkg/sdk"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Gateway-Recovery unterscheidet stale/divergent/idempotent nicht"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: revision_conflict/stale_revision am echten API-Server: pkg/sdk TestSDKPipelineRevisionContract und OpenAPI-Fixtures (409 mit Code)",
-          "2026-11-21: TestIdenticalRevisionRepeatChangesNothing (kein UpdatedAt-Wechsel, kein zweites Audit-Event)"
+          "2026-11-21: TestIdenticalRevisionRepeatChangesNothing (kein UpdatedAt-Wechsel, kein zweites Audit-Event)",
+          "Erledigt 2026-11-21: Gateway übernimmt Daemon-Code in pipeline_sync.code (TestPipelineSyncKeepsDaemonErrorCode: stale_revision/revision_conflict/forbidden/unavailable), Editor zeigt Handlungshinweis (e2e); idempotente Wiederholung ohne Zeitstempel/Event; ADR 0002 EN/DE Nachtrag."
         ]
       }
     },
@@ -1333,10 +1332,10 @@
       "milestone": "M3",
       "type": "security",
       "title": "Sicherheitsrelevante Pipeline-Mutationen und Audit-Ereignisse konsistent speichern",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "description": "Pipeline-Update, Override-Erstellung und Override-Nutzung speichern ihren Zustand getrennt von AppendEvent; die Event-Fehler werden ignoriert. Damit sind als auditiert zugesagte Freigaben ohne entsprechenden Ereignisnachweis möglich.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1385,12 +1384,11 @@
         "go test -race ./internal/persistence ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "ADR nicht aktualisiert"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: TestBlockedAuditForgetsFailedWrite"
+          "2026-11-21: TestBlockedAuditForgetsFailedWrite",
+          "Erledigt 2026-11-21: atomares Audit (TestPipelineMutationsRollBackWhenAuditFails), Rate-Limit-Reset (TestBlockedAuditForgetsFailedWrite), ADR 0002 EN/DE Nachtrag."
         ]
       }
     },
@@ -3118,11 +3116,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 20,
+      "partial": 18,
       "blocked": 0,
-      "done": 24
+      "done": 26
     },
-    "progress_percent_done": 53.33,
+    "progress_percent_done": 57.78,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3137,15 +3135,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 7,
-      "remaining": 16
+      "done": 9,
+      "remaining": 14
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 6,
+      "in_progress": 5,
       "blocked": 0,
-      "done": 1
+      "done": 2
     }
   },
   "tasks_type_summary": {
@@ -3167,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 20,
+    "partial": 18,
     "blocked": 0,
-    "done": 24
+    "done": 26
   },
   "evidence_summary": {
     "by_level": {

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ananta888/dockweave/pkg/sdk"
 )
 
 func TestGraphRejectsNonObjectsAndInvalidRevisions(t *testing.T) {
@@ -207,5 +209,31 @@ func TestInvalidGraphPutLeavesLegacyGraphUntouched(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(path); string(after) != string(legacy) {
 		t.Fatalf("legacy graph changed: %s", after)
+	}
+}
+
+// RF-018: the gateway keeps the daemon's conflict code instead of a bare
+// string, so stale, divergent and unavailable pushes are distinguishable.
+func TestPipelineSyncKeepsDaemonErrorCode(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		code string
+	}{
+		{&sdk.APIError{Code: "stale_revision", Message: "stored 5, pushed 1"}, "stale_revision"},
+		{&sdk.APIError{Code: "revision_conflict", Message: "divergent"}, "revision_conflict"},
+		{&sdk.APIError{Code: "forbidden", Message: "admin only"}, "forbidden"},
+		{errors.New("dial unix: no such file"), "unavailable"},
+	} {
+		t.Setenv("XDG_DATA_HOME", t.TempDir())
+		ws := t.TempDir()
+		fp := &fakePusher{err: tc.err}
+		s := &Server{browseRoots: []string{ws}, pushPipeline: fp.push}
+		rec := putGraphReq(s, pipelineGraph(t, ws, 0, true))
+		var out struct {
+			PipelineSync PipelineSync `json:"pipeline_sync"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.PipelineSync.Code != tc.code || out.PipelineSync.Pushed {
+			t.Fatalf("%v: got %+v", tc.err, out.PipelineSync)
+		}
 	}
 }

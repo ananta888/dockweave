@@ -131,3 +131,10 @@ the cost; exceeding them means `fingerprint_unavailable` (blocked).
   reports `pipeline_sync.error` and the daemon keeps the previous edges
   (enforcement never silently weakens because of a failed push).
 - Security decision recorded as SD-020 in `docs/security-decisions.md`.
+- Follow-up 2026-11-21 (RF-018/RF-020): an edge replacement, override
+  creation and override use are written in one transaction together with
+  their audit event; if the audit write fails nothing changes. Repeating the
+  stored revision with identical edges is a no-op (no timestamp, no event);
+  different content at the same revision is `409 revision_conflict`, an older
+  revision `409 stale_revision`. The web gateway reports these codes
+  (`pipeline_sync.code`) and the editor shows what to do.

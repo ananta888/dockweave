@@ -54,7 +54,7 @@ async function mockBackend(page: Page, m: Mock): Promise<void> {
       return json(route, {
         saved: true, body, revision: (body.revision ?? 1) + 1, pipeline_bindings: { 'conn-1': 'pe-1' },
         gates: { written: true, gates: 1 },
-        pipeline_sync: m.pipelineError ? { pushed: false, edges: 1, error: m.pipelineError } : { pushed: true, edges: 1 },
+        pipeline_sync: m.pipelineError ? { pushed: false, edges: 1, error: m.pipelineError, code: m.pipelineError.includes('forbidden') ? 'forbidden' : undefined } : { pushed: true, edges: 1 },
       });
     }
     if (p === '/graph/validate-expression') {
@@ -137,8 +137,9 @@ test('editor validates expressions, offers routing actions and shows sync errors
   const contract = JSON.parse(saved.contract);
   expect(contract).toMatchObject({ expression: 'command == 0', on_true: 'allow', on_false: 'rework', reason_false: 'Lint rot', command: 'npm run lint' });
 
-  // The failed pipeline transfer is visible.
+  // The failed pipeline transfer is visible, with a hint for its cause.
   await expect(page.locator('.pipeline-sync-error')).toContainText('forbidden');
+  await expect(page.locator('.pipeline-sync-hint')).toContainText('kein Admin-Peer');
 });
 
 test('legacy free-text routing opens as reason with the default action', async ({ page }) => {
