@@ -165,6 +165,10 @@ func newWrapperHarness(t *testing.T) *wrapperHarness {
 }
 
 func newWrapperHarnessWithGate(t *testing.T, gateCommand string) *wrapperHarness {
+	return newWrapperHarnessWithConfig(t, gateCommand, nil)
+}
+
+func newWrapperHarnessWithConfig(t *testing.T, gateCommand string, extra map[string]any) *wrapperHarness {
 	t.Helper()
 	for _, bin := range []string{"python3", "curl", "go"} {
 		if _, err := exec.LookPath(bin); err != nil {
@@ -181,9 +185,13 @@ func newWrapperHarnessWithGate(t *testing.T, gateCommand string) *wrapperHarness
 			t.Fatal(err)
 		}
 	}
-	ws := workspaceWithGates(t, root, map[string]any{"version": 1, "gates": []any{map[string]any{
+	cfg := map[string]any{"version": 1, "gates": []any{map[string]any{
 		"id": "tests", "when": "after_run", "command": gateCommand, "cwd": ".", "timeout_sec": 60,
-	}}}, map[string]string{"ok.txt": "ok\n"})
+	}}}
+	for k, v := range extra {
+		cfg[k] = v
+	}
+	ws := workspaceWithGates(t, root, cfg, map[string]string{"ok.txt": "ok\n"})
 
 	sessions := &scriptedSessions{answers: map[string]string{}, prompts: map[string]int{}}
 	srv := api.NewServer(&agents.Service{Store: store}, nil, nil, store)
@@ -399,5 +407,32 @@ func TestWrapperTamperBlocksDownstream(t *testing.T) {
 	h.runWrapper("beta")
 	if h.sessions.count("ag_b") != 0 || len(h.paperclipCalls("agent", "wake")) != 0 {
 		t.Fatal("tamper released the downstream agent")
+	}
+}
+
+// RF-035: a gate with a budget but no reachable broker fails closed through
+// the wrapper: the budget check already fails the pre_run phase, so agent A
+// gets no model turn at all, the issue is re-queued, nothing passes and the
+// follow-up agent stays blocked.
+func TestWrapperBudgetUnavailableBlocksDownstream(t *testing.T) {
+	h := newWrapperHarnessWithConfig(t, `grep -qx ok ok.txt`, map[string]any{
+		"budget": map[string]any{"grant_id": "g1", "max_requests_day": 20}})
+	h.sessions.answer("ag_a", "fertig\nSTATUS: DONE")
+	out := h.runWrapper("alpha")
+	if h.sessions.count("ag_a") != 0 {
+		t.Fatalf("agent A ran although the budget is unavailable\n%s", out)
+	}
+	if got := h.lastStatusUpdate(); got != "todo" || !strings.Contains(h.lastComment(), "pre_run") {
+		t.Fatalf("issue not re-queued with pre_run reason: status %q comment %q", got, h.lastComment())
+	}
+	for _, r := range h.gateRuns() {
+		if r.Status == model.GatePassed {
+			t.Fatalf("budget without broker passed: %+v", r)
+		}
+	}
+	h.sessions.answer("ag_b", "B\nSTATUS: IN_PROGRESS")
+	h.runWrapper("beta")
+	if h.sessions.count("ag_b") != 0 || len(h.paperclipCalls("agent", "wake")) != 0 {
+		t.Fatal("budget failure released the downstream agent")
 	}
 }

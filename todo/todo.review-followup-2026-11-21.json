@@ -166,8 +166,8 @@
     {
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
-      "status": "in_progress",
-      "progress_percent": 99.5,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2257,10 +2257,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Vollständigen DONE-Wrapper-Ablauf über Gate-Runner bis Folge-Agent nachweisen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "description": "TestPipelineEndToEnd verwendet den realen Runner, Store und Endpoint, startet den Gate-Lauf aber direkt. Das archivierte GP-028-Kriterium 'A meldet DONE' und der Übergang durch dockweave-run.sh sind damit nicht abgedeckt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2319,14 +2319,13 @@
         "Integration nur im isolierten Harness; keine realen Modellkosten oder externen Issue-/Wake-Aktionen."
       ],
       "audit_2026_11_21": {
-        "verdict": "todo",
-        "remaining_gaps": [
-          "Budget-Ausfall nicht über den Wrapper-Pfad (benötigt Broker-Fake im Integrationstest); abgedeckt über TestGateExpressionPathInSandbox/budget_without_configuration_fails_closed und TestEvaluateBudgetUnavailableFailsClosed"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: tests/integration/wrapper_e2e_test.go TestWrapperDoneDrivesGateAndReleasesDownstream: echter dockweave-run.sh, gebaute CLI, Daemon-API auf Unix-Socket, Store, Admission, Sandbox-Gate-Runner; simuliert nur Modellantwort (scriptedSessions) und Paperclip (Inbox-HTTP, paperclipai-Skript). Deckt: Nicht-DONE ohne Abschlusslauf/Routing; DONE->PASS mit Upstream ag_a und Issue, Status done, Wake pc-b, B am echten Endpoint ausgeführt; Routing-Wiederholung ohne zweiten Wake; stale blockiert B; FAIL -> in_progress, genau ein Rework an pc-a, Wiederholung ohne Duplikat, B blockiert. Lokal über scripts/test-integration.sh PASS, volle Suite PASS. Daemon löst upstream_agent_id beim Gate-Lauf auf die stabile ID auf (TestGateRunRejectsUnknownUpstreamAgent).",
           "2026-11-21: CI-Lauf 44936900644 (8b04a37): TestWrapperDoneDrivesGateAndReleasesDownstream PASS im privilegierten Integrationsjob",
-          "2026-11-21: tests/integration/wrapper_e2e_test.go: TestWrapperDoneWithoutHostWorkspaceStaysOpen, TestWrapperRoutingFailureKeepsDoneAndNamesRetry, TestWrapperTamperBlocksDownstream (lokal über scripts/test-integration.sh PASS)"
+          "2026-11-21: tests/integration/wrapper_e2e_test.go: TestWrapperDoneWithoutHostWorkspaceStaysOpen, TestWrapperRoutingFailureKeepsDoneAndNamesRetry, TestWrapperTamperBlocksDownstream (lokal über scripts/test-integration.sh PASS)",
+          "Erledigt 2026-11-21: tests/integration/wrapper_e2e_test.go (echter Wrapper, CLI, Daemon, Admission, Sandbox-Runner; simuliert nur Modellantwort und Paperclip): DONE->PASS->Wake->B ausgeführt, Nicht-DONE ohne Abschluss, Routing-Wiederholung ohne Duplikat, stale, FAIL->genau ein Rework, Tamper, fehlender HOST_WORKSPACE, Routing-Fehler behält PASS, Budget-Ausfall (schlägt bereits im pre_run fehl: A erhält keinen Turn, Issue zurück auf todo, B gesperrt). CI-Nachweis ab Lauf 44941893391."
         ]
       }
     },
@@ -3101,11 +3100,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 3,
+      "partial": 2,
       "blocked": 0,
-      "done": 41
+      "done": 42
     },
-    "progress_percent_done": 91.11,
+    "progress_percent_done": 93.33,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3120,15 +3119,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 20,
-      "remaining": 3
+      "done": 21,
+      "remaining": 2
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 3,
+      "in_progress": 2,
       "blocked": 0,
-      "done": 4
+      "done": 5
     }
   },
   "tasks_type_summary": {
@@ -3150,9 +3149,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 3,
+    "partial": 2,
     "blocked": 0,
-    "done": 41
+    "done": 42
   },
   "evidence_summary": {
     "by_level": {
