@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,5 +184,23 @@ func TestRunSymlinkPolicyEndToEnd(t *testing.T) {
 				t.Fatalf("fail policy passed: %+v", run)
 			}
 		})
+	}
+}
+
+// RF-010: a change in the window between the snapshot copy and the
+// verifying fingerprints fails the run; no PASS is bound to content that
+// differs from what was copied.
+func TestRunFailsWhenWorkspaceChangesDuringSnapshot(t *testing.T) {
+	runner, _ := newTestRunner(t, nil)
+	workspace := writeWorkspace(t, `{"version":1,"gates":[{"id":"check","command":"true"}]}`)
+	writeTree(t, workspace, map[string]string{"src.txt": "v1"})
+	testHookAfterSnapshotCopy = func(ws string) { writeTree(t, ws, map[string]string{"src.txt": "v2 written during copy"}) }
+	t.Cleanup(func() { testHookAfterSnapshotCopy = nil })
+	run, err := runner.Run(context.Background(), Request{Workspace: workspace})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status == model.GatePassed || !strings.Contains(run.Reason, "workspace changed while creating gate snapshot") {
+		t.Fatalf("unstable snapshot accepted: %s %q", run.Status, run.Reason)
 	}
 }

@@ -108,8 +108,8 @@
     {
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
-      "status": "in_progress",
-      "progress_percent": 98.33,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -733,10 +733,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Ausgeführte Gate-Konfiguration und Fingerprint aus demselben Snapshot ableiten",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "Run liest cfg aus dem Live-Workspace vor Image-Vorbereitung und copyTree. Der Fingerprint entsteht später aus der Kopie, die Ausführung nutzt aber weiterhin die frühere cfg. Ein Konfigurationswechsel in diesem Fenster kann Ergebnis und angeblich geprüften Inhalt auseinanderbringen.",
       "evidence_level": "investigation_required",
       "scope_origin": "interaction",
@@ -781,11 +781,10 @@
         "go test -tags integration ./tests/integration -run 'TestGateExpression|TestPipelineEndToEnd'"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein deterministischer Hook-Test für das Fenster Fingerprint→Copy→Fingerprint",
-          "Instabiler Snapshot ungetestet",
-          "tests/integration nicht gelaufen"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: deterministischer Hook testHookAfterSnapshotCopy (nur Tests) – Änderung zwischen Kopie und Prüf-Fingerprints -> 'workspace changed while creating gate snapshot', kein PASS (TestRunFailsWhenWorkspaceChangesDuringSnapshot, Docker-Runner); Konfiguration/Policy/Fingerprint aus demselben Snapshot (TestRunSnapshotRemainsBoundToExecutedConfiguration); tests/integration lokal und in CI grün."
         ]
       }
     },
@@ -3104,11 +3103,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 6,
+      "partial": 5,
       "blocked": 0,
-      "done": 38
+      "done": 39
     },
-    "progress_percent_done": 84.44,
+    "progress_percent_done": 86.67,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3123,15 +3122,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 17,
-      "remaining": 6
+      "done": 18,
+      "remaining": 5
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 4,
+      "in_progress": 3,
       "blocked": 0,
-      "done": 3
+      "done": 4
     }
   },
   "tasks_type_summary": {
@@ -3153,9 +3152,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 6,
+    "partial": 5,
     "blocked": 0,
-    "done": 38
+    "done": 39
   },
   "evidence_summary": {
     "by_level": {

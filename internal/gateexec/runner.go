@@ -147,6 +147,9 @@ func (r *Runner) Run(ctx context.Context, req Request) (result *model.GateRun, r
 		run.FinishedAt = time.Now().UTC()
 		return run, nil
 	}
+	if testHookAfterSnapshotCopy != nil {
+		testHookAfterSnapshotCopy(workspace)
+	}
 	if len(omitted) > 0 {
 		run.Warnings = append(run.Warnings, fmt.Sprintf("symlink_policy %s: %d link(s) leaving the workspace hashed but not copied into the sandbox (e.g. %s)",
 			firstNonEmpty(liveCfg.SymlinkPolicy, gatesync.SymlinkHash), len(omitted), omitted[0]))
@@ -640,6 +643,11 @@ func (r *Runner) ValidateWorkspace(raw string) (string, error) {
 	}
 	return canon, nil
 }
+
+// testHookAfterSnapshotCopy lets tests change the live workspace exactly
+// between the snapshot copy and the verifying fingerprints. Always nil in
+// production.
+var testHookAfterSnapshotCopy func(workspace string)
 
 func readConfig(workspace string) (gatesync.Config, []byte, error) {
 	return readConfigContext(context.Background(), workspace)
