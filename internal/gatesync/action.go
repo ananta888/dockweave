@@ -70,6 +70,11 @@ func ParseAction(s string) (Action, bool) {
 func ResolveRouting(onTrue, onFalse, reasonTrue, reasonFalse string) (tAct, fAct Action, tReason, fReason string) {
 	tAct, tReason = resolveOne(onTrue, reasonTrue, Action{Kind: ActionAllow})
 	fAct, fReason = resolveOne(onFalse, reasonFalse, Action{Kind: ActionDeny})
+	// A failed gate never releases work: allow/wake on the FAIL branch would
+	// only report a releasing action on a blocked edge (ADR 0002 D-2).
+	if fAct.Allows() {
+		fAct = Action{Kind: ActionDeny}
+	}
 	return
 }
 
@@ -96,7 +101,10 @@ func routingWarnings(name, onTrue, onFalse string) []string {
 		if v == "" {
 			continue
 		}
-		if _, ok := ParseAction(v); ok {
+		if a, ok := ParseAction(v); ok {
+			if f.field == "on_false" && a.Allows() {
+				out = append(out, fmt.Sprintf("gate %q: on_false %q cannot release work after a failed gate; treated as deny (use deny or rework)", name, v))
+			}
 			continue
 		}
 		if strings.HasPrefix(strings.ToLower(v), ActionWake+":") {

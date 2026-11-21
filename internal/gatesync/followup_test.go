@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -196,5 +197,22 @@ func TestSameGateNameInTwoWorkspacesKeepsSeparateIdentity(t *testing.T) {
 	}
 	if byID[bindings["c1"]] != ws1+"|tests" || byID[bindings["c2"]] != ws2+"|tests" {
 		t.Fatalf("wrong binding: %v %v", byID, bindings)
+	}
+}
+
+// RF-004: a failed gate never releases work, so on_false may only be deny or
+// rework; allow/wake on the FAIL branch are treated as deny with a warning.
+func TestOnFalseCannotRelease(t *testing.T) {
+	for _, v := range []string{"allow", "wake:gamma"} {
+		_, fAct, _, _ := ResolveRouting("", v, "", "why")
+		if fAct.Allows() || fAct.Kind != ActionDeny {
+			t.Fatalf("on_false=%s resolved to %v", v, fAct)
+		}
+		if w := routingWarnings("g", "", v); len(w) != 1 || !strings.Contains(w[0], "on_false") {
+			t.Fatalf("on_false=%s warnings: %v", v, w)
+		}
+	}
+	if _, fAct, _, _ := ResolveRouting("", "rework", "", ""); fAct.Kind != ActionRework {
+		t.Fatalf("rework lost: %v", fAct)
 	}
 }

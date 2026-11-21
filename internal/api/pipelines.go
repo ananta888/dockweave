@@ -172,6 +172,9 @@ func (s *Server) validateEdge(ctx context.Context, e *model.PipelineEdge) error 
 			return fmt.Errorf("invalid action %q (want allow|deny|wake:<agent>|rework)", raw)
 		}
 	}
+	if a, ok := gatesync.ParseAction(e.OnFalse); ok && a.Allows() {
+		return fmt.Errorf("on_false %q cannot release work after a failed gate (want deny|rework)", e.OnFalse)
+	}
 	e.OnTrue, e.OnFalse, e.ReasonTrue, e.ReasonFalse = tAct.String(), fAct.String(), tReason, fReason
 	if e.MaxAgeSec < 0 || e.MaxAgeSec > model.MaxPipelineAgeSec {
 		return fmt.Errorf("max_age_sec must be between 0 and %d", model.MaxPipelineAgeSec)

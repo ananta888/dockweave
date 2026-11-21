@@ -106,6 +106,12 @@ the cost; exceeding them means `fingerprint_unavailable` (blocked).
 | `rework` | B stays blocked; the wrapper opens exactly one rework issue for the upstream agent per gate run |
 
 - `reason_true`/`reason_false` are the verdict reasons of the gate result.
+- **Allowed combinations (2026-11-21, RF-004):** `on_true` accepts every
+  action. `on_false` accepts only `deny` (default) and `rework`: a failed gate
+  never releases work, so `allow` and `wake:` are rejected by the daemon API
+  (400) and treated as `deny` with a warning by the graph sync. Admission
+  returns action and reason for both branches, including a fresh PASS with
+  `on_true=rework` or `deny` (edge code `denied`).
 - **Migration:** existing contracts keep working without changes. A value
   that is not an action is treated as legacy reason text (it becomes the
   reason unless `reason_*` is set) and the default action applies; the graph

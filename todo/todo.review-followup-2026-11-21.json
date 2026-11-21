@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 72.5,
+      "progress_percent": 78.33,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -185,7 +185,7 @@
       "id": "M7",
       "title": "Dokumentation, Track-Validierung und Gesamtabnahme",
       "status": "in_progress",
-      "progress_percent": 33.33,
+      "progress_percent": 60.0,
       "task_ids": [
         "RF-041",
         "RF-042",
@@ -376,7 +376,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 50,
+      "progress_percent": 85,
       "description": "evalEdge gibt bei on_true=rework oder deny vor dem Setzen von Action/Reason zurück. Zusätzlich verarbeitet cmd_route rework nur bei code='failed'; die reine Backend-Korrektur würde den erfolgreichen rework-Zweig noch nicht ausführbar machen.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "today",
@@ -428,9 +428,10 @@
         "verdict": "partial",
         "remaining_gaps": [
           "Kein aggregiertes Reason-Feld in model.Admission",
-          "Kein Test on_true=deny mit reason_true",
-          "Keine dokumentierte Testmatrix; ADR 0002 D-2 nicht aktualisiert",
-          "API akzeptiert on_false=allow/wake:, UI bietet sie nicht an"
+          "wake:-Ziel wird unverändert (Name oder ID) gespeichert und nicht auf Existenz geprüft; der Wrapper akzeptiert beides"
+        ],
+        "resolved": [
+          "2026-11-21: on_false nur deny|rework (API 400, Graph-Sync -> deny mit Warnung; TestOnFalseCannotRelease, TestPutPipelinesRejectsReleasingFailBranch); Matrix TestRoutingMatrixKeepsActionAndReason (PASS allow/wake/deny/rework, FAIL deny/rework mit Aktion+Begründung); ADR 0002 D-2 EN/DE und OpenAPI (on_false enum) aktualisiert"
         ]
       }
     },
@@ -2670,10 +2671,10 @@
       "milestone": "M7",
       "type": "docs",
       "title": "Pipeline-Dokumentation und historische Abschlussaussagen mit tatsächlichen Nachweisen abgleichen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 80,
       "description": "Archivierte Tracks nennen vollständige Umsetzung, enthalten aber weiter veraltete summary_notes und stärkere E2E-Aussagen als der vorhandene Test nachweist. Neue Fehler dürfen nicht durch alte done-Markierungen unsichtbar werden.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -2732,7 +2733,10 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Nicht begonnen"
+          "Abschlussnachweise in noch offenen Tasks bei Abschluss mit Commit-SHA/CI-Lauf ergänzen (RF-045)"
+        ],
+        "resolved": [
+          "2026-11-21: review_followup_addendum in todo/archive/gate-pipeline.json, commit-review-2026-11-21.json, gates-2d-hardening.json (27 Rückverweise GP/CR/GD -> RF, Status zum Zeitpunkt), korrigierte Aussagen (GP-028 E2E, GP-023 genau-einmal Rework, GP-021 Audit, GP-022/029 jeder Turn, GP-030 statische Analyse), veraltete summary_notes als historisch markiert; Archive unverändert gültig (validate_todos --archives). EN/DE: Modusmatrix, Reconcile-Fenster, ADR D-2 Kombinationen."
         ]
       }
     },
@@ -3114,9 +3118,9 @@
   "tasks_status_summary": {
     "total": 45,
     "by_status": {
-      "todo": 2,
+      "todo": 1,
       "in_progress": 0,
-      "partial": 35,
+      "partial": 36,
       "blocked": 0,
       "done": 8
     },
@@ -3163,9 +3167,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 2,
+    "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 35,
+    "partial": 36,
     "blocked": 0,
     "done": 8
   },

@@ -522,5 +522,57 @@
     "P0 = Sicherheits-/Korrektheitslücken (GD-001..003), P1 = funktionale Lücken, P2 = UX/Robustheit.",
     "Statuswerte folgen dem Ananta-Track-Schema (todo/in_progress/partial/blocked/done), nicht den DockWeave-Legacy-Werten (pending/deferred).",
     "Alle 19 Tasks umgesetzt: Backend (fail-closed Budget, Review-Attribution, Expression-Warnung, Phasen-Doku, per-Gate-Workspace, Multi-Manifest-Deps, Secret-Scan+Entropie, stabile Gate-ID, Retention) und 2D-Darstellung (Gate-Laufstatus, strict-Typen, deterministisches Force-Layout, Undo/Redo, Concurrency, DOMMatrix, UUID, Chain-Palette, Review-Erkennung, A11y)."
-  ]
+  ],
+  "review_followup_addendum": {
+    "date": "2026-11-21",
+    "followup_track": "todo/todo.review-followup-2026-11-21.json",
+    "note": "Nachtrag 2026-11-21 (Review-Folgetrack review-followup-2026-11-21): Status, Testergebnisse und Zeitbezug dieses Archivs bleiben unverändert. Das Review der Commits bac167c..29eaa00 fand Lücken in den unten genannten Aufgaben; diese werden ausschließlich im aktiven Track verfolgt. Ein 'done' hier bedeutet 'damals abgeschlossen', nicht 'fehlerfrei nach heutigem Review'.",
+    "links": {
+      "GD-005": {
+        "followup_tasks": [
+          "RF-024"
+        ],
+        "followup_status_at_addendum": {
+          "RF-024": "partial"
+        }
+      },
+      "GD-007": {
+        "followup_tasks": [
+          "RF-043"
+        ],
+        "followup_status_at_addendum": {
+          "RF-043": "partial"
+        }
+      },
+      "GD-011": {
+        "followup_tasks": [
+          "RF-025"
+        ],
+        "followup_status_at_addendum": {
+          "RF-025": "partial"
+        }
+      },
+      "GD-012": {
+        "followup_tasks": [
+          "RF-015",
+          "RF-016"
+        ],
+        "followup_status_at_addendum": {
+          "RF-015": "partial",
+          "RF-016": "partial"
+        }
+      },
+      "GD-014": {
+        "followup_tasks": [
+          "RF-002",
+          "RF-023"
+        ],
+        "followup_status_at_addendum": {
+          "RF-002": "partial",
+          "RF-023": "partial"
+        }
+      }
+    },
+    "corrected_claims": []
+  }
 }

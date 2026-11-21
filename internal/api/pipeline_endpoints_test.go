@@ -228,3 +228,50 @@ func TestNumericLimitsRejectedBeforeDurationConversion(t *testing.T) {
 		t.Fatalf("max_age_sec at the limit: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestPutPipelinesRejectsReleasingFailBranch(t *testing.T) {
+	f := newPipelineFixture(t)
+	for _, v := range []string{"allow", "wake:alpha"} {
+		body := fmt.Sprintf(`{"revision":1,"edges":[{"id":"e","gate_id":"tests","downstream_agent_id":"beta","workspace":%q,"on_false":%q}]}`, f.ws, v)
+		if rec := f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("on_false=%s: %d %s", v, rec.Code, rec.Body)
+		}
+	}
+}
+
+// RF-004: both branches keep action and reason up to the admission answer.
+func TestRoutingMatrixKeepsActionAndReason(t *testing.T) {
+	for _, tc := range []struct {
+		name, onTrue, reasonTrue, onFalse, reasonFalse string
+		status                                         model.GateRunStatus
+		allowed                                        bool
+		code, action, reason                           string
+	}{
+		{"pass allow", "allow", "fine", "", "", model.GatePassed, true, model.AdmitOK, "allow", "fine"},
+		{"pass wake", "wake:alpha", "", "", "", model.GatePassed, true, model.AdmitOK, "wake:alpha", ""}, // target kept verbatim (id or name)
+		{"pass deny", "deny", "hold for release", "", "", model.GatePassed, false, model.AdmitDenied, "deny", "hold for release"},
+		{"pass rework", "rework", "review this", "", "", model.GatePassed, false, model.AdmitDenied, "rework", "review this"},
+		{"fail deny", "", "", "deny", "tests red", model.GateFailed, false, model.AdmitFailed, "deny", "tests red"},
+		{"fail rework", "", "", "rework", "fix tests", model.GateFailed, false, model.AdmitFailed, "rework", "fix tests"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newPipelineFixture(t)
+			e := map[string]any{"id": "e", "gate_id": "tests", "upstream_agent_id": "alpha", "downstream_agent_id": "beta",
+				"workspace": f.ws, "on_true": tc.onTrue, "reason_true": tc.reasonTrue, "on_false": tc.onFalse, "reason_false": tc.reasonFalse}
+			body, _ := json.Marshal(map[string]any{"revision": 1, "edges": []any{e}})
+			if rec := f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", string(body)); rec.Code != http.StatusOK {
+				t.Fatalf("push: %d %s", rec.Code, rec.Body)
+			}
+			f.saveRun(t, "r", tc.status, "sha256:one")
+			var adm model.Admission
+			rec := f.do(t, RoleAdmin, http.MethodGet, "/api/v1/pipelines/admission?agent=beta", "")
+			if err := json.Unmarshal(rec.Body.Bytes(), &adm); err != nil || len(adm.Edges) != 1 {
+				t.Fatalf("admission: %v %s", err, rec.Body)
+			}
+			ed := adm.Edges[0]
+			if adm.Allowed != tc.allowed || ed.Code != tc.code || ed.Action != tc.action || ed.Reason != tc.reason || adm.Action != tc.action {
+				t.Fatalf("got allowed=%v code=%s action=%s/%s reason=%q", adm.Allowed, ed.Code, ed.Action, adm.Action, ed.Reason)
+			}
+		})
+	}
+}

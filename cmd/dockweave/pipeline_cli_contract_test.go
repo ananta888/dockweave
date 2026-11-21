@@ -88,7 +88,7 @@ func (f *cliFixture) requests() []recorded {
 func TestCLIStdoutIsPureJSONAndErrorsGoToStderr(t *testing.T) {
 	f := newCLIFixture(t)
 	f.respond(200, `{"agent_id":"b","allowed":false,"edges":[]}`)
-	out, errOut, code := f.run("--json", "pipeline", "status", "beta")
+	out, _, code := f.run("--json", "pipeline", "status", "beta")
 	if code != 3 || !json.Valid([]byte(out)) {
 		t.Fatalf("blocked: exit %d stdout %q", code, out)
 	}
@@ -97,7 +97,7 @@ func TestCLIStdoutIsPureJSONAndErrorsGoToStderr(t *testing.T) {
 		t.Fatalf("collection: exit %d stdout %q", code, out)
 	}
 	f.respond(404, `{"error":{"code":"not_found","message":"agent missing"}}`)
-	out, errOut, code = f.run("--json", "pipeline", "status", "missing")
+	out, errOut, code := f.run("--json", "pipeline", "status", "missing")
 	if code != 1 || strings.TrimSpace(out) != "" || !strings.Contains(errOut, "not_found") {
 		t.Fatalf("technical error: exit %d stdout %q stderr %q", code, out, errOut)
 	}

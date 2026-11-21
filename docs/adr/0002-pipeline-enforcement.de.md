@@ -111,6 +111,13 @@ begrenzen den Aufwand; bei Überschreitung gilt `fingerprint_unavailable`
 | `rework` | B bleibt blockiert; der Wrapper legt pro Gate-Lauf genau ein Nacharbeit-Issue für den Upstream-Agenten an |
 
 - `reason_true`/`reason_false` sind die Begründungen im Gate-Ergebnis.
+- **Zulässige Kombinationen (21.11.2026, RF-004):** `on_true` akzeptiert jede
+  Aktion. `on_false` akzeptiert nur `deny` (Standard) und `rework`: Ein
+  gescheitertes Gate gibt nie Arbeit frei, daher lehnt die Daemon-API `allow`
+  und `wake:` ab (400), und der Graph-Sync behandelt sie mit Warnung als
+  `deny`. Die Admission liefert Aktion und Begründung für beide Zweige, auch
+  für einen frischen PASS mit `on_true=rework` oder `deny` (Kanten-Code
+  `denied`).
 - **Migration:** bestehende Contracts laufen ohne Änderung weiter. Ein Wert,
   der keine Aktion ist, gilt als alter Begründungstext (er wird zum Grund,
   sofern `reason_*` nicht gesetzt ist), und die Default-Aktion greift; der

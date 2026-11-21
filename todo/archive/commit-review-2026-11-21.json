@@ -402,5 +402,67 @@
         "Breaking (intern): gatesync.SyncAll hat jetzt die Signatur (raw, previous, roots) ([]Result, []string)."
       ]
     }
-  ]
+  ],
+  "review_followup_addendum": {
+    "date": "2026-11-21",
+    "followup_track": "todo/todo.review-followup-2026-11-21.json",
+    "note": "Nachtrag 2026-11-21 (Review-Folgetrack review-followup-2026-11-21): Status, Testergebnisse und Zeitbezug dieses Archivs bleiben unverändert. Das Review der Commits bac167c..29eaa00 fand Lücken in den unten genannten Aufgaben; diese werden ausschließlich im aktiven Track verfolgt. Ein 'done' hier bedeutet 'damals abgeschlossen', nicht 'fehlerfrei nach heutigem Review'.",
+    "links": {
+      "CR-002": {
+        "followup_tasks": [
+          "RF-043"
+        ],
+        "followup_status_at_addendum": {
+          "RF-043": "partial"
+        }
+      },
+      "CR-003": {
+        "followup_tasks": [
+          "RF-043"
+        ],
+        "followup_status_at_addendum": {
+          "RF-043": "partial"
+        }
+      },
+      "CR-008": {
+        "followup_tasks": [
+          "RF-006",
+          "RF-018"
+        ],
+        "followup_status_at_addendum": {
+          "RF-006": "done",
+          "RF-018": "partial"
+        }
+      },
+      "CR-009": {
+        "followup_tasks": [
+          "RF-001",
+          "RF-025"
+        ],
+        "followup_status_at_addendum": {
+          "RF-001": "partial",
+          "RF-025": "partial"
+        }
+      },
+      "CR-010": {
+        "followup_tasks": [
+          "RF-016"
+        ],
+        "followup_status_at_addendum": {
+          "RF-016": "partial"
+        }
+      },
+      "CR-011": {
+        "followup_tasks": [
+          "RF-041"
+        ],
+        "followup_status_at_addendum": {
+          "RF-041": "todo"
+        }
+      }
+    },
+    "corrected_claims": [
+      "summary_notes 'staticcheck ... nicht ausgeführt': inzwischen verbindlich in make lint und CI (RF-037)."
+    ]
+  }
 }

@@ -1052,8 +1052,8 @@
   },
   "summary_notes": [
     "Version 2 (21.11.2026): nach der Projektanalyse um M0, M3 bis M5 und M8 erweitert; GP-005 von done auf partial korrigiert (Integrationstest fehlt, siehe GP-013); GP-006 hinter GP-007 eingeordnet und auf P2 gesenkt; GP-007 und GP-008 an den Admission-Ansatz angepasst.",
-    "Offene Entscheidungen D-1 (Durchsetzungspunkt) und D-2 (Semantik on_true/on_false) blockieren M4; Empfehlungen sind jeweils Option A.",
-    "Akuter Bug GP-009: jedes neu angelegte Gate mit Kommando endet heute mit status error."
+    "Historisch (Stand Version 2, vor M4; D-1/D-2 wurden in GP-014/GP-015 entschieden, ADR 0002): Offene Entscheidungen D-1 (Durchsetzungspunkt) und D-2 (Semantik on_true/on_false) blockieren M4; Empfehlungen sind jeweils Option A.",
+    "Historisch (Stand Version 2; behoben in GP-009): Akuter Bug GP-009: jedes neu angelegte Gate mit Kommando endet heute mit status error."
   ],
   "end_summaries": [
     {
@@ -1073,5 +1073,195 @@
         "Folgearbeit: Vorbestehende staticcheck-Befunde (SA1019 u. a.) separat abbauen"
       ]
     }
-  ]
+  ],
+  "review_followup_addendum": {
+    "date": "2026-11-21",
+    "followup_track": "todo/todo.review-followup-2026-11-21.json",
+    "note": "Nachtrag 2026-11-21 (Review-Folgetrack review-followup-2026-11-21): Status, Testergebnisse und Zeitbezug dieses Archivs bleiben unverändert. Das Review der Commits bac167c..29eaa00 fand Lücken in den unten genannten Aufgaben; diese werden ausschließlich im aktiven Track verfolgt. Ein 'done' hier bedeutet 'damals abgeschlossen', nicht 'fehlerfrei nach heutigem Review'.",
+    "links": {
+      "GP-007": {
+        "followup_tasks": [
+          "RF-001",
+          "RF-003",
+          "RF-013",
+          "RF-015"
+        ],
+        "followup_status_at_addendum": {
+          "RF-001": "partial",
+          "RF-003": "partial",
+          "RF-013": "partial",
+          "RF-015": "partial"
+        }
+      },
+      "GP-008": {
+        "followup_tasks": [
+          "RF-024",
+          "RF-025"
+        ],
+        "followup_status_at_addendum": {
+          "RF-024": "partial",
+          "RF-025": "partial"
+        }
+      },
+      "GP-013": {
+        "followup_tasks": [
+          "RF-034"
+        ],
+        "followup_status_at_addendum": {
+          "RF-034": "partial"
+        }
+      },
+      "GP-016": {
+        "followup_tasks": [
+          "RF-001",
+          "RF-018",
+          "RF-019",
+          "RF-020"
+        ],
+        "followup_status_at_addendum": {
+          "RF-001": "partial",
+          "RF-018": "partial",
+          "RF-019": "partial",
+          "RF-020": "partial"
+        }
+      },
+      "GP-017": {
+        "followup_tasks": [
+          "RF-018",
+          "RF-020",
+          "RF-022"
+        ],
+        "followup_status_at_addendum": {
+          "RF-018": "partial",
+          "RF-020": "partial",
+          "RF-022": "done"
+        }
+      },
+      "GP-018": {
+        "followup_tasks": [
+          "RF-001",
+          "RF-025",
+          "RF-026"
+        ],
+        "followup_status_at_addendum": {
+          "RF-001": "partial",
+          "RF-025": "partial",
+          "RF-026": "partial"
+        }
+      },
+      "GP-019": {
+        "followup_tasks": [
+          "RF-007",
+          "RF-008",
+          "RF-009",
+          "RF-010"
+        ],
+        "followup_status_at_addendum": {
+          "RF-007": "partial",
+          "RF-008": "partial",
+          "RF-009": "partial",
+          "RF-010": "partial"
+        }
+      },
+      "GP-020": {
+        "followup_tasks": [
+          "RF-021",
+          "RF-033"
+        ],
+        "followup_status_at_addendum": {
+          "RF-021": "partial",
+          "RF-033": "partial"
+        }
+      },
+      "GP-021": {
+        "followup_tasks": [
+          "RF-003",
+          "RF-020"
+        ],
+        "followup_status_at_addendum": {
+          "RF-003": "partial",
+          "RF-020": "partial"
+        }
+      },
+      "GP-022": {
+        "followup_tasks": [
+          "RF-029",
+          "RF-030"
+        ],
+        "followup_status_at_addendum": {
+          "RF-029": "partial",
+          "RF-030": "partial"
+        }
+      },
+      "GP-023": {
+        "followup_tasks": [
+          "RF-004",
+          "RF-005",
+          "RF-027",
+          "RF-028"
+        ],
+        "followup_status_at_addendum": {
+          "RF-004": "partial",
+          "RF-005": "partial",
+          "RF-027": "partial",
+          "RF-028": "partial"
+        }
+      },
+      "GP-026": {
+        "followup_tasks": [
+          "RF-002",
+          "RF-023",
+          "RF-044"
+        ],
+        "followup_status_at_addendum": {
+          "RF-002": "partial",
+          "RF-023": "partial",
+          "RF-044": "partial"
+        }
+      },
+      "GP-027": {
+        "followup_tasks": [
+          "RF-036",
+          "RF-038"
+        ],
+        "followup_status_at_addendum": {
+          "RF-036": "partial",
+          "RF-038": "partial"
+        }
+      },
+      "GP-028": {
+        "followup_tasks": [
+          "RF-035"
+        ],
+        "followup_status_at_addendum": {
+          "RF-035": "partial"
+        }
+      },
+      "GP-029": {
+        "followup_tasks": [
+          "RF-030",
+          "RF-041"
+        ],
+        "followup_status_at_addendum": {
+          "RF-030": "partial",
+          "RF-041": "todo"
+        }
+      },
+      "GP-030": {
+        "followup_tasks": [
+          "RF-037"
+        ],
+        "followup_status_at_addendum": {
+          "RF-037": "done"
+        }
+      }
+    },
+    "corrected_claims": [
+      "GP-028 ('A meldet DONE'): tests/integration/pipeline_e2e_test.go startete den Gate-Lauf direkt; der Übergang durch dockweave-run.sh war nicht abgedeckt. Nachgewiesen erst durch RF-035 (tests/integration/wrapper_e2e_test.go, Commit 4ae115c; lokal über scripts/test-integration.sh, danach CI).",
+      "GP-023 ('genau ein Rework-Issue pro Gate-Lauf'): galt nur ohne Timeout/Absturz; ein unklarer Ausgang blockierte danach dauerhaft. Seit RF-005 (Commit 487d1c6) gilt: höchstens ein bestätigtes Rework pro Lauf, nach Ablauf von DOCKWEAVE_PIPELINE_RECONCILE_SEC erneute Anlage nur nach erfolgloser Tag-Suche; Wake/Kommentar können dann einmal doppelt erfolgen.",
+      "GP-021 ('auditierter Override'): Anlage und Verbrauch wurden nicht atomar mit dem Audit-Ereignis gespeichert (Ergebnis von AppendEvent verworfen). Atomar seit RF-020.",
+      "GP-022/GP-029 ('jeder programmgesteuerte Turn wird geprüft'): gilt nicht für den Legacy-Pfad dockweave-<id> (docker exec); siehe Modusmatrix in docs/paperclip-delegation*.md (RF-030).",
+      "GP-030 ('statische Analyse'): staticcheck lief damals nicht und make lint verschluckte Befunde; verbindlich seit RF-037 (CI-Lauf 44934608299)."
+    ]
+  }
 }

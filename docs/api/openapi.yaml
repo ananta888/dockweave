@@ -599,7 +599,7 @@ components:
         downstream_agent_id: { type: string }
         workspace: { type: string, description: canonical absolute path }
         on_true: { type: string, description: "allow | deny | wake:<agent-id> | rework" }
-        on_false: { type: string, description: "allow | deny | wake:<agent-id> | rework; failing gates never admit work" }
+        on_false: { type: string, enum: [deny, rework], description: "deny (default) | rework; a failing gate never admits work (ADR 0002 D-2)" }
         reason_true: { type: string }
         reason_false: { type: string }
         max_age_sec: { type: integer, minimum: 0, maximum: 315360000, description: "0 disables age expiry. Completion must be present, no earlier than start and no more than 60 seconds in the future." }
