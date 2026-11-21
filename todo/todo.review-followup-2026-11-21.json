@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 82.0,
+      "progress_percent": 87.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -2867,10 +2867,10 @@
       "milestone": "M4",
       "type": "bug",
       "title": "Expression-Validierung an den tatsächlich gespeicherten Ausdruck binden und begrenzen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "checkExpression und ensureValidExpression übernehmen Antworten ohne Aktualitätsprüfung; ensureValidExpression führt bei jedem HTTP-Fehler trotzdem den Save-Callback aus. Validate/Evaluate besitzen zudem keinen gemeinsamen Größen-/Verschachtelungsgrenzwert für Konfigurationen außerhalb des 16-KiB-Editor-Endpunkts.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -2925,14 +2925,11 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Add-Dialog und späte Inline-Prüfung ungetestet",
-          "Limits undokumentiert",
-          "Kein Fuzz-Test"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: Speicher-Fehler (Ausdruck nicht verifiziert / Formular geändert) wurden im Bearbeiten-Dialog nie angezeigt – configError dort ergänzt; Popover-Höhe an Viewport gebunden (Save war unerreichbar); e2e grün"
+          "2026-11-21: Speicher-Fehler (Ausdruck nicht verifiziert / Formular geändert) wurden im Bearbeiten-Dialog nie angezeigt – configError dort ergänzt; Popover-Höhe an Viewport gebunden (Save war unerreichbar); e2e grün",
+          "Erledigt 2026-11-21: Speichern nur für den validierten Formularstand in Bearbeiten- und Add-Dialog (e2e 'a delayed expression validation…', 'the add dialog cannot save…'), Validierungsausfall blockiert (500-e2e); Grenzen 16 KiB/2048 Tokens/Tiefe 128 dokumentiert (gate-model EN/DE) und gemeinsam geprüft (TestExpressionLimitsSharedByValidationAndEvaluation); FuzzExpression (lokal 20 s, ~525k Eingaben, Validate/Evaluate stimmen überein, keine Panics). Die verspätete Inline-Prüfung ist über exprGeneration abgesichert, aber nicht separat im Browser getestet."
         ]
       }
     },
@@ -3119,11 +3116,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 15,
+      "partial": 14,
       "blocked": 0,
-      "done": 29
+      "done": 30
     },
-    "progress_percent_done": 64.44,
+    "progress_percent_done": 66.67,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3168,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 15,
+    "partial": 14,
     "blocked": 0,
-    "done": 29
+    "done": 30
   },
   "evidence_summary": {
     "by_level": {

@@ -110,6 +110,13 @@ gilt als wahr, wenn er ungleich 0 ist. Beide Seiten von `&&`/`||` werden
 immer ausgewertet, damit ein nicht verfügbares `budget` den Ausdruck auch
 dort scheitern lässt, wo Kurzschluss-Auswertung ihn übersprungen hätte.
 
+Grenzen (gemeinsam für Editor-Validierung und Auswertung zur Laufzeit):
+höchstens 16 KiB, 2048 Tokens und eine Verschachtelungstiefe von 128
+(Klammern, `!`- und unäre `-`-Ketten). Eine Überschreitung ist ein Fehler,
+nie ein PASS. Der Editor speichert nur einen Ausdruck, den das Gateway für
+genau diesen Formularstand bestätigt hat; eine gescheiterte oder nicht
+erreichbare Validierung verhindert das Speichern.
+
 - Ohne Ausdruck entscheidet der Exit-Code (0 = bestanden). Neue Gates
   beginnen im Editor ohne Ausdruck; Dokumente mit dem alten Default
   `expression: "true"` laufen weiter.

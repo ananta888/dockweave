@@ -106,6 +106,12 @@ counts as true when non-zero. Both sides of `&&`/`||` are always evaluated,
 so an unavailable `budget` fails the expression even where short-circuiting
 would skip it.
 
+Limits (shared by editor validation and run-time evaluation): at most
+16 KiB, 2048 tokens and a nesting depth of 128 (parentheses, `!` and unary
+`-` chains). Exceeding a limit is an error, never a pass. The editor saves
+only an expression the gateway confirmed for exactly that form state; a
+validation that fails or is unreachable blocks the save.
+
 - Without an expression the exit code decides (0 = passed). New gates in the
   editor start without an expression; documents with the old default
   `expression: "true"` keep working.

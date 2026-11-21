@@ -415,3 +415,30 @@ test('the gate editor stores the symlink policy in the contract', async ({ page 
   const saved = (m.puts.at(-1) as any).connectors.find((c: any) => c.id === 'conn-1');
   expect(JSON.parse(saved.contract).symlink_policy).toBe('ignored');
 });
+
+test('the add dialog cannot save a form changed during a delayed validation', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  let release: (() => void) | undefined;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let delayed = false;
+  await page.route('**/graph/validate-expression', async route => {
+    const { expression } = route.request().postDataJSON();
+    if (expression === 'command == 0' && !delayed) { delayed = true; await pending; }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+  await openGraph(page);
+  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right' });
+  await page.getByRole('button', { name: 'Connectoren konfigurieren…' }).click();
+  await page.locator('select[name="connKind"]').selectOption('gate');
+  await page.locator('input[name="connName"]').fill('Lint');
+  await page.locator('select[name="connTargetAgent"]').selectOption('ag_b');
+  await page.locator('input[name="gateCommand"]').fill('npm run lint');
+  await page.locator('input[name="gateExpression"]').fill('command == 0');
+  await page.getByRole('button', { name: 'Connector hinzufügen' }).click();
+  await expect.poll(() => delayed).toBe(true);
+  await page.locator('input[name="gateCommand"]').fill('rm -rf build');
+  release?.();
+  await expect(page.locator('.notice.error').filter({ hasText: 'Formular inzwischen geändert' })).toBeVisible();
+  expect(m.puts.some((d: any) => (d.connectors || []).some((c: any) => c.name === 'Lint'))).toBe(false);
+});
