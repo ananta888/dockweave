@@ -6,7 +6,7 @@ GOFLAGS   ?=
 BIN_DIR   := bin
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: all build web install test test-wrapper test-race test-integration vet lint clean docker-image install-tools
+.PHONY: all build web install test test-wrapper test-race test-integration vet lint openapi-check clean docker-image install-tools
 
 all: build
 
@@ -49,6 +49,10 @@ vet:
 
 lint: vet
 	@if command -v staticcheck >/dev/null 2>&1; then staticcheck ./...; else echo "staticcheck not installed; run make install-tools" >&2; exit 1; fi
+
+# Real handler responses must match docs/api/openapi.yaml (needs jsonschema, pyyaml).
+openapi-check:
+	python3 -B scripts/validate_openapi.py
 
 clean:
 	rm -rf $(BIN_DIR)

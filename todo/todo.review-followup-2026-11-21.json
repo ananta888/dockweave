@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 70.83,
+      "progress_percent": 71.67,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -129,7 +129,7 @@
       "id": "M3",
       "title": "Persistenz, Admission-API und Auditierung",
       "status": "in_progress",
-      "progress_percent": 74.0,
+      "progress_percent": 85.0,
       "task_ids": [
         "RF-018",
         "RF-019",
@@ -1160,7 +1160,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 65,
+      "progress_percent": 75,
       "description": "max_age_sec erhält nur eine Untergrenze; ttl_sec und prune days werden vor vollständiger Bereichsprüfung in time.Duration multipliziert. Überläufe sowie fehlende oder zukünftige finished_at-Werte sind nicht durch eine einheitliche Zeitsemantik abgesichert.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1209,8 +1209,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "API-Tests für riesige/negative timeout_sec, days, max_age_sec fehlen",
-          "days/keep nicht in OpenAPI"
+          "API-Tests für riesige/negative timeout_sec und max_age_sec fehlen noch"
+        ],
+        "resolved": [
+          "2026-11-21: POST /api/v1/gates/prune mit days/keep_per_workspace-Grenzen in OpenAPI; Fixtures prüfen days>36500, keep<0 und Überlauf-Integer -> 400"
         ]
       }
     },
@@ -1454,10 +1456,10 @@
       "milestone": "M3",
       "type": "docs",
       "title": "OpenAPI-Vertrag für Einzel- und Sammel-Admission sowie Fehlerantworten vervollständigen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 45,
+      "progress_percent": 100,
       "description": "Die Beschreibung nennt die Sammelantwort ohne agent, die deklarierte 200-Schema-Referenz zeigt jedoch nur auf Admission. Handgeschriebener SDK und Implementierung liefern bereits zwei unterschiedliche Formen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1504,11 +1506,10 @@
         "Einen im Projekt reproduzierbaren OpenAPI-Validierungsaufruf mitliefern; keinen erfolgreichen Schema-Check behaupten, bevor das Werkzeug tatsächlich ausgeführt wurde."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Keine Validierung echter Handler-Antworten gegen das Schema, kein reproduzierbarer Befehl",
-          "400/403/409 ohne strukturierte Error-Schemas",
-          "Leere admissions-Liste nicht dokumentiert"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: make openapi-check / scripts/validate_openapi.py validiert 23 echte Handler-Antworten (TestRecordPipelineResponsesForOpenAPI, echter Store) gegen docs/api/openapi.yaml; undokumentierte JSON-Antworten scheitern; Gegenprobe mit falschem Pflichtfeld scheitert. Fehlerantworten strukturiert (Error required code/message, Invalid/Forbidden/Internal, 409 stale_revision|revision_conflict), leere Sammelliste dokumentiert. CI-Job test führt die Prüfung aus. SDK-Verhalten durch pkg/sdk/pipelines_contract_test.go belegt; Nutzerdoku enthält keine abweichenden Beispiele."
         ]
       }
     },
@@ -3116,11 +3117,11 @@
     "by_status": {
       "todo": 2,
       "in_progress": 0,
-      "partial": 37,
+      "partial": 36,
       "blocked": 0,
-      "done": 6
+      "done": 7
     },
-    "progress_percent_done": 13.33,
+    "progress_percent_done": 15.56,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3165,9 +3166,9 @@
     "state": "in_progress",
     "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 37,
+    "partial": 36,
     "blocked": 0,
-    "done": 6
+    "done": 7
   },
   "evidence_summary": {
     "by_level": {

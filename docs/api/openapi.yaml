@@ -294,10 +294,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PipelineState" }
-        "400": { description: Validation error }
-        "403": { description: Not an admin peer }
-        "409": { description: "stale_revision for an older revision; revision_conflict for different content at an existing revision" }
-        "500": { description: Persistence or mandatory audit write failed; mutation rolled back }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: >
+            stale_revision for an older revision (unless reset); revision_conflict
+            for different content at an existing revision. An identical repeat
+            of the stored revision is a 200 no-op.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Error" }
+                  - properties: { error: { properties: { code: { enum: [stale_revision, revision_conflict] } } } }
+        "500": { $ref: "#/components/responses/Internal" }
 
   /api/v1/pipelines/admission:
     get:
@@ -306,7 +316,10 @@ paths:
         - { name: agent, in: query, description: agent id or name; omitted = every agent with edges, schema: { type: string } }
       responses:
         "200":
-          description: Admission (or {revision, admissions[]} without agent)
+          description: >
+            Admission for one agent; without agent the collection of every
+            agent that has incoming edges ({revision, admissions[]}), with an
+            empty admissions list when no edges are stored.
           content:
             application/json:
               schema:
@@ -353,10 +366,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PipelineOverride" }
-        "400": { description: Validation error }
-        "403": { description: Not an admin peer }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "500": { description: Persistence or mandatory audit write failed; override not created }
+        "500": { $ref: "#/components/responses/Internal" }
 
   /api/v1/pipelines/overrides:
     get:
@@ -373,6 +386,34 @@ paths:
                 type: object
                 properties:
                   overrides: { type: array, items: { $ref: "#/components/schemas/PipelineOverride" } }
+
+  /api/v1/gates/prune:
+    post:
+      summary: Delete old gate runs (retention, admin)
+      description: >
+        Ranges are checked before any duration arithmetic. Runs newer than
+        `days` and the newest `keep_per_workspace` runs of every workspace are
+        always kept; ordering uses started_at then id (newest first).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days: { type: integer, minimum: 0, maximum: 36500, default: 30, description: "0 selects the 30-day default" }
+                keep_per_workspace: { type: integer, minimum: 0, maximum: 100000, default: 20, description: "0 selects the default of 20" }
+      responses:
+        "200":
+          description: Number of deleted runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pruned]
+                properties:
+                  pruned: { type: integer, minimum: 0 }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /v1/chat/completions:
     post:
@@ -403,13 +444,41 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: Validation error (error.code = invalid)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Error" }
+              - properties: { error: { properties: { code: { const: invalid } } } }
+    Forbidden:
+      description: >
+        Not an admin peer. A handler-level refusal is JSON (error.code =
+        forbidden); the peer-auth middleware refuses unknown UIDs and monitor
+        writes earlier with a text/plain body.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Error" }
+              - properties: { error: { properties: { code: { const: forbidden } } } }
+        text/plain:
+          schema: { type: string }
+    Internal:
+      description: Persistence or mandatory audit write failed; the mutation was rolled back
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
     Error:
       type: object
+      required: [error]
       properties:
         error:
           type: object
+          required: [code, message]
           properties:
             code: { type: string }
             message: { type: string }
