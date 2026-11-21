@@ -636,8 +636,8 @@ interface GraphEdge {
                       <option value="both">beide</option>
                     </select>
                   </label>
-                  @if (connKind === 'agent-chain') {
-                    <label>Ziel-Agent
+                  @if (connKind === 'agent-chain' || connKind === 'gate') {
+                    <label>{{ connKind === 'gate' ? 'Ziel-Agent (nach PASS)' : 'Ziel-Agent' }}
                       <select [(ngModel)]="connTargetAgent" name="connTargetAgent">
                         <option value="">— select —</option>
                         @for (a of agents; track a.id) { @if (a.id !== connectorAgent()?.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> } }
@@ -739,8 +739,8 @@ interface GraphEdge {
                       <option value="both">beide</option>
                     </select>
                   </label>
-                  @if (ecKind === 'agent-chain') {
-                    <label>Ziel-Agent
+                  @if (ecKind === 'agent-chain' || ecKind === 'gate') {
+                    <label>{{ ecKind === 'gate' ? 'Ziel-Agent (nach PASS)' : 'Ziel-Agent' }}
                       <select [(ngModel)]="ecTarget" name="ecTarget">
                         <option value="">— select —</option>
                         @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> }
@@ -1663,6 +1663,7 @@ export class GraphComponent implements OnChanges {
       gate: ['agent', 'gate'],
       http: ['agent', 'http'],
       chain: ['agent', 'agent'],
+      proceed: ['gate', 'agent'],
     };
     const rule = rules[type];
     if (!rule) return true;
@@ -2782,6 +2783,16 @@ export class GraphComponent implements OnChanges {
         const src = this.pickPort(`agent-${c.agentId}`, 'out', 'right');
         const tgt = this.pickPort(connId, 'in', 'left');
         if (src && tgt) edges.push({ id: `conn-${c.id}`, source: `agent-${c.agentId}`, target: connId, sourcePort: src.id, targetPort: tgt.id, label: c.name, kind: c.kind, sourceSide: src.side, targetSide: tgt.side, type: 'bezier' });
+      }
+      // Pipeline gate: a gate with a downstream target agent (GP-002).
+      if (c.kind === 'gate' && c.targetAgentId) {
+        const src = this.pickPort(connId, 'out', 'right');
+        const tgt = this.pickPort(`agent-${c.targetAgentId}`, 'in', 'left');
+        if (src && tgt) edges.push({
+          id: `proceed-${c.id}`, source: connId, target: `agent-${c.targetAgentId}`,
+          sourcePort: src.id, targetPort: tgt.id, label: 'proceed', kind: 'proceed',
+          sourceSide: src.side, targetSide: tgt.side, type: 'bezier',
+        });
       }
     }
     return edges;

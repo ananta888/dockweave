@@ -90,6 +90,7 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     { id: 'gate', label: 'deterministic gate', color: '#d29922' },
     { id: 'http', label: 'HTTP API', color: '#39c5cf' },
     { id: 'chain', label: 'agent chain', color: '#58a6ff', dashed: true },
+    { id: 'proceed', label: 'gate → agent', color: '#d29922', dashed: true },
   ],
   templates: [
     { id: 'agent-workspace', name: 'Agent → Workspace', sourceKind: 'agent', targetKind: 'workspace', type: 'rw', label: 'rw', sourceSide: 'left', targetSide: 'right' },
@@ -99,6 +100,7 @@ export const DEFAULT_GRAPH_SCHEMA: GraphSchema = {
     { id: 'unit-agent', name: 'Unit → Agent', sourceKind: 'unit', targetKind: 'agent', type: 'unit', label: 'member', sourceSide: 'bottom', targetSide: 'top' },
     { id: 'agent-mcp', name: 'Agent → MCP server', sourceKind: 'agent', targetKind: 'mcp', type: 'mcp', label: 'mcp', sourceSide: 'right', targetSide: 'left' },
     { id: 'agent-gate', name: 'Agent → Gate', sourceKind: 'agent', targetKind: 'gate', type: 'gate', label: 'gate', sourceSide: 'right', targetSide: 'left' },
+    { id: 'gate-agent', name: 'Gate → Agent', sourceKind: 'gate', targetKind: 'agent', type: 'proceed', label: 'proceed', sourceSide: 'right', targetSide: 'left' },
     { id: 'agent-http', name: 'Agent → HTTP API', sourceKind: 'agent', targetKind: 'http', type: 'http', label: 'http', sourceSide: 'right', targetSide: 'left' },
     { id: 'agent-chain', name: 'Agent → Agent (chain)', sourceKind: 'agent', targetKind: 'agent', type: 'chain', label: 'chain', sourceSide: 'right', targetSide: 'left' },
   ],

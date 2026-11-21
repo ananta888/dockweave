@@ -1,0 +1,203 @@
+{
+  "version": 1,
+  "owner": "dockweave-developer-agent",
+  "track": "gate-pipeline",
+  "purpose": "Den 2D-Graph von einem reinen Ausfuehrungs-/Blatt-Modell zu einer echten Pipeline erweitern: ein Gate kann zwischen zwei Agenten liegen (agent -> gate -> agent) und deterministisch pruefen, ob der Folge-Agent starten darf. Ergänzt das bestehende Sandbox-Gate-System (todo.gates-2d-hardening.json) um Routing-, Ausdrucks- und Phasen-Semantik.",
+  "goal": "Ein Operator kann in der Angular-App beschreiben: Agent A -> (Tests deterministisch) -> erst bei PASS Agent B. Das Gate traegt eine auswertbare Bedingung (command == 0, budget < N), steuert ueber on_true/on_false das Weiterleiten und blockiert den Downstream-Agenten bei FAIL.",
+  "status_scale": ["todo", "in_progress", "partial", "blocked", "done"],
+  "priority_scale": ["P0", "P1", "P2", "P3"],
+  "risk_scale": ["low", "medium", "high", "critical"],
+  "milestones": [
+    { "id": "M1", "title": "Pipeline-Modell im Graph", "task_ids": ["GP-001", "GP-002"], "status": "in_progress" },
+    { "id": "M2", "title": "Auswertbare Expression und Routing", "task_ids": ["GP-003", "GP-004", "GP-005"], "status": "in_progress" },
+    { "id": "M3", "title": "Phasen-Trigger und Blocking im Daemon", "task_ids": ["GP-006", "GP-007", "GP-008"], "status": "todo" }
+  ],
+  "tasks": [
+    {
+      "id": "GP-001",
+      "milestone": "M1",
+      "type": "schema",
+      "priority": "P0",
+      "risk": "medium",
+      "status": "done",
+      "title": "Verbindungstyp 'proceed' + Template 'gate-agent'",
+      "description": "Neuer Verbindungstyp 'proceed' (gate -> agent) im Graph-Schema plus Template gate-agent; compatibleKinds erlaubt gate->agent fuer diesen Typ.",
+      "acceptance_criteria": [
+        "ConnectionType 'proceed' und Template 'gate-agent' im DEFAULT_GRAPH_SCHEMA.",
+        "compatibleKinds erlaubt ('gate','agent') fuer 'proceed' und lehnt andere Kombinationen ab.",
+        "Kante gate->agent wird mit Label 'proceed' gerendert."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "graph-schema.ts + graph.component.ts compatibleKinds erweitert."
+    },
+    {
+      "id": "GP-002",
+      "milestone": "M1",
+      "type": "ui",
+      "priority": "P0",
+      "risk": "medium",
+      "status": "done",
+      "title": "Ziel-Agent am Gate-Connector + downstream-Kante rendern",
+      "description": "Ein Gate-Connector traegt optional ein targetAgentId; die Kette agent->gate->targetAgent wird als zwei Kanten gezeichnet (gate-Typ + proceed-Typ). Editor bekommt ein Ziel-Agent-Feld fuer Gates.",
+      "acceptance_criteria": [
+        "Gate-Connector kann ein targetAgentId speichern.",
+        "connectorEdges zeichnet bei gesetztem targetAgentId die downstream-Kante gate->agent.",
+        "Editor (addConnector und Node konfigurieren) bietet Ziel-Agent fuer Gates an."
+      ],
+      "depends_on": ["GP-001"],
+      "progress_percent": 100,
+      "implementation_note": "connectorEdges + addConnector + saveLocalEditor/openLocalEditor erweitert."
+    },
+    {
+      "id": "GP-003",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "medium",
+      "status": "done",
+      "title": "Expression/on_true/on_false in gates.json transportieren",
+      "description": "gatesync.Gate bekommt optionale Felder expression/on_true/on_false; deriveGroups uebernimmt sie aus dem Contract, damit sie im Sandbox-Lauf verfuegbar sind.",
+      "acceptance_criteria": [
+        "Gate struct traegt expression/on_true/on_false (omitempty).",
+        "Derive/DeriveAll uebernimmt die Felder aus dem Connector-Contract.",
+        "Roundtrip im Sync (JSON) bleibt stabil."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "gatesync Gate + deriveGroups erweitert."
+    },
+    {
+      "id": "GP-004",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "high",
+      "status": "done",
+      "title": "Minimalen Expression-Evaluator implementieren",
+      "description": "Rekursiver Abstieg fuer: Variablen command/exit (int) und budget (float), Vergleichsoperatoren ==,!=,<,<=,>,>=, Logik &&,||,! und Klammern. Liefert (bool, error) und lehnt unbekannte Tokens ab.",
+      "acceptance_criteria": [
+        "command == 0 / command != 0 werden korrekt ausgewertet.",
+        "budget < N / budget <= N etc. werden gegen einen Zahlenwert ausgewertet.",
+        "&&,||,! und Klammern funktionieren; unbekannte Variablen => Fehler.",
+        "Unit-Tests decken gueltige und ungueltige Ausdruecke ab."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "internal/gateexec/expression.go + expression_test.go."
+    },
+    {
+      "id": "GP-005",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "high",
+      "status": "done",
+      "title": "gateexec wertet expression aus und setzt on_true/on_false",
+      "description": "Nach dem Kommando-Lauf wertet der Runner die expression mit exit-Code und Budget aus; bei FAIL wird das Gate als failed markiert und on_false als Grund gesetzt. Budget-Snapshot wird in runGate verfuegbar gemacht.",
+      "acceptance_criteria": [
+        "Gate mit expression und command==0 verhaelt sich wie der reine Exit-Code.",
+        "Budget-Vergleich (budget < N) wird gegen den Budget-Snapshot ausgewertet.",
+        "Fehlschlag setzt Reason auf on_false (falls gesetzt).",
+        "Integrationstest deckt den expression-Pfad ab."
+      ],
+      "depends_on": ["GP-003", "GP-004"],
+      "progress_percent": 100,
+      "implementation_note": "runner.go: expression nach Kommando auswerten; budget als Kontext."
+    },
+    {
+      "id": "GP-006",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "high",
+      "status": "todo",
+      "title": "Echte pre_run/post_run-Trigger in der Orchestrierung",
+      "description": "Der Paperclip-Wrapper ruft den Gate-Runner kuenftig getrennt vor (pre_run) und nach (after_run/post_run) dem Agentenlauf auf, statt alles in einem Rutsch. Dafuer wird die Phase an den Runner uebergeben.",
+      "acceptance_criteria": [
+        "dockweave-run.sh ruft pre_run-Gates vor und after_run/post_run-Gates nach dem Lauf auf.",
+        "Der Runner akzeptiert eine explizite Phase statt immer alle Phasen auszufuehren.",
+        "Doku nennt die tatsaechliche Trigger-Semantik."
+      ],
+      "depends_on": ["GP-005"],
+      "progress_percent": 0
+    },
+    {
+      "id": "GP-007",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "critical",
+      "status": "todo",
+      "title": "Blocking-Semantik: Downstream-Agent startet nur bei PASS",
+      "description": "Ein downstream-Zielagent eines Gates darf erst starten, wenn alle vorgelagerten Gates PASS sind. Blockierte Agenten erscheinen als blocked mit sichtbarem Grund statt still zu starten.",
+      "acceptance_criteria": [
+        "Der Daemon kennt die Gate->Agent-Kante aus dem Graph-Dokument.",
+        "Ein Agent mit offenem/fehlgeschlagenem Vorgaenger-Gate startet nicht (blocked).",
+        "Der Blockiergrund ist in der API/UI sichtbar."
+      ],
+      "depends_on": ["GP-006"],
+      "progress_percent": 0
+    },
+    {
+      "id": "GP-008",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "medium",
+      "status": "todo",
+      "title": "Pipeline-Status in der 2D-Darstellung",
+      "description": "Die Kante agent->gate->agent zeigt den aktuellen Pipeline-Zustand: Gate gruen (PASS), rot (FAIL/TAMPER), downstream-Agent grau/blockiert. Tooltip nennt den Grund.",
+      "acceptance_criteria": [
+        "Downstream-Agent wird bei FAIL/offenem Gate als blockiert dargestellt.",
+        "Tooltip zeigt expression und on_false-Grund.",
+        "Farb-/Textalternative fuer Status (A11y)."
+      ],
+      "depends_on": ["GP-007"],
+      "progress_percent": 0
+    }
+  ],
+  "critical_path_tasks": ["GP-001", "GP-002", "GP-003", "GP-004", "GP-005"],
+  "definition_of_done": [
+    "Der Graph kann agent -> gate -> agent mit auswertbarer Bedingung beschreiben.",
+    "Die Bedingung wird deterministisch im Sandbox-Lauf ausgewertet (Exit-Code + Budget).",
+    "on_true/on_false steuern das Weiterleiten und der Downstream-Agent startet nur bei PASS."
+  ],
+  "implementation_notes": [
+    "Auf todo.gates-2d-hardening.json (abgeschlossen) aufbauen: Sandbox-Runner, Sync, Tamper/Diff/Secret/Budget sind bereits vorhanden.",
+    "Die Blocking-Semantik (GP-007) beruehrt den Agent-Start-Pfad; aenderungen nur mit erweiterten Tests + Review.",
+    "Commits klein und thematisch (Conventional Commits); TODO-Stand im selben Commit pflegen."
+  ],
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 3,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 5,
+    "milestones_done": 0,
+    "milestones_total": 3
+  },
+  "tasks_status_summary": {
+    "total": 8,
+    "by_status": { "todo": 3, "in_progress": 0, "partial": 0, "blocked": 0, "done": 5 },
+    "progress_percent_done": 62.5,
+    "by_priority": { "P0": 4, "P1": 3, "P2": 1, "P3": 0 },
+    "by_risk": { "low": 0, "medium": 4, "high": 3, "critical": 1 },
+    "critical_path": { "total": 5, "done": 5, "remaining": 0 },
+    "milestones": { "total": 3, "todo": 1, "in_progress": 2, "blocked": 0, "done": 0 }
+  },
+  "tasks_type_summary": {
+    "total": 8,
+    "by_type": {
+      "schema": { "total": 1, "done": 1, "partial": 0, "blocked": 0, "progress_percent": 100.0, "by_status": { "todo": 0, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 } },
+      "ui": { "total": 2, "done": 1, "partial": 0, "blocked": 0, "progress_percent": 50.0, "by_status": { "todo": 1, "in_progress": 0, "partial": 0, "blocked": 0, "done": 1 } },
+      "backend": { "total": 5, "done": 3, "partial": 0, "blocked": 0, "progress_percent": 60.0, "by_status": { "todo": 2, "in_progress": 0, "partial": 0, "blocked": 0, "done": 3 } }
+    }
+  },
+  "summary_notes": [
+    "M1 (Pipeline-Modell) und M2 (Expression) sind umgesetzt; M3 (Phasen-Trigger + Blocking im Daemon) ist offen.",
+    "Expression unterstuetzt command/exit (int) und budget (float) mit ==,!=,<,<=,>,>= sowie &&,||,! und Klammern.",
+    "Blocking (GP-007) greift in den Agent-Start-Pfad ein und braucht daher Review."
+  ]
+}
