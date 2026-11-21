@@ -320,3 +320,16 @@ test('a conflict draft survives later edits and can be restored onto the server 
   expect(await draftKey()).toBeUndefined();
   await expect(page.getByRole('button', { name: 'Entwurf übernehmen' })).toHaveCount(0);
 });
+
+test('revision drift is shown as unsynchronized, not as an outage', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  await page.route('**/api/v1/pipelines/admission', route => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({ ...admissions(false), revision: 0 }) }));
+  await openGraph(page);
+  const badge = page.locator('[data-node-id="agent-ag_b"] .pipeline-badge');
+  await expect(badge).toContainText('Nicht synchronisiert');
+  await expect(badge).not.toContainText('Status unbekannt');
+  await expect(page.locator('.edge-label.edge-proceed')).toHaveClass(/edge-state-unsynced/);
+  await expect(page.locator('.pipeline-drift')).toContainText('Revision 0');
+});

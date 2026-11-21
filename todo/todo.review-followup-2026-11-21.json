@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 71.0,
+      "progress_percent": 74.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 51.5,
+      "progress_percent": 53.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -1581,7 +1581,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 50,
+      "progress_percent": 65,
       "description": "Bei Admission-Fehlern leert loadPipelineStatus die Daten. Badges verschwinden und proceedState deutet fehlende Daten als 'nicht übertragen'. Poll-Antworten sind nicht gegen Überholen geschützt; Drift-/Paperclip-Status werden nicht im gleichen Poll aktualisiert.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1624,9 +1624,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Revisionsdrift wird als 'Status unbekannt' angezeigt",
           "Überholende Antworten nur per Request-Zähler, ungetestet",
           "Recovery nach Ausfall ungetestet"
+        ],
+        "resolved": [
+          "2026-11-21: Drift (Daemon-Revision != gespeicherte) getrennt von Ausfall: Badge 'Nicht synchronisiert' mit Revisionen, Kante 'veralteter Stand', eigener Hinweis; e2e 'revision drift is shown as unsynchronized, not as an outage'"
         ]
       }
     },
@@ -2191,7 +2193,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 40,
+      "progress_percent": 55,
       "description": "Make und CI starten ein golang-Image mit Host-Socket, stellen aber Docker-CLI/Runner-Image nicht ausdrücklich bereit. Die neuen Tests skippen ohne diese Voraussetzungen und erzeugen Sandbox-Verzeichnisse im äußeren Container, deren Bind-Quellen der Host-Daemon nicht automatisch sehen kann.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -2249,9 +2251,11 @@
         "verdict": "partial",
         "remaining_gaps": [
           "Images nicht per Digest gepinnt",
-          "egress/ssh-Tests skippen still",
-          "Kein PASS-Nachweis der zwei Tests",
-          "Gate-Container werden bei Abbruch nicht aufgeräumt"
+          "Gate-Container werden bei Abbruch nicht aufgeräumt",
+          "egress-nftables- und SSH-Egress-Tests skippen weiterhin (nft fehlt im Runner-Image)"
+        ],
+        "resolved": [
+          "2026-11-21: CI-Lauf 44934096548 (551d7fd): TestGateExpressionPathInSandbox und TestPipelineEndToEnd PASS. TestBrokerOnlyNetworkIsolation lief erstmals (vorher still übersprungen, node-Image fehlte) und scheiterte am Netz-Namespace des Runners -> Runner mit --network host"
         ]
       }
     },

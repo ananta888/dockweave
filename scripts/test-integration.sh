@@ -13,7 +13,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 docker build -f "$repo/deployments/Dockerfile.integration" -t dockweave-integration:go1.27.3 "$repo"
 docker image inspect node:22-bookworm >/dev/null 2>&1 || docker pull node:22-bookworm
-docker run --rm --name "$runner" --privileged \
+# --network host: the broker-isolation test listens on the gateway IP of a
+# Docker bridge network, which exists only in the host network namespace.
+# The mount namespace stays private to this disposable container.
+docker run --rm --name "$runner" --privileged --network host \
   -v "$repo:/src:ro" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$scratch:$scratch" \

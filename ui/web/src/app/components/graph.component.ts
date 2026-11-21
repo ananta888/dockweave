@@ -160,6 +160,7 @@ interface GraphEdge {
           }
         </div>
         @if (pipelineError()) { <div class="notice warn" role="status">{{ pipelineError() }}</div> }
+        @if (pipelineDrift() && !pipelineError()) { <div class="notice warn pipeline-drift" role="status">Erzwungene Pipeline (Revision {{ pipelineRevision }}) weicht vom gespeicherten Graphen (Revision {{ graphRevision }}) ab. Synchronisierung prüfen.</div> }
         @if (pipelineSync()?.error) {
           <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSync()?.error }}</div>
         }
@@ -1533,6 +1534,9 @@ export class GraphComponent implements OnChanges, OnDestroy {
     for (const t of Object.values(this.exprTimers)) clearTimeout(t);
   }
 
+  /** The daemon enforces a different graph revision than the saved one. */
+  readonly pipelineDrift = signal(false);
+
   loadPipelineStatus(): void {
     const request = ++this.pipelineRequest;
     this.pipelineService.admissions().pipe(takeUntil(this.destroyed$)).subscribe({
@@ -1540,11 +1544,15 @@ export class GraphComponent implements OnChanges, OnDestroy {
         if (request !== this.pipelineRequest) return;
         this.pipelineAdmissions.set(res?.admissions ?? []);
         this.pipelineRevision = res.revision;
-        this.pipelineError.set(res.revision === this.graphRevision ? '' : 'Pipeline-Stand weicht vom gespeicherten Graphen ab.');
+        // Drift is not an outage: the daemon answered, but enforces another
+        // graph revision than the saved one (RF-024).
+        this.pipelineError.set('');
+        this.pipelineDrift.set(res.revision !== this.graphRevision);
       },
       error: () => {
         if (request !== this.pipelineRequest) return;
         this.pipelineAdmissions.set([]);
+        this.pipelineDrift.set(false);
         this.pipelineError.set('Pipeline-Status nicht verfügbar; Freigabe unbekannt.');
       },
     });
@@ -1564,6 +1572,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     const adm = this.admissionFor(agentId);
     const gated = this.connectors().some(c => c.enabled && c.kind === 'gate' && c.targetAgentId === agentId);
     if (gated && (this.pipelineError() || this.pipelineRevision < 0)) return { blocked: true, label: 'Status unbekannt', title: this.pipelineError() || 'Pipeline-Status wird geladen' };
+    if (gated && this.pipelineDrift()) return { blocked: true, label: 'Nicht synchronisiert', title: `Daemon erzwingt Pipeline-Revision ${this.pipelineRevision}, gespeichert ist Revision ${this.graphRevision}` };
     if (!adm || !adm.edges.length) return gated ? { blocked: true, label: 'Nicht synchronisiert', title: 'Gate-Regeln noch nicht bestätigt' } : undefined;
     if (adm.allowed) return { blocked: false, label: 'Pipeline frei', title: 'Pipeline frei: alle Gates bestanden' };
     const reasons = adm.edges.filter(e => !e.satisfied).map(e => `${e.gate_id || 'pipeline'}: ${pipelineCodeText(e.code)}`);
