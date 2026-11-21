@@ -5,16 +5,36 @@ import (
 	"strconv"
 )
 
+// ExprEnv is the variable environment of a gate expression.
+type ExprEnv struct {
+	// Exit is the command's exit code (variables `command` and `exit`).
+	Exit int
+	// Budget is the day's cost in USD (variable `budget`). It may only be
+	// read when BudgetAvailable is true.
+	Budget          float64
+	BudgetAvailable bool
+	// BudgetUnavailable explains why the budget cannot be used; it becomes
+	// part of the evaluation error.
+	BudgetUnavailable string
+}
+
 // EvaluateExpression evaluates a small deterministic gate predicate over the
-// command exit code and the daily budget cost. Supported variables:
+// command exit code and the daily budget cost, treating the budget as
+// available. See Evaluate for the grammar.
+func EvaluateExpression(expr string, exit int, budget float64) (bool, error) {
+	return Evaluate(expr, ExprEnv{Exit: exit, Budget: budget, BudgetAvailable: true})
+}
+
+// Evaluate evaluates a gate predicate. Supported variables:
 //
 //	command | exit  int     the command's exit code
-//	budget          float   the day's cost in USD (0 when no budget is configured)
+//	budget          float   the day's cost in USD; referencing it while no
+//	                        budget snapshot is available is an error
 //
-// Supported operators: == != < <= > >= && || ! and parentheses. A bare number
-// or variable is treated as a boolean (non-zero = true).
-func EvaluateExpression(expr string, exit int, budget float64) (bool, error) {
-	p := &exprParser{src: expr, exit: exit, budget: budget}
+// Supported operators: == != < <= > >= && || ! unary minus and parentheses.
+// A bare number or variable is treated as a boolean (non-zero = true).
+func Evaluate(expr string, env ExprEnv) (bool, error) {
+	p := &exprParser{src: expr, env: env}
 	p.lex()
 	v, err := p.parseOr()
 	if err != nil {
@@ -32,11 +52,10 @@ type exprTok struct {
 }
 
 type exprParser struct {
-	src    string
-	toks   []exprTok
-	pos    int
-	exit   int
-	budget float64
+	src  string
+	toks []exprTok
+	pos  int
+	env  ExprEnv
 }
 
 func (p *exprParser) lex() {
@@ -197,6 +216,14 @@ func (p *exprParser) parseOperand() (operand, error) {
 		return operand{}, fmt.Errorf("unexpected end of expression")
 	}
 	t := p.toks[p.pos]
+	if t.kind == "op" && t.text == "-" {
+		p.pos++
+		v, err := p.parseOperand()
+		if err != nil {
+			return operand{}, err
+		}
+		return operand{num: -v.num}, nil
+	}
 	switch t.kind {
 	case "num":
 		f, err := strconv.ParseFloat(t.text, 64)
@@ -209,9 +236,16 @@ func (p *exprParser) parseOperand() (operand, error) {
 		p.pos++
 		switch t.text {
 		case "command", "exit":
-			return operand{num: float64(p.exit)}, nil
+			return operand{num: float64(p.env.Exit)}, nil
 		case "budget":
-			return operand{num: p.budget}, nil
+			if !p.env.BudgetAvailable {
+				why := p.env.BudgetUnavailable
+				if why == "" {
+					why = "no budget snapshot"
+				}
+				return operand{}, fmt.Errorf("variable budget is unavailable (%s)", why)
+			}
+			return operand{num: p.env.Budget}, nil
 		default:
 			return operand{}, fmt.Errorf("unknown variable %q", t.text)
 		}

@@ -42,7 +42,11 @@ type GateBudget struct {
 	MaxTokensDay   int64   `json:"max_tokens_day,omitempty"`
 	MaxCostDayUSD  float64 `json:"max_cost_day_usd,omitempty"`
 	Exceeded       bool    `json:"exceeded"`
-	Reason         string  `json:"reason,omitempty"`
+	// Unavailable is set when a budget is configured but no usage snapshot
+	// could be obtained (broker missing or unreachable). The usage fields are
+	// then zero and must not be trusted.
+	Unavailable bool   `json:"unavailable,omitempty"`
+	Reason      string `json:"reason,omitempty"`
 }
 
 // GateReview is the DockWeave-side record of a Paperclip review verdict.
@@ -55,9 +59,9 @@ type GateReview struct {
 	RecordedAt time.Time `json:"recorded_at"`
 	Conflict   bool      `json:"conflict,omitempty"`
 	Existing   string    `json:"existing,omitempty"`
-	// AssignedReviewer is the identity the issue is assigned to for review,
-	// provided by the Paperclip wrapper. A verdict only counts when it matches
-	// this identity or is recorded by an admin.
+	// AssignedReviewer is the identity the issue is assigned to for review, as
+	// reported by the Paperclip wrapper. It is unverified metadata: the daemon
+	// cannot check Paperclip's assignment. The authenticated recorder is Actor.
 	AssignedReviewer string `json:"assigned_reviewer,omitempty"`
 }
 

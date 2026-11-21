@@ -124,10 +124,8 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		}
 	}
 	// The daily budget cost feeds the `budget` variable of gate expressions.
-	var budgetCost float64
-	if run.Budget != nil {
-		budgetCost = run.Budget.CostDayUSD
-	}
+	// It is only usable when a real usage snapshot exists (fail-closed).
+	budgetEnv := budgetExprEnv(run.Budget)
 
 	base := r.BaseDir
 	if base == "" {
@@ -186,7 +184,7 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 gateLoop:
 	for _, phase := range order {
 		for _, gate := range byPhase[phase] {
-			result := r.runGate(runCtx, work, image, run.ID, gate, budgetCost)
+			result := r.runGate(runCtx, work, image, run.ID, gate, budgetEnv)
 			run.Results = append(run.Results, result)
 			if result.Status == "passed" {
 				run.Passed++
@@ -262,7 +260,7 @@ gateLoop:
 	return run, nil
 }
 
-func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate gatesync.Gate, budgetCost float64) model.GateResult {
+func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate gatesync.Gate, env ExprEnv) model.GateResult {
 	res := model.GateResult{ID: gate.ID, Command: gate.Command, Cwd: gate.Cwd, Exit: -1}
 	started := time.Now()
 	timeout := time.Duration(gate.TimeoutSec) * time.Second
@@ -326,27 +324,8 @@ func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate ga
 		}
 		_ = rc.Close()
 	}
-	if exit == 0 {
-		res.Status = "passed"
-	} else {
-		res.Status = "failed"
-	}
-	// Deterministic expression contract (GP-005): evaluate over the exit code
-	// and the budget snapshot after the command runs.
-	if expr := strings.TrimSpace(gate.Expression); expr != "" {
-		ok, evalErr := EvaluateExpression(expr, int(exit), budgetCost)
-		if evalErr != nil {
-			res.Status = "error"
-			res.Reason = "invalid gate expression: " + evalErr.Error()
-		} else if !ok {
-			res.Status = "failed"
-			if onFalse := strings.TrimSpace(gate.OnFalse); onFalse != "" {
-				res.Reason = onFalse
-			} else {
-				res.Reason = "gate expression evaluated to false"
-			}
-		}
-	}
+	env.Exit = int(exit)
+	res.Status, res.Reason = gateVerdict(gate, env)
 	res.DurationMS = time.Since(started).Milliseconds()
 	return res
 }
@@ -362,6 +341,7 @@ func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *mode
 		MaxCostDayUSD:  budget.MaxCostDayUSD,
 	}
 	if r.Broker == nil {
+		out.Unavailable = true
 		out.Reason = "budget check unavailable: broker not configured"
 		if !budgetWarnOnly(budget) {
 			out.Exceeded = true
@@ -370,6 +350,7 @@ func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *mode
 	}
 	usage, err := r.Broker.Usage(ctx, budget.GrantID)
 	if err != nil {
+		out.Unavailable = true
 		out.Reason = "budget check unavailable: " + err.Error()
 		if !budgetWarnOnly(budget) {
 			out.Exceeded = true
@@ -393,6 +374,49 @@ func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *mode
 	return out
 }
 
+// budgetExprEnv builds the expression environment from the run's budget
+// snapshot. Without a configured budget, or when the broker could not be
+// queried, the `budget` variable is marked unavailable so that an expression
+// referencing it fails instead of silently comparing against 0.
+func budgetExprEnv(b *model.GateBudget) ExprEnv {
+	switch {
+	case b == nil:
+		return ExprEnv{BudgetUnavailable: "no budget configured for this workspace"}
+	case b.Unavailable:
+		return ExprEnv{BudgetUnavailable: b.Reason}
+	default:
+		return ExprEnv{Budget: b.CostDayUSD, BudgetAvailable: true}
+	}
+}
+
+// gateVerdict derives a gate result from the command exit code and the
+// optional deterministic expression contract (GP-005). Without an expression
+// the exit code decides (0 = passed). With an expression, its result replaces
+// the exit-code verdict, so `command != 0` can express an expected failure;
+// on_true/on_false become the reason. An invalid expression, or one that
+// needs an unavailable budget, is an error (fail-closed).
+func gateVerdict(gate gatesync.Gate, env ExprEnv) (status, reason string) {
+	expr := strings.TrimSpace(gate.Expression)
+	if expr == "" {
+		if env.Exit == 0 {
+			return "passed", ""
+		}
+		return "failed", ""
+	}
+	ok, err := Evaluate(expr, env)
+	switch {
+	case err != nil:
+		return "error", "gate expression: " + err.Error()
+	case ok:
+		return "passed", strings.TrimSpace(gate.OnTrue)
+	default:
+		if onFalse := strings.TrimSpace(gate.OnFalse); onFalse != "" {
+			return "failed", onFalse
+		}
+		return "failed", "gate expression evaluated to false"
+	}
+}
+
 // budgetWarnOnly reports whether a configured budget should degrade to a
 // warning instead of failing the run when the broker is unreachable. The
 // default is fail-closed.
@@ -400,7 +424,8 @@ func budgetWarnOnly(budget *gatesync.Budget) bool {
 	return budget != nil && strings.EqualFold(strings.TrimSpace(budget.OnUnavailable), "warn")
 }
 
-func (r *Runner) record(ctx context.Context, run *model.GateRun) {	if r.Store != nil {
+func (r *Runner) record(ctx context.Context, run *model.GateRun) {
+	if r.Store != nil {
 		if err := r.Store.SaveGateRun(context.Background(), run); err != nil && r.Logger != nil {
 			r.Logger.Warn("save gate run failed", "error", err)
 		}
