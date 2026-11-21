@@ -6,40 +6,25 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 	"time"
 )
 
-// FingerprintLimits bounds the cost of Fingerprint. Exceeding a limit is an
-// error (ErrFingerprintLimit): without a complete fingerprint a passing gate
-// run cannot be proven fresh, so callers must fail closed.
+// FingerprintLimits bounds actual content bytes, entries and cooperative I/O
+// time. Kernel-blocked disk/network filesystems may delay cancellation; FIFO,
+// device and socket entries are rejected before reading.
 type FingerprintLimits struct {
 	MaxFiles int
 	MaxBytes int64
 	Timeout  time.Duration
 }
 
-// DefaultFingerprintLimits are used when a limit is zero.
-var DefaultFingerprintLimits = FingerprintLimits{
-	MaxFiles: 100_000,
-	MaxBytes: 2 << 30, // 2 GiB of file content
-	Timeout:  60 * time.Second,
-}
-
-// ErrFingerprintLimit reports that a workspace is too large to fingerprint.
+var DefaultFingerprintLimits = FingerprintLimits{MaxFiles: 100_000, MaxBytes: 2 << 30, Timeout: 60 * time.Second}
 var ErrFingerprintLimit = errors.New("workspace exceeds fingerprint limits")
 
-// Fingerprint returns a deterministic content hash of a workspace: the sorted
-// relative paths of all regular files and symlinks together with the SHA-256
-// of their content (symlinks: their target, never followed). The same trees
-// as the gate diff are ignored (defaultIgnore: .git, node_modules, build
-// output ...), so dependency installs or build artefacts do not invalidate a
-// passing gate run, while every source, test or config change does. File
-// modes and timestamps are not part of the fingerprint.
+// Fingerprint hashes content and link text, never symlink targets. All access
+// is rooted with openat2, with no path-based fallback on unsupported kernels.
 func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (string, error) {
 	if lim.MaxFiles <= 0 {
 		lim.MaxFiles = DefaultFingerprintLimits.MaxFiles
@@ -52,76 +37,41 @@ func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (strin
 	}
 	ctx, cancel := context.WithTimeout(ctx, lim.Timeout)
 	defer cancel()
-
-	info, err := os.Stat(root)
+	r, err := openRoot(root)
 	if err != nil {
-		return "", fmt.Errorf("fingerprint: %w", err)
+		return "", err
 	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("fingerprint: %s is not a directory", root)
-	}
-
+	defer r.close()
 	type entry struct{ rel, sum string }
-	var (
-		entries []entry
-		total   int64
-	)
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, werr error) error {
-		if werr != nil {
-			// An unreadable entry makes the fingerprint incomplete.
-			return fmt.Errorf("fingerprint: %w", werr)
-		}
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("fingerprint: %w", err)
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil || rel == "." {
-			return nil
-		}
-		if d.IsDir() {
-			if defaultIgnore[d.Name()] {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if defaultIgnore[d.Name()] {
+	var entries []entry
+	remaining := lim.MaxBytes
+	err = r.walk(ctx, defaultIgnore, func(e treeEntry) error {
+		if e.info.IsDir() {
 			return nil
 		}
 		if len(entries) >= lim.MaxFiles {
-			return fmt.Errorf("%w: more than %d files", ErrFingerprintLimit, lim.MaxFiles)
+			return ErrFingerprintLimit
 		}
-		rel = filepath.ToSlash(rel)
-		switch t := d.Type(); {
-		case t&fs.ModeSymlink != 0:
-			target, err := os.Readlink(p)
-			if err != nil {
-				return fmt.Errorf("fingerprint: %w", err)
+		var sum string
+		if e.info.Mode()&fs.ModeSymlink != 0 {
+			if int64(len(e.link)) > remaining {
+				return ErrFingerprintLimit
 			}
-			s := sha256.Sum256([]byte(target))
-			entries = append(entries, entry{rel, "L" + hex.EncodeToString(s[:])})
-		case t.IsRegular():
-			fi, err := d.Info()
-			if err != nil {
-				return fmt.Errorf("fingerprint: %w", err)
+			remaining -= int64(len(e.link))
+			h := sha256.Sum256([]byte(e.link))
+			sum = "L" + hex.EncodeToString(h[:])
+		} else {
+			h := sha256.New()
+			if err := copyBounded(ctx, h, e.file, &remaining); err != nil {
+				return err
 			}
-			total += fi.Size()
-			if total > lim.MaxBytes {
-				return fmt.Errorf("%w: more than %d bytes", ErrFingerprintLimit, lim.MaxBytes)
-			}
-			sum, err := hashFileCtx(ctx, p)
-			if err != nil {
-				return fmt.Errorf("fingerprint: %w", err)
-			}
-			entries = append(entries, entry{rel, "F" + sum})
-		default:
-			// Sockets, devices and fifos carry no content; record their
-			// presence so adding or removing one still changes the hash.
-			entries = append(entries, entry{rel, "S"})
+			sum = "F" + hex.EncodeToString(h.Sum(nil))
 		}
+		entries = append(entries, entry{e.rel, sum})
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fingerprint: %w", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].rel < entries[j].rel })
 	h := sha256.New()
@@ -129,28 +79,4 @@ func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (strin
 		fmt.Fprintf(h, "%s\x00%s\n", e.rel, e.sum)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func hashFileCtx(ctx context.Context, path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	buf := make([]byte, 256<<10)
-	for {
-		if err := ctx.Err(); err != nil {
-			return "", err
-		}
-		n, err := f.Read(buf)
-		h.Write(buf[:n])
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return "", err
-		}
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -70,7 +70,7 @@ const (
 // Run executes the workspace gates and records the result. Setup problems
 // (missing workspace, unreadable config) return an error; a failing gate is a
 // normal result with Status failed.
-func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
+func (r *Runner) Run(ctx context.Context, req Request) (result *model.GateRun, retErr error) {
 	workspace, err := r.ValidateWorkspace(req.Workspace)
 	if err != nil {
 		return nil, err
@@ -97,11 +97,66 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		Phases:          phases,
 	}
 
-	cfg, cfgRaw, err := readConfig(workspace)
+	if r.Store != nil {
+		run.Reason = "gate run incomplete"
+		if err := r.Store.SaveGateRun(runCtx, run); err != nil {
+			return nil, fmt.Errorf("record gate start: %w", err)
+		}
+		run.Reason = ""
+	}
+	defer func() {
+		run.FinishedAt = time.Now().UTC()
+		run.DurationMS = time.Since(run.StartedAt).Milliseconds()
+		if err := r.record(ctx, run); err != nil {
+			result, retErr = run, err
+		}
+	}()
+	base := r.BaseDir
+	if base == "" {
+		base = filepath.Join(os.TempDir(), "dockweave-gates")
+	}
+	if err := os.MkdirAll(base, 0o750); err != nil {
+		run.Reason = "create gate base dir: " + err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run, nil
+	}
+	tmp, err := os.MkdirTemp(base, "run-")
+	if err != nil {
+		run.Reason = "create gate workdir: " + err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run, nil
+	}
+	defer os.RemoveAll(tmp)
+	work := filepath.Join(tmp, "work")
+	sourceBefore, err := Fingerprint(runCtx, workspace, r.FingerprintLimits)
+	if err != nil {
+		run.Reason = "source fingerprint: " + err.Error()
+		return run, nil
+	}
+	if err := copyTree(runCtx, workspace, work); err != nil {
+		run.Reason = err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run, nil
+	}
+
+	snapshotFP, err := Fingerprint(runCtx, work, r.FingerprintLimits)
+	if err != nil {
+		run.Reason = "snapshot fingerprint: " + err.Error()
+		return run, nil
+	}
+	sourceAfter, err := Fingerprint(runCtx, workspace, r.FingerprintLimits)
+	if err != nil || sourceBefore != snapshotFP || sourceAfter != snapshotFP {
+		run.Reason = "workspace changed while creating gate snapshot"
+		if err != nil {
+			run.Reason += ": " + err.Error()
+		}
+		return run, nil
+	}
+	run.WorkspaceFingerprint = snapshotFP
+	cfg, cfgRaw, err := readConfigContext(runCtx, work)
 	if err != nil {
 		run.Reason = err.Error()
 		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
 		return run, nil
 	}
 	run.GatesHash = hashString(cfgRaw)
@@ -109,7 +164,6 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		run.Status = model.GateSkipped
 		run.Reason = "no after_run gates configured"
 		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
 		return run, nil
 	}
 	run.Gates = len(cfg.Gates)
@@ -119,7 +173,6 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 	if err := r.Docker.EnsureImage(runCtx, image, io.Discard); err != nil {
 		run.Reason = "gate runner image unavailable: " + err.Error()
 		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
 		return run, nil
 	}
 	if digest, err := r.Docker.ImageDigest(runCtx, image); err == nil {
@@ -133,7 +186,6 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 			run.Reason = b.Reason
 			run.Warnings = append(run.Warnings, b.Reason)
 			run.FinishedAt = time.Now().UTC()
-			r.record(ctx, run)
 			return run, nil
 		}
 	}
@@ -141,43 +193,25 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 	// It is only usable when a real usage snapshot exists (fail-closed).
 	budgetEnv := budgetExprEnv(run.Budget)
 
-	base := r.BaseDir
-	if base == "" {
-		base = filepath.Join(os.TempDir(), "dockweave-gates")
-	}
-	if err := os.MkdirAll(base, 0o750); err != nil {
-		run.Reason = "create gate base dir: " + err.Error()
-		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
-		return run, nil
-	}
-	tmp, err := os.MkdirTemp(base, "run-")
-	if err != nil {
-		run.Reason = "create gate workdir: " + err.Error()
-		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
-		return run, nil
-	}
-	defer os.RemoveAll(tmp)
-	work := filepath.Join(tmp, "work")
-	if err := copyTree(runCtx, workspace, work); err != nil {
-		run.Reason = err.Error()
-		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
-		return run, nil
-	}
-
-	// The fingerprint of exactly the content under test lets the pipeline
-	// admission prove that a PASS still applies to the current workspace.
-	// Without one the run can never release a downstream agent (fail-closed).
-	if fp, err := Fingerprint(runCtx, work, r.FingerprintLimits); err == nil {
-		run.WorkspaceFingerprint = fp
-	} else {
-		run.Warnings = append(run.Warnings, "workspace fingerprint unavailable: "+err.Error())
-	}
-
 	protected := mergeStrings(defaultProtected, cfg.Protected)
-	before, _ := hashPaths(work, protected)
+	before, err := hashSelected(runCtx, work, nil, protected)
+	if err != nil {
+		run.Reason = "protected baseline: " + err.Error()
+		return run, nil
+	}
+	originalHashes, err := hashSelected(runCtx, work, defaultIgnore, nil)
+	if err != nil {
+		run.Reason = "policy baseline: " + err.Error()
+		return run, nil
+	}
+	manifests, err := readManifestBaseline(runCtx, work, cfgRaw, cfg.DenyNewDependencies)
+	if err != nil {
+		run.Reason = "dependency baseline: " + err.Error()
+		return run, nil
+	}
+	if cfg.DenyNewDependencies {
+		run.Warnings = append(run.Warnings, "dependency manifest scope: "+strings.Join(manifests.scope, ", "))
+	}
 
 	order := strings.Split(phaseOrder, ",")
 	selected := order
@@ -201,7 +235,6 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 			run.Status = model.GateError
 			run.Reason = fmt.Sprintf("gate %q has unknown phase %q", g.ID, when)
 			run.FinishedAt = time.Now().UTC()
-			r.record(ctx, run)
 			return run, nil
 		}
 		byPhase[when] = append(byPhase[when], g)
@@ -214,7 +247,6 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		run.Status = model.GateSkipped
 		run.Reason = "no gates configured for phases " + strings.Join(selected, ",")
 		run.FinishedAt = time.Now().UTC()
-		r.record(ctx, run)
 		return run, nil
 	}
 	run.Gates = scheduled
@@ -228,7 +260,11 @@ gateLoop:
 			if result.Status == "passed" {
 				run.Passed++
 			}
-			after, _ := hashPaths(work, protected)
+			after, err := hashSelected(runCtx, work, nil, protected)
+			if err != nil {
+				run.Reason = "protected verification: " + err.Error()
+				break gateLoop
+			}
 			if changed := changedHashes(before, after); len(changed) > 0 {
 				tamper = true
 				run.Tamper = true
@@ -240,9 +276,12 @@ gateLoop:
 	}
 	run.DurationMS = time.Since(run.StartedAt).Milliseconds()
 
-	// Post-run policies compare the original workspace with the sandbox copy.
-	originalHashes, _ := walkHashes(workspace, defaultIgnore)
-	workHashes, _ := walkHashes(work, defaultIgnore)
+	// Post-run policies compare with the immutable pre-execution baseline.
+	workHashes, err := hashSelected(runCtx, work, defaultIgnore, nil)
+	if err != nil {
+		run.Reason = "policy verification: " + err.Error()
+		return run, nil
+	}
 	changed := diffTrees(originalHashes, workHashes)
 	if len(changed) > 0 || cfg.AllowPaths != nil || cfg.DenyNewDependencies || cfg.SecretScan {
 		run.Diff = &model.GateDiff{Changed: changed}
@@ -250,10 +289,18 @@ gateLoop:
 			run.Diff.OutOfScope = outOfScope(changed, cfg.AllowPaths)
 		}
 		if cfg.DenyNewDependencies {
-			run.Diff.NewDependencies = newDependenciesAcrossManifests(workspace, work)
+			run.Diff.NewDependencies, err = manifests.compare(runCtx, work)
+			if err != nil {
+				run.Reason = "dependency verification: " + err.Error()
+				return run, nil
+			}
 		}
 		if cfg.SecretScan {
-			run.Diff.Secrets = scanSecrets(work, changed)
+			run.Diff.Secrets, err = scanSecretsContext(runCtx, work, changed)
+			if err != nil {
+				run.Reason = "secret verification: " + err.Error()
+				return run, nil
+			}
 		}
 	}
 
@@ -295,13 +342,16 @@ gateLoop:
 		}
 	}
 	run.FinishedAt = time.Now().UTC()
-	r.record(ctx, run)
 	return run, nil
 }
 
 func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate gatesync.Gate, env ExprEnv) model.GateResult {
 	res := model.GateResult{ID: gate.ID, Command: gate.Command, Cwd: gate.Cwd, Exit: -1}
 	started := time.Now()
+	if gate.TimeoutSec < 0 || gate.TimeoutSec > 86400 {
+		res.Status, res.Reason = "error", "gate timeout must be between 0 and 86400 seconds"
+		return res
+	}
 	timeout := time.Duration(gate.TimeoutSec) * time.Second
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
@@ -492,11 +542,9 @@ func budgetWarnOnly(budget *gatesync.Budget) bool {
 	return budget != nil && strings.EqualFold(strings.TrimSpace(budget.OnUnavailable), "warn")
 }
 
-func (r *Runner) record(ctx context.Context, run *model.GateRun) {
+func (r *Runner) record(ctx context.Context, run *model.GateRun) error {
 	if r.Store != nil {
-		if err := r.Store.SaveGateRun(context.Background(), run); err != nil && r.Logger != nil {
-			r.Logger.Warn("save gate run failed", "error", err)
-		}
+		var evidence *model.Evidence
 		if run.Status != model.GateSkipped {
 			status := model.EvidenceUnknown
 			if run.Status == model.GatePassed {
@@ -504,40 +552,25 @@ func (r *Runner) record(ctx context.Context, run *model.GateRun) {
 			} else if run.Status == model.GateFailed {
 				status = model.EvidenceFailed
 			}
-			_, _ = r.Store.AddEvidence(context.Background(), &model.Evidence{
-				ID:             newID("ev-gate"),
-				Kind:           model.EvidenceGate,
-				Status:         status,
-				Ref:            run.ID,
-				Verified:       run.Status == model.GatePassed && !run.Tamper,
-				IdempotencyKey: "gate-run:" + run.ID,
-				CreatedAt:      run.FinishedAt,
-				Payload: map[string]string{
-					"workspace":    run.Workspace,
-					"image":        run.Image,
-					"image_digest": run.ImageDigest,
-					"gates_hash":   run.GatesHash,
-					"tamper":       fmt.Sprint(run.Tamper),
-					"reason":       run.Reason,
-				},
-			})
+			evidence = &model.Evidence{
+				ID: newID("ev-gate"), Kind: model.EvidenceGate, Status: status, Ref: run.ID,
+				Verified:       run.Status == model.GatePassed && !run.Tamper && run.WorkspaceFingerprint != "",
+				IdempotencyKey: "gate-run:" + run.ID, CreatedAt: run.FinishedAt,
+				Payload: map[string]string{"workspace": run.Workspace, "image": run.Image, "image_digest": run.ImageDigest, "gates_hash": run.GatesHash, "tamper": fmt.Sprint(run.Tamper), "reason": run.Reason},
+			}
 		}
-		e := &model.Event{
-			ID:    newID("evt-gate"),
-			Type:  model.EventGateRun,
-			Actor: firstNonEmpty(run.Actor, "daemon"),
-			Message: fmt.Sprintf("gate run %s workspace=%s: %s (%d/%d, tamper=%t, image=%s)",
-				run.ID, run.Workspace, run.Status, run.Passed, run.Gates, run.Tamper, run.ImageDigest),
-			Timestamp: run.FinishedAt,
-		}
-		if err := r.Store.AppendEvent(context.Background(), e); err != nil && r.Logger != nil {
-			r.Logger.Warn("append gate audit event failed", "error", err)
+		event := &model.Event{ID: newID("evt-gate"), Type: model.EventGateRun, Actor: firstNonEmpty(run.Actor, "daemon"),
+			Message: fmt.Sprintf("gate run %s workspace=%s: %s (%d/%d, tamper=%t, image=%s)", run.ID, run.Workspace, run.Status, run.Passed, run.Gates, run.Tamper, run.ImageDigest), Timestamp: run.FinishedAt}
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if err := r.Store.CompleteGateRun(finishCtx, run, evidence, event); err != nil {
+			return fmt.Errorf("record gate completion: %w", err)
 		}
 	}
 	if r.Logger != nil {
-		r.Logger.Info("gate run finished", "workspace", run.Workspace, "status", run.Status,
-			"gates", run.Gates, "passed", run.Passed, "tamper", run.Tamper, "duration_ms", run.DurationMS)
+		r.Logger.Info("gate run finished", "workspace", run.Workspace, "status", run.Status, "gates", run.Gates, "passed", run.Passed, "tamper", run.Tamper, "duration_ms", run.DurationMS)
 	}
+	return nil
 }
 
 // ValidateWorkspace canonicalises a workspace path (EvalSymlinks) and checks
@@ -582,10 +615,17 @@ func (r *Runner) ValidateWorkspace(raw string) (string, error) {
 }
 
 func readConfig(workspace string) (gatesync.Config, []byte, error) {
-	path := filepath.Join(workspace, ".paperclip", "gates.json")
-	raw, err := os.ReadFile(path)
+	return readConfigContext(context.Background(), workspace)
+}
+func readConfigContext(ctx context.Context, workspace string) (gatesync.Config, []byte, error) {
+	root, err := openRoot(workspace)
 	if err != nil {
-		if os.IsNotExist(err) {
+		return gatesync.Config{}, nil, err
+	}
+	defer root.close()
+	raw, err := root.readFile(ctx, ".paperclip/gates.json", 4<<20)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			// No gate config means "nothing configured", which is a skip, not a
 			// failure. This matches the previous gates.py semantics.
 			return gatesync.Config{}, nil, nil

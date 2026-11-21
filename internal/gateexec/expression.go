@@ -64,8 +64,18 @@ func Validate(expr string) (Validation, error) {
 	return Validation{UsesBudget: p.usesBudget}, nil
 }
 
+const MaxExpressionBytes = 16 << 10
+const MaxExpressionTokens = 2048
+const MaxExpressionDepth = 128
+
 func (p *exprParser) run() (bool, error) {
+	if len(p.src) > MaxExpressionBytes {
+		return false, fmt.Errorf("expression exceeds %d bytes", MaxExpressionBytes)
+	}
 	p.lex()
+	if len(p.toks) > MaxExpressionTokens {
+		return false, fmt.Errorf("expression exceeds %d tokens", MaxExpressionTokens)
+	}
 	if len(p.toks) == 0 {
 		return false, fmt.Errorf("expression is empty")
 	}
@@ -85,10 +95,11 @@ type exprTok struct {
 }
 
 type exprParser struct {
-	src  string
-	toks []exprTok
-	pos  int
-	env  ExprEnv
+	src   string
+	toks  []exprTok
+	pos   int
+	depth int
+	env   ExprEnv
 	// validate makes variable reads succeed without values (see Validate).
 	validate   bool
 	usesBudget bool
@@ -193,6 +204,11 @@ func (p *exprParser) parseAnd() (bool, error) {
 }
 
 func (p *exprParser) parseNot() (bool, error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > MaxExpressionDepth {
+		return false, fmt.Errorf("expression exceeds nesting limit")
+	}
 	if p.peekOp("!") {
 		p.pos++
 		v, err := p.parseNot()
@@ -248,6 +264,11 @@ type operand struct {
 }
 
 func (p *exprParser) parseOperand() (operand, error) {
+	p.depth++
+	defer func() { p.depth-- }()
+	if p.depth > MaxExpressionDepth {
+		return operand{}, fmt.Errorf("expression exceeds nesting limit")
+	}
 	if p.pos >= len(p.toks) {
 		return operand{}, fmt.Errorf("unexpected end of expression")
 	}

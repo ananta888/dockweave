@@ -1,7 +1,10 @@
 package gateexec
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path"
@@ -109,17 +112,23 @@ var secretPatterns = []struct {
 // secret value itself is never returned, only the path and the pattern name.
 // When no known pattern matches, a high-entropy token check catches
 // credentials that do not follow a well-known shape.
-func scanSecrets(root string, changed []string) []string {
+func scanSecrets(root string, changed []string) ([]string, error) {
+	return scanSecretsContext(context.Background(), root, changed)
+}
+func scanSecretsContext(ctx context.Context, root string, changed []string) ([]string, error) {
+	r, err := openRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.close()
 	var found []string
 	for _, rel := range changed {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
-		info, err := os.Stat(abs)
-		if err != nil || info.IsDir() || info.Size() > 1<<20 {
+		data, err := r.readFile(ctx, rel, 1<<20)
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		data, err := os.ReadFile(abs)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("scan changed file %q: %w", rel, err)
 		}
 		if strings.IndexByte(string(data), 0) >= 0 { // binary
 			continue
@@ -141,7 +150,7 @@ func scanSecrets(root string, changed []string) []string {
 		}
 	}
 	sort.Strings(found)
-	return found
+	return found, nil
 }
 
 // highEntropyToken returns a label when the text contains a compact token with
@@ -202,270 +211,4 @@ func shannonEntropy(s string) float64 {
 		h -= p * math.Log2(p)
 	}
 	return h
-}
-
-// ---- multi-manifest dependency detection ----
-
-// manifestFiles are the dependency manifests compared by deny_new_dependencies.
-var manifestFiles = []string{
-	"package.json",
-	"go.mod",
-	"requirements.txt",
-	"pyproject.toml",
-	"Cargo.toml",
-}
-
-// newDependenciesAcrossManifests compares every known dependency manifest
-// before and after a run and returns newly added names, each prefixed with the
-// manifest file so the diff scope report is actionable.
-func newDependenciesAcrossManifests(beforeRoot, afterRoot string) []string {
-	var added []string
-	for _, m := range manifestFiles {
-		before, _ := os.ReadFile(filepath.Join(beforeRoot, m))
-		after, _ := os.ReadFile(filepath.Join(afterRoot, m))
-		b := manifestDependencyNames(m, before)
-		a := manifestDependencyNames(m, after)
-		for name := range a {
-			if !b[name] {
-				added = append(added, m+": "+name)
-			}
-		}
-	}
-	sort.Strings(added)
-	return added
-}
-
-func manifestDependencyNames(name string, raw []byte) map[string]bool {
-	switch name {
-	case "package.json":
-		return dependencyNames(raw)
-	case "go.mod":
-		return goModRequires(raw)
-	case "requirements.txt":
-		return requirementsNames(raw)
-	case "pyproject.toml":
-		return pyprojectNames(raw)
-	case "Cargo.toml":
-		return cargoNames(raw)
-	}
-	return map[string]bool{}
-}
-
-// goModRequires extracts required module paths from a go.mod file (both the
-// block form and the inline form).
-func goModRequires(raw []byte) map[string]bool {
-	out := map[string]bool{}
-	inBlock := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "require (" {
-			inBlock = true
-			continue
-		}
-		if line == ")" {
-			inBlock = false
-			continue
-		}
-		if strings.HasPrefix(line, "//") {
-			continue
-		}
-		if strings.HasPrefix(line, "require ") {
-			fields := strings.Fields(strings.TrimPrefix(line, "require "))
-			if len(fields) > 0 {
-				out[fields[0]] = true
-			}
-			continue
-		}
-		if inBlock {
-			fields := strings.Fields(line)
-			if len(fields) > 0 {
-				out[fields[0]] = true
-			}
-		}
-	}
-	return out
-}
-
-// normalizePythonName reduces a PEP 508 requirement string to its PEP 503
-// normalised project name: extras, version specifiers, URLs and environment
-// markers are dropped, the name is lower-cased and runs of "-", "_" and "."
-// collapse to a single "-". This keeps version bumps from looking like new
-// dependencies.
-func normalizePythonName(spec string) string {
-	spec = strings.TrimSpace(spec)
-	if i := strings.IndexByte(spec, ';'); i >= 0 {
-		spec = spec[:i]
-	}
-	end := len(spec)
-	for i, c := range spec {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
-			end = i
-			break
-		}
-	}
-	name := strings.ToLower(spec[:end])
-	return pythonSepRe.ReplaceAllString(strings.Trim(name, "-_."), "-")
-}
-
-var pythonSepRe = regexp.MustCompile(`[-_.]+`)
-
-// requirementsNames extracts requirement names from a pip requirements file.
-func requirementsNames(raw []byte) map[string]bool {
-	out := map[string]bool{}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if i := strings.Index(line, " #"); i >= 0 {
-			line = line[:i]
-		}
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
-			continue
-		}
-		if name := normalizePythonName(line); name != "" {
-			out[name] = true
-		}
-	}
-	return out
-}
-
-// pyprojectNames extracts dependency names from a pyproject.toml, covering both
-// the PEP 621 `[project] dependencies = [...]` form and the Poetry
-// `[tool.poetry.dependencies]` table form. Names are PEP 503 normalised.
-func pyprojectNames(raw []byte) map[string]bool {
-	out := map[string]bool{}
-	add := func(spec string) {
-		if name := normalizePythonName(spec); name != "" {
-			out[name] = true
-		}
-	}
-	inProjectDeps := false
-	inPoetryDeps := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") && !inProjectDeps {
-			inPoetryDeps = strings.HasPrefix(trimmed, "[tool.poetry.dependencies") ||
-				(strings.HasPrefix(trimmed, "[tool.poetry.group.") && strings.HasSuffix(trimmed, ".dependencies]"))
-			continue
-		}
-		if !inPoetryDeps && strings.HasPrefix(trimmed, "dependencies") && strings.Contains(trimmed, "=") {
-			_, value, _ := strings.Cut(trimmed, "=")
-			value = strings.TrimSpace(value)
-			inProjectDeps = strings.HasPrefix(value, "[") && !strings.Contains(stripQuoted(value), "]")
-			for _, m := range quotedStrings(value) {
-				add(m)
-			}
-			continue
-		}
-		if inProjectDeps {
-			for _, m := range quotedStrings(trimmed) {
-				add(m)
-			}
-			if strings.Contains(stripQuoted(trimmed), "]") {
-				inProjectDeps = false
-			}
-			continue
-		}
-		if inPoetryDeps {
-			if idx := strings.Index(trimmed, "="); idx > 0 {
-				key := strings.Trim(strings.TrimSpace(trimmed[:idx]), "\"'")
-				if key != "" && key != "python" && !strings.ContainsAny(key, " \t") {
-					add(key)
-				}
-			}
-		}
-	}
-	return out
-}
-
-// cargoTableRe classifies a Cargo.toml table header (without brackets):
-// group 1 is the dependency table kind, group 2 the crate name of the
-// `[dependencies.<name>]` form. Target-specific tables
-// (`target.'cfg(unix)'.dependencies`) are included.
-var cargoTableRe = regexp.MustCompile(`^(?:target\.(?:'[^']*'|"[^"]*"|[^.'"]+)\.)?(dependencies|dev-dependencies|build-dependencies)(?:\.(.+))?$`)
-
-// cargoNames extracts dependency names from the dependency tables of a
-// Cargo.toml: inline entries (`serde = "1"`, `serde.workspace = true`) and the
-// table form (`[dependencies.serde]`).
-func cargoNames(raw []byte) map[string]bool {
-	out := map[string]bool{}
-	inDeps := false
-	for _, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") {
-			inDeps = false
-			header := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]"))
-			if i := strings.Index(header, "]"); i >= 0 { // trailing comment
-				header = strings.TrimSpace(header[:i])
-			}
-			m := cargoTableRe.FindStringSubmatch(header)
-			if m == nil {
-				continue
-			}
-			if m[2] != "" {
-				if name := strings.Trim(strings.TrimSpace(m[2]), "\"'"); name != "" {
-					out[name] = true
-				}
-				continue
-			}
-			inDeps = true
-			continue
-		}
-		if !inDeps || trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if idx := strings.Index(trimmed, "="); idx > 0 {
-			key := strings.TrimSpace(trimmed[:idx])
-			if !strings.HasPrefix(key, "\"") && !strings.HasPrefix(key, "'") {
-				if i := strings.IndexByte(key, '.'); i > 0 { // serde.workspace = true
-					key = key[:i]
-				}
-			}
-			key = strings.Trim(strings.TrimSpace(key), "\"'")
-			if key != "" && !strings.ContainsAny(key, " \t") {
-				out[key] = true
-			}
-		}
-	}
-	return out
-}
-
-// stripQuoted removes quoted strings from a line so that brackets inside a
-// requirement (extras such as "pkg[extra]") are not taken as array syntax.
-func stripQuoted(line string) string {
-	var b strings.Builder
-	var quote byte
-	for i := 0; i < len(line); i++ {
-		c := line[i]
-		switch {
-		case quote != 0:
-			if c == quote {
-				quote = 0
-			}
-		case c == '"' || c == '\'':
-			quote = c
-		case c == '#':
-			return b.String()
-		default:
-			b.WriteByte(c)
-		}
-	}
-	return b.String()
-}
-
-// quotedStrings extracts the first single- or double-quoted string of each
-// quote pair on a line.
-func quotedStrings(line string) []string {
-	var out []string
-	for i := 0; i < len(line); i++ {
-		c := line[i]
-		if c != '"' && c != '\'' {
-			continue
-		}
-		end := strings.IndexByte(line[i+1:], c)
-		if end < 0 {
-			break
-		}
-		out = append(out, line[i+1:i+1+end])
-		i = i + 1 + end
-	}
-	return out
 }

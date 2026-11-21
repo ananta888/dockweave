@@ -28,9 +28,12 @@ func TestNewDependenciesAcrossManifests(t *testing.T) {
 	write(before, "package.json", `{"dependencies":{"a":"1"}}`)
 	write(after, "package.json", `{"dependencies":{"a":"1","c":"2"}}`)
 	write(before, "go.mod", "module example.com/x\n\nrequire github.com/x/y v1.0.0\n")
-	write(after, "go.mod", "module example.com/x\n\nrequire (\n\tgithub.com/x/y v1.0.0\n\tgithub.com/new/dep v2.0.0\n)\n")
+	write(after, "go.mod", "module example.com/x\n\nrequire (\n\tgithub.com/x/y v1.0.0\n\tgithub.com/new/dep v1.2.0\n)\n")
 
-	got := newDependenciesAcrossManifests(before, after)
+	got, err := newDependenciesAcrossManifests(before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"go.mod: github.com/new/dep", "package.json: c"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("newDependenciesAcrossManifests = %v, want %v", got, want)
@@ -58,7 +61,10 @@ func TestScanSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "leak.txt"), []byte("key=AKIAABCDEFGHIJKLMNOP"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := scanSecrets(dir, []string{"clean.txt", "leak.txt"})
+	got, err := scanSecrets(dir, []string{"clean.txt", "leak.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"leak.txt: aws-access-key"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("scanSecrets = %v, want %v", got, want)
@@ -80,32 +86,53 @@ func TestTailLines(t *testing.T) {
 }
 
 func TestPythonDependencyNamesAreNormalised(t *testing.T) {
-	before := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.0\",\n  \"Flask[async] ~= 3.0 ; python_version >= '3.9'\",\n]\n"))
-	after := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.1\",\n  \"flask[async]>=3.1\",\n]\n\n[tool.other]\nkey = \"v\"\n"))
+	before, err := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.0\",\n  \"Flask[async] ~= 3.0 ; python_version >= '3.9'\",\n]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.1\",\n  \"flask[async]>=3.1\",\n]\n\n[tool.other]\nkey = \"v\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(before, after) {
 		t.Fatalf("version bump changed pyproject names: before=%v after=%v", before, after)
 	}
 	if !reflect.DeepEqual(after, map[string]bool{"requests": true, "flask": true}) {
 		t.Fatalf("pyproject names = %v", after)
 	}
-	inline := pyprojectNames([]byte("[project]\ndependencies = [\"a-b>=1\", \"Zope.Interface\"]\n"))
+	inline, err := pyprojectNames([]byte("[project]\ndependencies = [\"a-b>=1\", \"Zope.Interface\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(inline, map[string]bool{"a-b": true, "zope-interface": true}) {
 		t.Fatalf("inline pyproject names = %v", inline)
 	}
-	poetry := pyprojectNames([]byte("[tool.poetry.dependencies]\npython = \"^3.10\"\nRequests = \"^2\"\n"))
+	poetry, err := pyprojectNames([]byte("[tool.poetry.dependencies]\npython = \"^3.10\"\nRequests = \"^2\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(poetry, map[string]bool{"requests": true}) {
 		t.Fatalf("poetry names = %v", poetry)
 	}
-	req := requirementsNames([]byte("# c\nDjango_REST.framework==3.0 ; python_version<\"3.8\"\nnumpy>=1 # pinned\n-r other.txt\npkg @ https://x/y.whl\n"))
+	req, err := requirementsNamesStrict([]byte("# c\nDjango_REST.framework==3.0 ; python_version<\"3.8\"\nnumpy>=1 # pinned\npkg>=1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(req, map[string]bool{"django-rest-framework": true, "numpy": true, "pkg": true}) {
 		t.Fatalf("requirements names = %v", req)
 	}
 }
 
 func TestCargoNamesTableForm(t *testing.T) {
-	before := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\nfeatures = [\"derive\"]\n"))
-	after := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\n\n[dependencies.tokio]\nversion = \"1\"\n\n" +
+	before, err := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\nfeatures = [\"derive\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\n\n[dependencies.tokio]\nversion = \"1\"\n\n" +
 		"[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n[target.\"cfg(windows)\".dev-dependencies.winapi]\nversion = \"0.3\"\n\n[dependencies]\nanyhow.workspace = true\n\"quoted\" = \"1\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(before, map[string]bool{"serde": true}) {
 		t.Fatalf("cargo before = %v", before)
 	}
@@ -133,7 +160,10 @@ func TestScanSecretsIgnoresLockfilesAndHashes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := scanSecrets(dir, []string{"go.sum", "package-lock.json", "vendor.txt", "config.env", "lock-leak/go.sum"})
+	got, err := scanSecrets(dir, []string{"go.sum", "package-lock.json", "vendor.txt", "config.env", "lock-leak/go.sum"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"config.env: high-entropy-token", "lock-leak/go.sum: aws-access-key"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("scanSecrets = %v, want %v", got, want)

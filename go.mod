@@ -12,8 +12,10 @@ require (
 	github.com/docker/go-connections v0.8.2
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/go-tpm v0.9.8
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/crypto v0.58.0
+	golang.org/x/mod v0.42.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
