@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 73.75,
+      "progress_percent": 79.58,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -988,10 +988,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Layout- und semantische No-op-Saves dürfen PASS-Fingerprints nicht entwerten",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 30,
+      "progress_percent": 100,
       "description": "Jeder Graph-Save synchronisiert die Gate-Dateien. writeConfig erzeugt immer ein neues GeneratedAt und einen neuen Sidecar-Inhalt; beide Dateien gehen in den Fingerprint ein. Ein reines Verschieben im Graphen kann dadurch einen zuvor gültigen PASS als stale markieren.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -1035,9 +1035,10 @@
         "go test ./internal/gatesync ./internal/webui ./internal/gateexec"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Nicht im Detail geprüft; Test 'Layout-only-Save lässt Fingerprint/Admission unverändert' fehlt"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: No-op-Pfad in writeConfig (GeneratedAt übernommen, Sidecar unverändert, Drift erzwingt Rewrite). Nachweise ohne Sleeps: internal/webui/graph_noop_test.go TestLayoutOnlySaveKeepsGateFilesAndFingerprint (Layout-only-Save: gates.json+Sidecar bytegleich, echter gateexec.Fingerprint unverändert; geändertes Kommando -> neuer Inhalt und Fingerprint; fremde Datei und Drift mit generatedBy-Marker werden wiederhergestellt); gatesync TestNoopSyncPreservesGateBytesAndDriftSidecar, TestSyncRepairsDriftAndPreservesManifestScope; Multi-Workspace/Entfernung TestSyncAllFansOutPerGateWorkspace, TestSyncAllMergesSameCanonicalWorkspace, TestSyncAllClearsWorkspaceDroppedSincePreviousSave."
         ]
       }
     },
@@ -3122,11 +3123,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 36,
+      "partial": 35,
       "blocked": 0,
-      "done": 8
+      "done": 9
     },
-    "progress_percent_done": 17.78,
+    "progress_percent_done": 20.0,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3171,9 +3172,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 36,
+    "partial": 35,
     "blocked": 0,
-    "done": 8
+    "done": 9
   },
   "evidence_summary": {
     "by_level": {
