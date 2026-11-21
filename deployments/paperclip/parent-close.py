@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 
-CLI = os.environ.get("PAPERCLIPAI_BIN") or "/home/krusty/.local/bin/paperclipai"
+CLI = os.environ.get("PAPERCLIPAI_BIN") or shutil.which("paperclipai") or "paperclipai"
 HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "paperclip-gate.py")
 FINISHED = {"done", "cancelled", "canceled"}
 

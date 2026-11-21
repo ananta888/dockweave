@@ -19,7 +19,26 @@
 #   args:    ["demo-opencode"]                     # normal worker
 #   or args: ["developer", "orchestrate"]          # Lead/CEO
 #   or args: ["dockweave-<cid>", "opencode", "/memory/.local/bin/opencode"]
+#
+# Configuration comes from the environment, optionally preloaded from
+# ${DOCKWEAVE_PAPERCLIP_ENV:-~/.config/dockweave/paperclip.env} (KEY=VALUE
+# lines). There are no user- or project-specific defaults; see README.md for
+# every variable.
+#
+# Pipeline (ADR 0002): before a model turn the wrapper asks the daemon
+# whether this agent may take pipeline work (fail-closed); a blocked agent is
+# reported on the issue and no turn is spent. After a DONE the gates run with
+# this agent as upstream and released downstream agents are woken (or a
+# rework issue is opened).
 set -u
+
+ENV_FILE="${DOCKWEAVE_PAPERCLIP_ENV:-$HOME/.config/dockweave/paperclip.env}"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
 
 MODEL_OR_CONTAINER="${1:-${DOCKWEAVE_MODEL:-demo-opencode}}"
 MODE="${2:-}"
@@ -32,11 +51,19 @@ if [ "$MODE" = "orchestrate" ] && [ -z "${PAPERCLIP_PROCESS_TIMEOUT:-}" ] && [ -
   TIMEOUT=540
 fi
 ROLES_FILE="${DOCKWEAVE_PAPERCLIP_ROLES:-$HOME/.config/dockweave/paperclip-roles.json}"
-WORKSPACE="${DOCKWEAVE_PAPERCLIP_WORKSPACE:-/workspace/crystal-run}"
-HOST_WORKSPACE="${DOCKWEAVE_HOST_WORKSPACE:-/home/krusty/projects/crystal-run}"
+# Container-side path of the shared workspace (used in the Lead prompt).
+WORKSPACE="${DOCKWEAVE_PAPERCLIP_WORKSPACE:-/workspace}"
+# Host path of the project workspace for gates; required for the DONE gate.
+HOST_WORKSPACE="${DOCKWEAVE_HOST_WORKSPACE:-}"
 # Absolute CLI path: the process adapter's PATH is not the login shell PATH.
-PAPERCLIPAI="${PAPERCLIPAI_BIN:-$(command -v paperclipai 2>/dev/null || echo /home/krusty/.local/bin/paperclipai)}"
+PAPERCLIPAI="${PAPERCLIPAI_BIN:-$(command -v paperclipai 2>/dev/null || true)}"
+if [ -z "$PAPERCLIPAI" ]; then
+  echo "[dockweave-run] paperclipai CLI not found: set PAPERCLIPAI_BIN" >&2
+fi
 export PAPERCLIPAI_BIN="$PAPERCLIPAI"
+DW_CLI="${DOCKWEAVE_CLI:-$(command -v dockweave 2>/dev/null || true)}"
+[ -n "$DW_CLI" ] && export DOCKWEAVE_CLI="$DW_CLI"
+HDIR="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
 
 # 1. Fetch the assigned task (first inbox item via the heartbeat inbox).
 TASK=""
@@ -85,11 +112,50 @@ echo "[dockweave-run] task: $TASK" >&2
 # Execution-time dependency gate: Paperclip wakes assignees on creation, so an
 # issue with open blockers must not consume a model turn.
 if [ "$MODE" != "orchestrate" ] && [ -n "$ISSUE_ID" ]; then
-  HDIR="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
-  if ! python3 "$HDIR/blocked-check.py" "$ISSUE_ID" 2>/dev/null; then
-    echo "[dockweave-run] blockers open; issue queued again" >&2
+  if ! python3 "$HDIR/blocked-check.py" "$ISSUE_ID"; then
+    echo "[dockweave-run] blockers open (or blocker check failed); issue queued again" >&2
     exit 0
   fi
+fi
+
+# Pipeline admission (ADR 0002): a downstream agent only works while every
+# incoming gate passed on the current workspace. Unreachable daemon or an
+# invalid answer = blocked. The daemon enforces the same rule at the endpoint.
+case "$MODEL_OR_CONTAINER" in
+  dockweave-*) ;; # legacy docker exec path: not a DockWeave agent name
+  *)
+    if ! python3 "$HDIR/pipeline.py" precheck "$MODEL_OR_CONTAINER" --issue "$ISSUE_ID" >&2; then
+      echo "[dockweave-run] pipeline blocked for $MODEL_OR_CONTAINER; no model turn" >&2
+      exit 0
+    fi
+    ;;
+esac
+
+# pre_run gates run before the agent; a failing pre_run gate prevents the
+# run (fail-closed). Skipped when no pre_run gate is configured.
+if [ "$MODE" != "orchestrate" ] && [ -n "$HOST_WORKSPACE" ]; then
+  case "$MODEL_OR_CONTAINER" in
+    dockweave-*) ;;
+    *)
+      PRE_JSON=$(DOCKWEAVE_ISSUE_ID="$ISSUE_ID" python3 "$HDIR/gates.py" run "$HOST_WORKSPACE" --phase pre_run 2>/dev/null || true)
+      PRE_OK=$(printf '%s' "$PRE_JSON" | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    print("yes" if d.get("ok") else "no")
+except Exception:
+    print("no")' 2>/dev/null)
+      if [ "$PRE_OK" != "yes" ]; then
+        echo "[dockweave-run] pre_run gate failed; agent not started" >&2
+        if [ -n "$ISSUE_ID" ] && [ -n "$PAPERCLIPAI" ]; then
+          "$PAPERCLIPAI" issue update "$ISSUE_ID" --status todo \
+            --comment "pre_run-Gate fehlgeschlagen; der Agent wurde nicht gestartet.
+
+$(printf '%s' "$PRE_JSON" | cut -c1-1500)" --json >/dev/null 2>&1 || true
+        fi
+        exit 0
+      fi
+      ;;
+  esac
 fi
 
 case "$MODEL_OR_CONTAINER" in
@@ -127,7 +193,7 @@ if isinstance(items, dict):
 print(sum(1 for i in items if i.get("parentId") == parent))' "$ISSUE_ID" "${PAPERCLIP_COMPANY_ID:-}" "$PAPERCLIPAI" 2>/dev/null)
   if [ "${HAS_KIDS:-0}" != "0" ]; then
     echo "[dockweave-run] parent already delegated (${HAS_KIDS} children); settling gates only" >&2
-    python3 "$HELPER_DIR_EARLY/parent-close.py" "$ISSUE_ID" "${DOCKWEAVE_HOST_WORKSPACE:-/home/krusty/projects/crystal-run}" 2>/dev/null || true
+    python3 "$HELPER_DIR_EARLY/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true
     exit 0
   fi
 fi
@@ -184,11 +250,17 @@ BODY=$(python3 -c 'import json,sys; print(json.dumps({
 
 RESP=$(curl -sS --max-time "$TIMEOUT" --unix-socket "$SOCKET" \
   -X POST http://localhost/v1/chat/completions \
-  -H 'Content-Type: application/json' -d "$BODY" 2>&1)
+  -H 'Content-Type: application/json' -H "X-DockWeave-Issue: $ISSUE_ID" -d "$BODY" 2>&1)
 STATUS=$?
 if [ "$STATUS" != 0 ]; then
   echo "[dockweave-run] endpoint request failed (curl $STATUS): $RESP" >&2
   exit 1
+fi
+# The daemon enforces the pipeline even if the precheck was skipped or raced.
+printf '%s' "$RESP" | python3 "$HDIR/pipeline.py" handle-409 "$MODEL_OR_CONTAINER" --issue "$ISSUE_ID" >&2
+if [ $? -eq 3 ]; then
+  echo "[dockweave-run] endpoint refused: pipeline_blocked" >&2
+  exit 0
 fi
 
 CONTENT=$(printf '%s' "$RESP" | python3 -c 'import json,sys
@@ -271,13 +343,33 @@ print(m[-1] if m else "")' 2>/dev/null)
 
   # Deterministic gate: a self-reported DONE only counts if the project gate passes.
   if [ "$MODE" != "orchestrate" ] && [ "$STATUS" = "done" ]; then
-    GATE_JSON=$(DOCKWEAVE_ISSUE_ID="$ISSUE_ID" python3 "$HELPER_DIR/gates.py" run "$HOST_WORKSPACE" 2>/dev/null || true)
+    if [ -z "$HOST_WORKSPACE" ]; then
+      GATE_JSON='{"ok":false,"results":[{"id":"config","ok":false,"output":"DOCKWEAVE_HOST_WORKSPACE is not set; the DONE gate cannot run"}]}'
+    else
+      GATE_JSON=$(DOCKWEAVE_ISSUE_ID="$ISSUE_ID" DOCKWEAVE_UPSTREAM_AGENT="$MODEL_OR_CONTAINER" \
+        python3 "$HELPER_DIR/gates.py" run "$HOST_WORKSPACE" --phase after_run,post_run 2>/dev/null || true)
+    fi
     GATE_OK=$(printf '%s' "$GATE_JSON" | python3 -c 'import json,sys
 try:
     print("yes" if json.load(sys.stdin).get("ok") else "no")
 except Exception:
     print("unknown")' 2>/dev/null)
-    if [ "$GATE_OK" = "no" ]; then
+    # Route the pipeline after the gate run: wake released downstream agents,
+    # open a rework issue for `rework`, report `deny` (ADR 0002, D-2).
+    if [ -n "$HOST_WORKSPACE" ]; then
+      ROUTE=$(printf '%s' "$GATE_JSON" | python3 "$HELPER_DIR/pipeline.py" route \
+        --upstream "$MODEL_OR_CONTAINER" --issue "$ISSUE_ID" --run-json - 2>/dev/null || true)
+      if [ -n "$ROUTE" ] && ! printf '%s' "$ROUTE" | grep -q '^NONE'; then
+        echo "[dockweave-run] pipeline routing: $ROUTE" >&2
+        NOTE="$NOTE
+
+Pipeline:
+$ROUTE"
+      fi
+    fi
+    # Anything but a confirmed pass (including an unreadable runner answer)
+    # keeps the issue open (fail-closed).
+    if [ "$GATE_OK" != "yes" ]; then
       STATUS=in_progress
       NOTE=$(printf '%s' "$GATE_JSON" | python3 -c 'import json,sys
 try:
@@ -308,8 +400,7 @@ print(m.group(1).strip() if m else "Review FAIL")' 2>/dev/null)
     REWORK=$(python3 "$HELPER_DIR/paperclip-gate.py" rework "$ISSUE_ID" "$REASON" 2>/dev/null || true)
     echo "[dockweave-run] review FAIL: $REWORK" >&2
     # Mirror the verdict into DockWeave (idempotent, audited evidence).
-    DW_CLI="${DOCKWEAVE_CLI:-$(command -v dockweave 2>/dev/null || echo "$HOME/.local/bin/dockweave")}"
-    if [ -x "$DW_CLI" ]; then
+    if [ -n "$DW_CLI" ] && [ -x "$DW_CLI" ]; then
       "$DW_CLI" gate review "$ISSUE_ID" --verdict FAIL --note "$REASON" --json >/dev/null 2>&1 || true
     fi
     NOTE="$NOTE\n\nRework: $REWORK"

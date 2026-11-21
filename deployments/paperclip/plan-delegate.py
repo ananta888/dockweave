@@ -15,11 +15,12 @@ starting nine tasks at once.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.request
 
-CLI = os.environ.get("PAPERCLIPAI_BIN") or "/home/krusty/.local/bin/paperclipai"
+CLI = os.environ.get("PAPERCLIPAI_BIN") or shutil.which("paperclipai") or "paperclipai"
 API = (os.environ.get("PAPERCLIP_API_URL") or "http://127.0.0.1:3100").rstrip("/")
 KEY = os.environ.get("PAPERCLIP_API_KEY") or ""
 

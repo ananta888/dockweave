@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Run the deterministic gates of a project workspace.
 
-Usage: gates.py run <workspace-root>
+Usage: gates.py run <workspace-root> [--phase PHASES]
+
+PHASES is a comma-separated subset of pre_run,after_run,post_run (default:
+all). DOCKWEAVE_UPSTREAM_AGENT names the agent whose work is checked; it is
+recorded on the run (pipeline freshness, ADR 0002).
 
 Preferred path: forward the run to the DockWeave daemon (`dockweave gate run`),
 which executes the gates in a short-lived sandbox container (no network, no
@@ -55,7 +59,7 @@ def dockweave_cli():
     return ""
 
 
-def run_sandbox(root, timeout_sec):
+def run_sandbox(root, timeout_sec, phases=""):
     cli = dockweave_cli()
     if not cli:
         return None
@@ -63,6 +67,11 @@ def run_sandbox(root, timeout_sec):
     issue = os.environ.get("DOCKWEAVE_ISSUE_ID", "").strip()
     if issue:
         cmd += ["--issue", issue]
+    upstream = os.environ.get("DOCKWEAVE_UPSTREAM_AGENT", "").strip()
+    if upstream:
+        cmd += ["--upstream-agent", upstream]
+    if phases:
+        cmd += ["--phase", phases]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec + 120)
     except Exception as exc:  # noqa: BLE001 - report, never execute on the host
@@ -98,7 +107,8 @@ def run_sandbox(root, timeout_sec):
         "source": "dockweave-gate-runner",
         "status": status,
     }
-    for key in ("id", "reason", "warnings", "diff", "image", "image_digest", "tamper", "duration_ms"):
+    for key in ("id", "workspace", "reason", "warnings", "diff", "image", "image_digest", "tamper",
+                "duration_ms", "workspace_fingerprint", "phases"):
         if run.get(key):
             out[key] = run[key]
     if not results and run.get("reason"):
@@ -117,12 +127,13 @@ def load_config(root):
         return {"error": str(exc)}, path
 
 
-def run_host_fallback(root):
+def run_host_fallback(root, phases=""):
     """Legacy host execution. Only used with DOCKWEAVE_GATE_HOST_FALLBACK=1."""
     cfg, path = load_config(root)
     if cfg.get("error"):
         return {"ok": False, "results": [{"id": "config", "ok": False, "output": cfg["error"]}], "config": path}
-    gates = [g for g in cfg.get("gates") or [] if (g.get("when") or "after_run") == "after_run"]
+    wanted = [p.strip() for p in (phases or "after_run").split(",") if p.strip()]
+    gates = [g for g in cfg.get("gates") or [] if (g.get("when") or "after_run") in wanted]
     if not gates:
         return {"ok": True, "skipped": True, "results": [], "config": path, "source": "host-fallback"}
 
@@ -159,15 +170,19 @@ def run_host_fallback(root):
 
 def main():
     if len(sys.argv) < 3 or sys.argv[1] != "run":
-        print("usage: gates.py run <workspace-root>", file=sys.stderr)
+        print("usage: gates.py run <workspace-root> [--phase PHASES]", file=sys.stderr)
         return 2
     root = os.path.abspath(sys.argv[2])
+    phases = ""
+    if "--phase" in sys.argv:
+        i = sys.argv.index("--phase")
+        phases = sys.argv[i + 1] if i + 1 < len(sys.argv) else ""
     timeout = int(os.environ.get("DOCKWEAVE_GATE_TIMEOUT", "900"))
 
     if os.environ.get("DOCKWEAVE_GATE_HOST_FALLBACK", "") in ("1", "true", "yes"):
-        result = run_host_fallback(root)
+        result = run_host_fallback(root, phases)
     else:
-        result = run_sandbox(root, timeout)
+        result = run_sandbox(root, timeout, phases)
         if result is None:
             result = {
                 "ok": False, "skipped": False, "source": "dockweave-gate-runner",

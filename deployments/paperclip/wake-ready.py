@@ -9,10 +9,11 @@ Prints one READY line per wakeup.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
-CLI = os.environ.get("PAPERCLIPAI_BIN") or "/home/krusty/.local/bin/paperclipai"
+CLI = os.environ.get("PAPERCLIPAI_BIN") or shutil.which("paperclipai") or "paperclipai"
 DONE = {"done", "cancelled", "canceled"}
 
 

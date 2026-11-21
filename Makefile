@@ -6,7 +6,7 @@ GOFLAGS   ?=
 BIN_DIR   := bin
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-.PHONY: all build web install test test-race test-integration vet lint clean docker-image install-tools
+.PHONY: all build web install test test-wrapper test-race test-integration vet lint clean docker-image install-tools
 
 all: build
 
@@ -30,8 +30,13 @@ install: build
 	install -Dm755 $(BIN_DIR)/dockweave-broker $(HOME)/.local/bin/dockweave-broker
 	@echo "installed to $(HOME)/.local/bin (make sure it is on your PATH)"
 
-test:
+test: test-wrapper
 	$(GO) test ./...
+
+# Paperclip wrapper helpers (pipeline precheck/routing, blocked-check) with
+# faked dockweave/paperclipai/curl binaries; needs only python3 and sh.
+test-wrapper:
+	python3 -m unittest discover -s deployments/paperclip/tests
 
 test-race:
 	$(GO) test -race ./...
@@ -56,5 +61,7 @@ clean:
 docker-image:
 	docker build -t dockweave/dockweaved:$(VERSION) -f deployments/Dockerfile .
 
+STATICCHECK_VERSION ?= v0.8.2
+
 install-tools:
-	$(GO) install honnef.co/go/tools/cmd/staticcheck@latest
+	$(GO) install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)

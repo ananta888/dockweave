@@ -75,9 +75,9 @@ Adapter-Konfiguration des Agents:
 
 ```json
 {
-  "command": "/home/krusty/dockweave/deployments/paperclip/dockweave-run.sh",
+  "command": "/path/to/dockweave/deployments/paperclip/dockweave-run.sh",
   "args": ["demo-opencode"],
-  "cwd": "/home/krusty/dockweave",
+  "cwd": "/path/to/dockweave",
   "timeoutSec": 300
 }
 ```
@@ -85,6 +85,48 @@ Adapter-Konfiguration des Agents:
 `args[0]` ist der DockWeave-Modellname (Agentenname). Der Legacy-Modus
 (`args: ["dockweave-<cid>", "opencode", "/memory/.local/bin/opencode"]`) bleibt
 für bestehende Konfigurationen erhalten.
+
+## Konfiguration (Umgebungsvariablen)
+
+Es gibt keine benutzer- oder projektspezifischen Defaults. Der Wrapper lädt
+optional `${DOCKWEAVE_PAPERCLIP_ENV:-~/.config/dockweave/paperclip.env}`
+(`KEY=VALUE`-Zeilen) und übernimmt die Werte in die Umgebung; alle Helfer
+nutzen dieselben Variablen.
+
+| Variable | Pflicht | Bedeutung |
+|---|---|---|
+| `PAPERCLIPAI_BIN` | ja, falls `paperclipai` nicht im `PATH` des Prozess-Adapters liegt | Pfad zur Paperclip-CLI (alle Helfer) |
+| `DOCKWEAVE_CLI` | ja, falls `dockweave` nicht im `PATH` liegt | Pfad zur DockWeave-CLI (Gates, Pipeline, Reviews) |
+| `DOCKWEAVE_HOST_WORKSPACE` | ja für das DONE-Gate | Host-Pfad des Projekt-Workspaces; ohne ihn schlägt das DONE-Gate fail-closed fehl und `pre_run`/Routing entfallen |
+| `DOCKWEAVE_PAPERCLIP_WORKSPACE` | nein (Default `/workspace`) | Container-Pfad des gemeinsamen Workspaces im Lead-Prompt |
+| `DOCKWEAVE_PAPERCLIP_ROLES` | für Orchestrierung | Rollen-Datei (Default `~/.config/dockweave/paperclip-roles.json`, siehe `roles.example.json`) |
+| `DOCKWEAVE_PAPERCLIP_AGENT_MAP` | für wake/rework | JSON `{"<dockweave-agent-id-oder-name>": "<paperclip-agent-id>"}`; nicht zugeordnete Agenten werden als `UNMAPPED` gemeldet, nie geraten |
+| `DOCKWEAVE_SOCKET` | nein (Default `/run/dockweave/dockweaved.sock`) | Daemon-Socket für `/v1/chat/completions` |
+| `DOCKWEAVE_TIMEOUT` / `PAPERCLIP_PROCESS_TIMEOUT` | nein (240 s, Orchestrierung 540 s) | Timeout des Endpoint-Aufrufs |
+| `DOCKWEAVE_PAPERCLIP_HELPER_DIR` | nein (Verzeichnis des Skripts) | Ort der Python-Helfer |
+| `DOCKWEAVE_PAPERCLIP_STATUS` | nein | erzwingt den Issue-Status nach dem Lauf statt der `STATUS:`-Zeile |
+| `DOCKWEAVE_DEFAULT_TASK` | nein | Aufgabe, wenn kein Issue im Inbox liegt (Tests) |
+| `DOCKWEAVE_GATE_TIMEOUT` | nein (900 s) | Gesamt-Timeout eines Gate-Laufs |
+| `DOCKWEAVE_GATE_HOST_FALLBACK` | nein | `1` erlaubt Host-Ausführung der Gates (unsicher, nur explizit) |
+| `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW` | nein | `1` akzeptiert unattributierte Review-Kommentare |
+| `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN` | nein | `1` lässt `blocked-check.py` bei CLI-/JSON-Fehlern durch (Default: blockiert) |
+| `DOCKWEAVE_PIPELINE_BLOCKED_STATUS` | nein (Default `todo`) | Paperclip-Status eines durch die Pipeline gesperrten Issues (nie `blockedBy`) |
+| `DOCKWEAVE_PIPELINE_STATE_DIR` | nein (Default `$XDG_STATE_HOME/dockweave/pipeline`) | Idempotenz-Marker für Sperr-Kommentare und Rework-Issues |
+| `PAPERCLIP_API_URL`, `PAPERCLIP_API_KEY`, `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID` | von Paperclip gesetzt | Inbox, Agent- und Company-Kontext |
+
+## Pipeline (Gate → Agent)
+
+Siehe `docs/paperclip-delegation.de.md` („Pipeline“) und ADR 0002. Kurz:
+
+- vor jedem Turn: `pipeline.py precheck <agent>` (fail-closed); gesperrt →
+  Kommentar am Issue (einmal je Grund), Status `todo`, kein Modell-Turn
+- `409 pipeline_blocked` vom Endpoint wird genauso behandelt
+- `pre_run`-Gates vor dem Lauf; ein Fehlschlag verhindert den Lauf
+- nach `STATUS: DONE`: `after_run`/`post_run`-Gates mit diesem Agenten als
+  Upstream, danach `pipeline.py route` (wake / rework / deny)
+- Legacy-Ziele `dockweave-<cid>` umgehen den Daemon und damit die Pipeline
+
+Tests: `make test-wrapper` (gefakte `dockweave`/`paperclipai`/`curl`).
 
 ## E2E-Test
 
