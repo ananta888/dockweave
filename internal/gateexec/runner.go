@@ -123,6 +123,11 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 			return run, nil
 		}
 	}
+	// The daily budget cost feeds the `budget` variable of gate expressions.
+	var budgetCost float64
+	if run.Budget != nil {
+		budgetCost = run.Budget.CostDayUSD
+	}
 
 	base := r.BaseDir
 	if base == "" {
@@ -181,7 +186,7 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 gateLoop:
 	for _, phase := range order {
 		for _, gate := range byPhase[phase] {
-			result := r.runGate(runCtx, work, image, run.ID, gate)
+			result := r.runGate(runCtx, work, image, run.ID, gate, budgetCost)
 			run.Results = append(run.Results, result)
 			if result.Status == "passed" {
 				run.Passed++
@@ -257,7 +262,7 @@ gateLoop:
 	return run, nil
 }
 
-func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate gatesync.Gate) model.GateResult {
+func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate gatesync.Gate, budgetCost float64) model.GateResult {
 	res := model.GateResult{ID: gate.ID, Command: gate.Command, Cwd: gate.Cwd, Exit: -1}
 	started := time.Now()
 	timeout := time.Duration(gate.TimeoutSec) * time.Second
@@ -325,6 +330,22 @@ func (r *Runner) runGate(ctx context.Context, work, image, runID string, gate ga
 		res.Status = "passed"
 	} else {
 		res.Status = "failed"
+	}
+	// Deterministic expression contract (GP-005): evaluate over the exit code
+	// and the budget snapshot after the command runs.
+	if expr := strings.TrimSpace(gate.Expression); expr != "" {
+		ok, evalErr := EvaluateExpression(expr, int(exit), budgetCost)
+		if evalErr != nil {
+			res.Status = "error"
+			res.Reason = "invalid gate expression: " + evalErr.Error()
+		} else if !ok {
+			res.Status = "failed"
+			if onFalse := strings.TrimSpace(gate.OnFalse); onFalse != "" {
+				res.Reason = onFalse
+			} else {
+				res.Reason = "gate expression evaluated to false"
+			}
+		}
 	}
 	res.DurationMS = time.Since(started).Milliseconds()
 	return res

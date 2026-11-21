@@ -243,3 +243,18 @@ func TestDeriveUsesStableGateID(t *testing.T) {
 		t.Fatalf("gate id = %+v, want stable-build", cfg.Gates)
 	}
 }
+
+func TestDeriveCarriesExpressionContract(t *testing.T) {
+	doc := Document{Connectors: []Connector{
+		{ID: "conn-g", Kind: "gate", Name: "Tests", Enabled: true,
+			Contract: `{"command":"npm test","expression":"command == 0 && budget < 5","on_true":"continue","on_false":"rework"}`},
+	}}
+	cfg, _ := Derive(doc)
+	if len(cfg.Gates) != 1 {
+		t.Fatalf("gates = %d, want 1", len(cfg.Gates))
+	}
+	g := cfg.Gates[0]
+	if g.Expression != "command == 0 && budget < 5" || g.OnTrue != "continue" || g.OnFalse != "rework" {
+		t.Fatalf("expression contract not carried: %+v", g)
+	}
+}

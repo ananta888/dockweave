@@ -127,6 +127,11 @@ type Gate struct {
 	Command    string `json:"command"`
 	Cwd        string `json:"cwd"`
 	TimeoutSec int    `json:"timeout_sec"`
+	// Expression/OnTrue/OnFalse are evaluated by the sandbox runner after the
+	// command; they carry the deterministic routing contract (GP-003).
+	Expression string `json:"expression,omitempty"`
+	OnTrue     string `json:"on_true,omitempty"`
+	OnFalse    string `json:"on_false,omitempty"`
 }
 
 // Result reports what the last sync did; it is safe to serialise to the client.
@@ -255,7 +260,12 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 		if timeout <= 0 {
 			timeout = 300
 		}
-		cfg.Gates = append(cfg.Gates, Gate{ID: id, When: when, Command: command, Cwd: cwd, TimeoutSec: timeout})
+		cfg.Gates = append(cfg.Gates, Gate{
+			ID: id, When: when, Command: command, Cwd: cwd, TimeoutSec: timeout,
+			Expression: strings.TrimSpace(ct.Expression),
+			OnTrue:     strings.TrimSpace(ct.OnTrue),
+			OnFalse:    strings.TrimSpace(ct.OnFalse),
+		})
 		groups[ws] = cfg
 	}
 	return groups, warnings
