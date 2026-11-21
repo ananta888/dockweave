@@ -207,3 +207,24 @@ zugeordnete Agenten werden als `UNMAPPED` gemeldet und nie geraten.
 Notausgang für Admins: `dockweave pipeline override <B> --gate <id> --reason …`
 (einmalig, 15 Minuten, auditiert; nie für `tamper`).
 
+### Schutz je Wrapper-Modus
+
+Welche Schritte `dockweave-run.sh` tatsächlich ausführt, hängt von den ersten
+beiden Argumenten ab. Tests: `deployments/paperclip/tests/test_wrapper_modes.py`.
+
+| Schritt | Worker (`<agent>`) | Lead (`<agent> orchestrate`) | Legacy (`dockweave-<id> …`) |
+|---|---|---|---|
+| Offene Blocker (`blocked-check.py`) | ja | nein | ja |
+| Pipeline-Admission (`pipeline.py precheck`) | ja | ja | **nein** |
+| `pre_run`-Gates | ja, wenn `DOCKWEAVE_HOST_WORKSPACE` gesetzt ist | nein | **nein** |
+| Daemon-Durchsetzung am Endpoint (`409`) | ja | ja | **nein** (`docker exec` umgeht den Daemon) |
+| `after_run`/`post_run`-Gates bei `STATUS: DONE` | ja; ohne `DOCKWEAVE_HOST_WORKSPACE` scheitert das Gate und das Issue bleibt offen | nein (Kinder werden gegated) | **nein** |
+| Pipeline-Routing | ja, wenn `DOCKWEAVE_HOST_WORKSPACE` gesetzt ist; ein Routing-Fehler lässt das Gate-Ergebnis stehen und schreibt einen Wiederholbefehl ins Issue | nein | **nein** |
+
+Der Legacy-Pfad ist **nicht pipeline-geschützt** und gibt bei jedem Lauf eine
+Warnung aus. Er bleibt nur aus Kompatibilitätsgründen erhalten. Migration: Der
+Containername ist `dockweave-<agent-id>`; das erste Argument
+`dockweave-<agent-id>` durch `<agent-id>` (oder den Agentennamen) ersetzen und
+die Harness-Argumente weglassen. Der Agent läuft dann wie jeder Worker über
+den Endpoint.
+

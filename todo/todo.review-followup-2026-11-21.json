@@ -155,7 +155,7 @@
       "id": "M5",
       "title": "Paperclip-Wrapper und zuverlässiges Routing",
       "status": "in_progress",
-      "progress_percent": 55.0,
+      "progress_percent": 75.0,
       "task_ids": [
         "RF-027",
         "RF-028",
@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 54.5,
+      "progress_percent": 56.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -608,11 +608,11 @@
         "verdict": "partial",
         "remaining_gaps": [
           "Escape-Prüfung in snapshot.go ist lexikalisch (verkettete Links)",
-          "Absolute Symlinks irgendwo im Tree (node_modules, .git) brechen den Lauf ab – Entscheidung nötig",
-          "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)"
+          "Absolute Symlinks irgendwo im Tree (node_modules, .git) brechen den Lauf ab – Entscheidung nötig"
         ],
         "resolved": [
-          "2026-11-21: SD-021 in docs/security-decisions.md (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung, Restrisiken)"
+          "2026-11-21: SD-021 in docs/security-decisions.md (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung, Restrisiken)",
+          "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)"
         ]
       }
     },
@@ -1877,12 +1877,12 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl",
           "Kein Test mit mehreren Zielen",
           "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)"
         ],
         "resolved": [
-          "2026-11-21: Wake-Wiederholung nach unbekanntem Ausgang über Abgleichfenster (test_pending_wake_recovers_after_reconcile_window)"
+          "2026-11-21: Wake-Wiederholung nach unbekanntem Ausgang über Abgleichfenster (test_pending_wake_recovers_after_reconcile_window)",
+          "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl"
         ]
       }
     },
@@ -1940,8 +1940,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Behoben 2026-11-21: Kanten ohne upstream_agent_id wurden als ungültig abgelehnt (test_route_accepts_edges_without_upstream, test_route_rejects_malformed_edges)",
           "edges=null/Objekt/Liste mit null in Admission ungetestet"
+        ],
+        "resolved": [
+          "Behoben 2026-11-21: Kanten ohne upstream_agent_id wurden als ungültig abgelehnt (test_route_accepts_edges_without_upstream, test_route_rejects_malformed_edges)"
         ]
       }
     },
@@ -1950,10 +1952,10 @@
       "milestone": "M5",
       "type": "test",
       "title": "Wrapper-Phasen und bewusst bestehende Legacy-Ausnahmen eindeutig absichern",
-      "status": "todo",
+      "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 80,
       "description": "pre_run wird bei orchestrate und dockweave-<cid> übersprungen; der Legacy-docker-exec-Pfad umgeht die neue Admission. Diese Ausnahmen sind teils archiviert, stehen aber neben breiten Aussagen über jeden programmgesteuerten Auftrag.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -1997,7 +1999,10 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Nicht begonnen"
+          "Fehlender HOST_WORKSPACE und fehlgeschlagener Gate-Aufruf im DONE-Pfad (mit Paperclip-Issue) noch ohne Wrapper-Test (-> RF-035)"
+        ],
+        "resolved": [
+          "2026-11-21: Modusmatrix EN/DE in docs/paperclip-delegation*.md; Legacy-Pfad warnt bei jedem Lauf ('NOT pipeline-protected') mit Migrationshinweis dockweave-<id> -> <id>; Kompatibilität bewusst beibehalten; Tests deployments/paperclip/tests/test_wrapper_modes.py (Worker, orchestrate frei/gesperrt, Legacy)"
         ]
       }
     },
@@ -2341,7 +2346,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 75,
+      "progress_percent": 90,
       "description": "ci.yml führt Go-Build, vet, Unit-Tests und Race-Tests aus, aber weder die neuen Python-Wrapper-Tests noch Web-Build und Pipeline-Browser-Tests. make test enthält Wrapper-Tests, wird von CI jedoch nicht benutzt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2397,11 +2402,10 @@
       ],
       "audit_2026_11_21": {
         "verdict": "partial",
-        "remaining_gaps": [
-          "Kein Nachweis aus echtem CI-Lauf"
-        ],
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: trace retain-on-failure, screenshot only-on-failure; Port über PIPELINE_E2E_PORT"
+          "2026-11-21: trace retain-on-failure, screenshot only-on-failure; Port über PIPELINE_E2E_PORT",
+          "2026-11-21: CI-Lauf 44934608299 (fc52f56): wrapper, test, web (inkl. Pipeline-e2e und Bundle-Check), integration grün"
         ]
       }
     },
@@ -2410,10 +2414,10 @@
       "milestone": "M6",
       "type": "ci",
       "title": "staticcheck-Fehler in make lint erhalten und bestehende Befunde transparent behandeln",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 95,
+      "progress_percent": 100,
       "description": "Die Shell-Kette command -v staticcheck && staticcheck ./... || echo ... wandelt auch einen tatsächlichen Analyzer-Fehler in einen erfolgreichen echo-Exit um und meldet fälschlich 'not installed'.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -2453,13 +2457,13 @@
         "make lint"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Behoben 2026-11-21: ST1005 im neuen manifests.go",
-          "Nachweis aus echtem CI-Lauf nach Push steht aus"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: alle 11 Altbefunde behoben statt unterdrückt (strings.Title, ImageInspectWithRaw->ImageInspect, ReverseProxy Director->Rewrite, go-tpm OpenTPM->linuxtpm.Open, ecdsa X/Y->ParseUncompressedPublicKey mit Kurvenprüfung + TestECCPublicKeyConversion, TUI-Schleife SA4004/SA4008, ungenutztes scrollHint); make lint lokal Exit 0 mit staticcheck 2026.2.2 (v0.8.2); scripts/tests/test_make_lint.py injiziert Analyzer-Fehler und fehlendes staticcheck; Policy in AGENTS.md"
+          "2026-11-21: alle 11 Altbefunde behoben statt unterdrückt (strings.Title, ImageInspectWithRaw->ImageInspect, ReverseProxy Director->Rewrite, go-tpm OpenTPM->linuxtpm.Open, ecdsa X/Y->ParseUncompressedPublicKey mit Kurvenprüfung + TestECCPublicKeyConversion, TUI-Schleife SA4004/SA4008, ungenutztes scrollHint); make lint lokal Exit 0 mit staticcheck 2026.2.2 (v0.8.2); scripts/tests/test_make_lint.py injiziert Analyzer-Fehler und fehlendes staticcheck; Policy in AGENTS.md",
+          "2026-11-21: CI-Lauf 44934608299: Job test inkl. make install-tools && make lint grün",
+          "Behoben 2026-11-21: ST1005 im neuen manifests.go",
+          "Abgeschlossen 2026-11-21 (Commit 70d9440 + CI-Nachweis 44934608299)."
         ]
       }
     },
@@ -3103,13 +3107,13 @@
   "tasks_status_summary": {
     "total": 45,
     "by_status": {
-      "todo": 5,
+      "todo": 4,
       "in_progress": 0,
       "partial": 37,
       "blocked": 0,
-      "done": 3
+      "done": 4
     },
-    "progress_percent_done": 6.67,
+    "progress_percent_done": 8.89,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3124,8 +3128,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 0,
-      "remaining": 23
+      "done": 1,
+      "remaining": 22
     },
     "milestones": {
       "total": 7,
@@ -3152,11 +3156,11 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 5,
+    "todo_remaining": 4,
     "in_progress": 0,
     "partial": 37,
     "blocked": 0,
-    "done": 3
+    "done": 4
   },
   "evidence_summary": {
     "by_level": {

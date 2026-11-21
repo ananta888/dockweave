@@ -160,7 +160,9 @@ fi
 
 case "$MODEL_OR_CONTAINER" in
   dockweave-*)
-    # Legacy one-shot docker exec path.
+    # Legacy one-shot docker exec path. It bypasses the daemon entirely: no
+    # pipeline admission, no gates, no endpoint enforcement, no routing.
+    echo "[dockweave-run] WARNING: legacy target $MODEL_OR_CONTAINER uses docker exec and is NOT pipeline-protected (no admission, no gates). Migrate: use the agent id '${MODEL_OR_CONTAINER#dockweave-}' or its name as first argument." >&2
     case "$MODE" in
       codex)
         printf '%s' "$TASK" | docker exec -i "$MODEL_OR_CONTAINER" "$HARNESS_BIN" exec \

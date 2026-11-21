@@ -199,3 +199,23 @@ are reported as `UNMAPPED` and never guessed.
 Admin escape hatch: `dockweave pipeline override <B> --gate <id> --reason …`
 (single use, 15 minutes, audited; never for `tamper`).
 
+### Protection per wrapper mode
+
+Which steps `dockweave-run.sh` actually runs depends on its first two
+arguments. Tests: `deployments/paperclip/tests/test_wrapper_modes.py`.
+
+| Step | Worker (`<agent>`) | Lead (`<agent> orchestrate`) | Legacy (`dockweave-<id> …`) |
+|---|---|---|---|
+| Open blockers (`blocked-check.py`) | yes | no | yes |
+| Pipeline admission (`pipeline.py precheck`) | yes | yes | **no** |
+| `pre_run` gates | yes, if `DOCKWEAVE_HOST_WORKSPACE` is set | no | **no** |
+| Daemon enforcement at the endpoint (`409`) | yes | yes | **no** (`docker exec` bypasses the daemon) |
+| `after_run`/`post_run` gates on `STATUS: DONE` | yes; without `DOCKWEAVE_HOST_WORKSPACE` the gate fails and the issue stays open | no (children are gated) | **no** |
+| Pipeline routing | yes, if `DOCKWEAVE_HOST_WORKSPACE` is set; a routing failure keeps the gate verdict and adds a retry command to the issue | no | **no** |
+
+The legacy path is **not pipeline-protected** and prints a warning on every
+run. It is kept only for compatibility. Migration: the container name is
+`dockweave-<agent-id>`, so replace the first argument `dockweave-<agent-id>`
+with `<agent-id>` (or the agent's name) and drop the harness arguments; the
+agent is then driven through the endpoint like any worker.
+
