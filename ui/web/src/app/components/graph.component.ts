@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges, SimpleChanges, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, computed, inject, output, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
@@ -6,6 +6,7 @@ import { ApiService } from '../core/api.service';
 import { GateSyncStatus, GraphGateSyncResult, GraphService } from '../core/services/graph.service';
 import { GateReviewView, GateRunView, GateService } from '../core/services/gate.service';
 import { PaperclipService } from '../core/services/paperclip.service';
+import { Admission, AdmissionEdge, ExpressionCheck, PipelineService, PipelineSyncResult } from '../core/services/pipeline.service';
 import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures';
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { LayoutEdge, LayoutNode, borderPoint, optimizeLayout } from '../core/graph-layout-optimizer';
@@ -103,6 +104,9 @@ interface GraphEdge {
   type: 'segment' | 'straight' | 'bezier' | 'adaptive-curve';
   /** Intermediate points used to steer the edge around unrelated nodes. */
   waypoints?: { x: number; y: number }[];
+  /** Pipeline state of a proceed edge (admission code), with a text alternative. */
+  state?: string;
+  tooltip?: string;
 }
 
 @Component({
@@ -155,6 +159,9 @@ interface GraphEdge {
             <button class="small" (click)="cancelConnect()">Abbrechen</button>
           </div>
         }
+        @if (pipelineSync()?.error) {
+          <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSync()?.error }}</div>
+        }
         @if (selectedEdge(); as edge) {
           <div class="edge-toolbar" [style.left.px]="edgeToolbarPos()?.x ?? 100" [style.top.px]="edgeToolbarPos()?.y ?? 100">
             <span>Verbindung: <b>{{ edge.label }}</b> · {{ edge.kind }}</span>
@@ -195,7 +202,11 @@ interface GraphEdge {
                   <f-connection-waypoints [waypoints]="edge.waypoints || []" [visibility]="false" />
                 }
                 <div fConnectionContent [position]="0.5" class="edge-content">
-                  <span class="edge-label" [class]="'edge-' + edge.kind">{{ edge.label }}</span>
+                  <span class="edge-label" [class]="'edge-' + edge.kind + (edge.state ? ' edge-state-' + edge.state : '')"
+                    [attr.title]="edge.tooltip || null"
+                    [attr.tabindex]="edge.tooltip ? 0 : null"
+                    [attr.role]="edge.tooltip ? 'note' : null"
+                    [attr.aria-label]="edge.tooltip || null">{{ edge.label }}</span>
                   <span class="edge-actions">
                     <button fDragBlocker type="button" title="Node auf Kante einfügen" (click)="$event.stopPropagation(); insertNodeOnEdge(edge)">＋</button>
                     <button fDragBlocker type="button" title="Verbindung löschen" (click)="$event.stopPropagation(); deleteEdge(edge)">×</button>
@@ -220,6 +231,7 @@ interface GraphEdge {
                 [class.gate-passed]="node.kind === 'gate' && node.state === 'passed'"
                 [class.gate-failed]="node.kind === 'gate' && node.state === 'failed'"
                 [class.main-agent]="node.kind === 'agent' && agentIdOf(node) === mainAgentId"
+                [class.pipeline-blocked]="node.kind === 'agent' && pipelineBlocked(agentIdOf(node))"
                 (click)="handleNodeClick(node)"
                 (dblclick)="nodeDoubleClicked(node)"
                 (contextmenu)="openContext($event, node)"
@@ -241,6 +253,9 @@ interface GraphEdge {
                     <div class="figure-name">{{ node.title }}</div>
                     <div class="role-badge">{{ node.role || 'no role' }}</div>
                     <div class="figure-sub">{{ node.state }}</div>
+                    @if (pipelineBadge(agentIdOf(node)); as pb) {
+                      <div class="pipeline-badge" [class.blocked]="pb.blocked" role="status" [attr.title]="pb.title" [attr.aria-label]="pb.title">{{ pb.label }}</div>
+                    }
                   </div>
                 } @else {
                   <div class="node-head">
@@ -250,6 +265,11 @@ interface GraphEdge {
                     }
                   </div>
                   @if (node.kind === 'agent' && agentIdOf(node) === mainAgentId) { <div class="main-badge">★ HAUPTAGENT</div> }
+                  @if (node.kind === 'agent') {
+                    @if (pipelineBadge(agentIdOf(node)); as pb) {
+                      <div class="pipeline-badge" [class.blocked]="pb.blocked" role="status" [attr.title]="pb.title" [attr.aria-label]="pb.title">{{ pb.label }}</div>
+                    }
+                  }
                   <div class="node-title">{{ node.title }}</div>
                   <div class="node-sub">{{ node.subtitle }}</div>
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
@@ -565,7 +585,7 @@ interface GraphEdge {
                 <p class="muted">Schreibt aktivierte Gate-Connectoren beim Speichern nach <span class="mono">&lt;workspace&gt;/.paperclip/gates.json</span>. Gates ohne Shell-Befehl werden nicht ausgeführt; Review/Human-Freigabe wirken über die Flags.</p>
                 <div class="settings-grid">
                   <label class="wide">Workspace (Host-Pfad)
-                    <input [ngModel]="paperclipWorkspace()" (ngModelChange)="setPaperclipWorkspace($event)" name="paperclipWorkspace" placeholder="/home/krusty/projects/crystal-run" />
+                    <input [ngModel]="paperclipWorkspace()" (ngModelChange)="setPaperclipWorkspace($event)" name="paperclipWorkspace" placeholder="/pfad/zum/projekt" />
                   </label>
                   <label>Bei jedem Speichern synchronisieren
                     <input type="checkbox" [ngModel]="paperclipSync()" (ngModelChange)="setPaperclipSync($event)" name="paperclipSync" />
@@ -573,6 +593,27 @@ interface GraphEdge {
                 </div>
                 @if (paperclipSyncInfo()) { <p class="muted mono">{{ paperclipSyncInfo() }}</p> }
                 <p class="muted mono">{{ gateSyncLabel() }}</p>
+              </section>
+
+              <section>
+                <h4>Pipeline (Gate → Agent)</h4>
+                <p class="muted">Gate-Connectoren mit Ziel-Agent werden beim Speichern an den Daemon übertragen. Der Ziel-Agent arbeitet nur, wenn das Gate auf dem aktuellen Workspace-Stand bestanden ist.</p>
+                @if (pipelineSync(); as ps) {
+                  @if (ps.error) { <div class="notice error" role="alert">{{ ps.error }}</div> }
+                  @else { <p class="muted mono">Übertragen: {{ ps.edges }} Kante(n)</p> }
+                  @for (w of ps.warnings || []; track w) { <div class="notice warn">{{ w }}</div> }
+                }
+                @for (adm of pipelineAdmissions(); track adm.agent_id) {
+                  <div class="custom-edge">
+                    <span class="mono">{{ adm.agent || adm.agent_id }}</span>
+                    <span class="muted">{{ adm.allowed ? 'frei' : 'blockiert' }} · Aktion {{ adm.action }}</span>
+                    <span class="spacer"></span>
+                    @for (e of adm.edges; track e.edge_id) {
+                      <span class="muted mono" [title]="e.message || ''">{{ e.gate_id }}={{ e.code }}</span>
+                    }
+                  </div>
+                }
+                @if (pipelineError()) { <p class="muted">{{ pipelineError() }}</p> }
               </section>
 
               <section>
@@ -648,9 +689,44 @@ interface GraphEdge {
                     <label class="wide">URL / Endpoint <input [(ngModel)]="connURL" name="connURL" placeholder="https://…" /></label>
                   }
                   @if (connKind === 'gate') {
-                    <label class="wide">Condition / expression <input [(ngModel)]="gateExpression" name="gateExpression" placeholder="e.g. tests == green && budget < 5" /></label>
-                    <label>On true <input [(ngModel)]="gateTrue" name="gateTrue" placeholder="allow / next agent" /></label>
-                    <label>On false <input [(ngModel)]="gateFalse" name="gateFalse" placeholder="deny / retry" /></label>
+                    <label class="wide">Ausdruck (optional)
+                      <input [(ngModel)]="gateExpression" (ngModelChange)="checkExpression('add', $event, false)" name="gateExpression"
+                        placeholder="z. B. command == 0 && budget < 5 (leer = Exit-Code entscheidet)"
+                        [attr.aria-invalid]="exprCheck('add')?.ok === false" aria-describedby="gate-expr-add-msg" />
+                    </label>
+                    <div id="gate-expr-add-msg" class="wide">
+                      @if (exprCheck('add'); as ec) {
+                        @if (ec.ok === false) { <div class="notice error" role="alert">Ungültiger Ausdruck: {{ ec.error }}</div> }
+                        @if (ec.warning) { <div class="notice warn">{{ ec.warning }}</div> }
+                      }
+                    </div>
+                    <label>Bei PASS
+                      <select [(ngModel)]="gateTrue" name="gateTrue">
+                        <option value="allow">allow – Ziel-Agent darf arbeiten</option>
+                        <option value="wake">wake – Agent wecken</option>
+                        <option value="deny">deny – nicht freigeben</option>
+                      </select>
+                    </label>
+                    @if (gateTrue === 'wake') {
+                      <label>Zu weckender Agent
+                        <select [(ngModel)]="gateTrueWake" name="gateTrueWake">
+                          <option value="">— select —</option>
+                          @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> }
+                        </select>
+                      </label>
+                    }
+                    <label>Bei FAIL
+                      <select [(ngModel)]="gateFalse" name="gateFalse">
+                        <option value="deny">deny – Ziel-Agent bleibt gesperrt</option>
+                        <option value="rework">rework – Nacharbeit an den Upstream-Agenten</option>
+                      </select>
+                    </label>
+                    <label>Begründung PASS <input [(ngModel)]="gateReasonTrue" name="gateReasonTrue" placeholder="z. B. Tests grün" /></label>
+                    <label>Begründung FAIL <input [(ngModel)]="gateReasonFalse" name="gateReasonFalse" placeholder="z. B. Tests rot, bitte nachbessern" /></label>
+                    <label>Max. Alter PASS (s) <input type="number" [(ngModel)]="gateMaxAge" name="gateMaxAge" min="0" placeholder="0 = unbegrenzt" /></label>
+                    @if (connTargetAgent && !gateCommand.trim()) {
+                      <div class="notice warn wide">Gate mit Ziel-Agent, aber ohne Shell-Befehl: das Gate läuft nie, der Ziel-Agent bleibt gesperrt.</div>
+                    }
                     <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="gateCommand" name="gateCommand" placeholder="npm run build" /></label>
                     <label>Arbeitsverzeichnis <input [(ngModel)]="gateCwd" name="gateCwd" placeholder="." /></label>
                     <label>Timeout (s) <input type="number" [(ngModel)]="gateTimeout" name="gateTimeout" min="1" /></label>
@@ -672,7 +748,8 @@ interface GraphEdge {
                 @for (c of connectorsFor(connectorAgent()?.id || ''); track c.id) {
                   <div class="custom-edge">
                     <span class="mono">{{ c.name }}</span>
-                    <span class="muted">{{ c.kind }} · {{ c.direction }}{{ c.targetAgentId ? ' · → ' + c.targetAgentId : '' }}{{ c.contract ? ' · ' + contractSummary(c.contract) : '' }}</span>
+                    <span class="muted">{{ c.kind }} · {{ c.direction }}{{ c.targetAgentId ? ' · → ' + c.targetAgentId : '' }}{{ c.contract ? ' · ' + (c.kind === 'gate' ? gateSummary(c.contract) : contractSummary(c.contract)) : '' }}</span>
+                    @if (gateWithoutCommand(c)) { <span class="notice warn" title="Gate mit Ziel-Agent ohne Shell-Befehl: der Ziel-Agent bleibt gesperrt">⚠ kein Befehl</span> }
                     <span class="spacer"></span>
                     <button class="small" (click)="toggleConnector(c.id)">{{ c.enabled ? 'disable' : 'enable' }}</button>
                     <button class="small danger" (click)="deleteConnector(c.id)">delete</button>
@@ -751,9 +828,44 @@ interface GraphEdge {
                     <label class="wide">URL <input [(ngModel)]="ecURL" name="ecURL" /></label>
                   }
                   @if (ecKind === 'gate') {
-                    <label class="wide">Condition <input [(ngModel)]="ecExpression" name="ecExpression" placeholder="tests == green" /></label>
-                    <label>On true <input [(ngModel)]="ecTrue" name="ecTrue" /></label>
-                    <label>On false <input [(ngModel)]="ecFalse" name="ecFalse" /></label>
+                    <label class="wide">Ausdruck (optional)
+                      <input [(ngModel)]="ecExpression" (ngModelChange)="checkExpression('edit', $event, ecBudget)" name="ecExpression"
+                        placeholder="z. B. command == 0 && budget < 5 (leer = Exit-Code entscheidet)"
+                        [attr.aria-invalid]="exprCheck('edit')?.ok === false" aria-describedby="gate-expr-edit-msg" />
+                    </label>
+                    <div id="gate-expr-edit-msg" class="wide">
+                      @if (exprCheck('edit'); as ec) {
+                        @if (ec.ok === false) { <div class="notice error" role="alert">Ungültiger Ausdruck: {{ ec.error }}</div> }
+                        @if (ec.warning) { <div class="notice warn">{{ ec.warning }}</div> }
+                      }
+                    </div>
+                    <label>Bei PASS
+                      <select [(ngModel)]="ecTrue" name="ecTrue">
+                        <option value="allow">allow – Ziel-Agent darf arbeiten</option>
+                        <option value="wake">wake – Agent wecken</option>
+                        <option value="deny">deny – nicht freigeben</option>
+                      </select>
+                    </label>
+                    @if (ecTrue === 'wake') {
+                      <label>Zu weckender Agent
+                        <select [(ngModel)]="ecTrueWake" name="ecTrueWake">
+                          <option value="">— select —</option>
+                          @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> }
+                        </select>
+                      </label>
+                    }
+                    <label>Bei FAIL
+                      <select [(ngModel)]="ecFalse" name="ecFalse">
+                        <option value="deny">deny – Ziel-Agent bleibt gesperrt</option>
+                        <option value="rework">rework – Nacharbeit an den Upstream-Agenten</option>
+                      </select>
+                    </label>
+                    <label>Begründung PASS <input [(ngModel)]="ecReasonTrue" name="ecReasonTrue" /></label>
+                    <label>Begründung FAIL <input [(ngModel)]="ecReasonFalse" name="ecReasonFalse" /></label>
+                    <label>Max. Alter PASS (s) <input type="number" [(ngModel)]="ecMaxAge" name="ecMaxAge" min="0" placeholder="0 = unbegrenzt" /></label>
+                    @if (ecTarget && !ecCommand.trim()) {
+                      <div class="notice warn wide">Gate mit Ziel-Agent, aber ohne Shell-Befehl: das Gate läuft nie, der Ziel-Agent bleibt gesperrt.</div>
+                    }
                     <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="ecCommand" name="ecCommand" placeholder="npm run build" /></label>
                     <label>Arbeitsverzeichnis <input [(ngModel)]="ecCwd" name="ecCwd" placeholder="." /></label>
                     <label>Timeout (s) <input type="number" [(ngModel)]="ecTimeout" name="ecTimeout" min="1" /></label>
@@ -922,6 +1034,17 @@ interface GraphEdge {
     .edge-label.edge-knowledge { color:#39c5cf; border-color:#1f6feb; }
     .edge-label.edge-unit { color:#3fb950; border-color:#238636; }
     .edge-label.edge-org { color:#58a6ff; border-color:#1f6feb; }
+    .edge-label.edge-proceed { color:#c9d1d9; border-color:#6e7681; }
+    .edge-label.edge-state-ok, .edge-label.edge-state-override { color:#3fb950; border-color:#238636; }
+    .edge-label.edge-state-failed, .edge-label.edge-state-error, .edge-label.edge-state-tamper, .edge-label.edge-state-denied, .edge-label.edge-state-internal { color:#f85149; border-color:#da3633; border-style:solid; }
+    .edge-label.edge-state-stale, .edge-label.edge-state-expired, .edge-label.edge-state-no_run, .edge-label.edge-state-unknown_gate, .edge-label.edge-state-fingerprint_unavailable, .edge-label.edge-state-unsynced { color:#d29922; border-color:#9e6a03; border-style:dashed; }
+    .edge-label:focus-visible { outline:2px solid #58a6ff; outline-offset:2px; }
+    f-connection[data-state="blocked"] { stroke-dasharray:6 4; }
+    .pipeline-badge { margin:.2rem 0; font-size:.65rem; padding:.05rem .4rem; border-radius:999px; border:1px solid #238636; color:#3fb950; display:inline-block; }
+    .pipeline-badge.blocked { border-color:#da3633; color:#f85149; font-weight:600; }
+    .gw-node.pipeline-blocked { box-shadow:0 0 0 2px #da3633 inset; }
+    .notice.warn { border-color:#9e6a03; color:#d29922; }
+    .pipeline-sync-error { position:absolute; top:.5rem; left:50%; transform:translateX(-50%); z-index:20; max-width:60%; }
     .gw-port { position:absolute; width:7px; height:7px; border-radius:50%; background:#58a6ff88; border:1px solid #58a6ff; opacity:0; transition:opacity .15s; transform:translate(-50%,-50%); z-index:5; }
     .gw-node:hover .gw-port, .gw-node.selected .gw-port { opacity:1; }
     .small { padding:.2rem .5rem; font-size:.75rem; }
@@ -969,7 +1092,7 @@ interface GraphEdge {
     .ghost { background:transparent; border:1px solid #30363d; color:#c9d1d9; }
   `],
 })
-export class GraphComponent implements OnChanges {
+export class GraphComponent implements OnChanges, OnDestroy {
   @Input() agents: Agent[] = [];
   @Input() activity: AgentActivity[] = [];
   @Input() workspaces: Workspace[] = [];
@@ -1042,8 +1165,13 @@ export class GraphComponent implements OnChanges {
   skillSource = '';
   skillConfig = '';
   gateExpression = '';
-  gateTrue = '';
-  gateFalse = '';
+  /** Routing actions (ADR 0002, D-2): allow | wake | deny on PASS, deny | rework on FAIL. */
+  gateTrue = 'allow';
+  gateTrueWake = '';
+  gateFalse = 'deny';
+  gateReasonTrue = '';
+  gateReasonFalse = '';
+  gateMaxAge = 0;
   gateCommand = '';
   gateCwd = '';
   gateTimeout = 300;
@@ -1065,8 +1193,13 @@ export class GraphComponent implements OnChanges {
   ecTarget = '';
   ecURL = '';
   ecExpression = '';
-  ecTrue = '';
-  ecFalse = '';
+  ecTrue = 'allow';
+  ecTrueWake = '';
+  ecFalse = 'deny';
+  ecReasonTrue = '';
+  ecReasonFalse = '';
+  ecMaxAge = 0;
+  ecBudget = false;
   ecCommand = '';
   ecCwd = '';
   ecTimeout = 300;
@@ -1104,7 +1237,16 @@ export class GraphComponent implements OnChanges {
   private readonly graphService = inject(GraphService);
   private readonly gateService = inject(GateService);
   private readonly paperclip = inject(PaperclipService);
+  private readonly pipelineService = inject(PipelineService);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private pipelinePoll: ReturnType<typeof setInterval> | null = null;
+  private exprTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+  /** Admission of every agent with incoming pipeline edges (GP-008). */
+  readonly pipelineAdmissions = signal<Admission[]>([]);
+  readonly pipelineSync = signal<PipelineSyncResult | null>(null);
+  readonly pipelineError = signal('');
+  /** Last expression check per editor ('add' | 'edit'), keyed with the text it checked. */
+  readonly exprChecks = signal<Record<string, (ExpressionCheck & { expr: string }) | null>>({});
   private graphRevision = 0;
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
   readonly paperclipWorkspace = signal('');
@@ -1167,6 +1309,9 @@ export class GraphComponent implements OnChanges {
     } catch { /* ignore */ }
     this.loadGateSyncStatus();
     this.loadGateHealth();
+    this.loadPipelineStatus();
+    // Pipeline status follows gate runs without a page reload.
+    this.pipelinePoll = setInterval(() => { this.loadPipelineStatus(); this.loadGateHealth(); }, 15000);
     // Gate runs are now also fetched eagerly so the 2D graph can reflect each
     // gate's last run on the node itself; a missing endpoint on an older daemon
     // only sets an error signal and adds no console noise.
@@ -1217,6 +1362,96 @@ export class GraphComponent implements OnChanges {
     return run.started_at ? run.started_at.replace('T', ' ').slice(0, 19) : '';
   }
 
+  ngOnDestroy(): void {
+    if (this.pipelinePoll) clearInterval(this.pipelinePoll);
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    for (const t of Object.values(this.exprTimers)) clearTimeout(t);
+  }
+
+  loadPipelineStatus(): void {
+    this.pipelineService.admissions().subscribe({
+      next: (res) => { this.pipelineAdmissions.set(res?.admissions ?? []); this.pipelineError.set(''); },
+      error: () => { this.pipelineAdmissions.set([]); this.pipelineError.set('Pipeline-Status nicht verfügbar'); },
+    });
+  }
+
+  private admissionFor(agentId: string): Admission | undefined {
+    return this.pipelineAdmissions().find(a => a.agent_id === agentId);
+  }
+
+  pipelineBlocked(agentId: string): boolean {
+    const adm = this.admissionFor(agentId);
+    return !!adm && !adm.allowed;
+  }
+
+  /** Badge with a text alternative for gated agents; undefined for ungated ones. */
+  pipelineBadge(agentId: string): { blocked: boolean; label: string; title: string } | undefined {
+    const adm = this.admissionFor(agentId);
+    if (!adm || !adm.edges.length) return undefined;
+    if (adm.allowed) return { blocked: false, label: 'Pipeline frei', title: 'Pipeline frei: alle Gates bestanden' };
+    const reasons = adm.edges.filter(e => !e.satisfied).map(e => `${e.gate_id || 'pipeline'}: ${pipelineCodeText(e.code)}`);
+    return { blocked: true, label: '⛔ blockiert', title: 'Pipeline blockiert – ' + reasons.join('; ') };
+  }
+
+  /** State of a proceed edge from the downstream agent's admission (GP-008). */
+  private proceedState(c: ConnectorConfig): { label: string; state?: string; tooltip: string } {
+    const gid = this.existingGateId(c.contract) || slug(c.name);
+    let expr = '';
+    try { expr = (JSON.parse(c.contract || '{}') as { expression?: string }).expression || ''; } catch { /* ignore */ }
+    const adm = this.admissionFor(c.targetAgentId || '');
+    const edge: AdmissionEdge | undefined = adm?.edges.find(e => e.gate_id === gid);
+    const exprText = `Ausdruck: ${expr || '(Exit-Code)'}`;
+    if (!edge) {
+      return { label: 'proceed · nicht übertragen', state: 'unsynced',
+        tooltip: `proceed: im Daemon noch nicht bekannt (speichern) · ${exprText}` };
+    }
+    const age = edge.run_finished_at ? ageText(edge.run_finished_at) : '–';
+    const tip = [
+      `proceed ${edge.satisfied ? 'frei' : 'blockiert'}: ${pipelineCodeText(edge.code)}`,
+      exprText, `Grund-Code: ${edge.code}`, `Lauf: ${edge.run_id || '–'}`, `Alter: ${age}`,
+      edge.message ? `Hinweis: ${edge.message}` : '',
+    ].filter(Boolean).join(' · ');
+    return { label: `proceed · ${edge.satisfied ? '✓' : '✕'} ${edge.code}`, state: edge.code, tooltip: tip };
+  }
+
+  gateWithoutCommand(c: ConnectorConfig): boolean {
+    if (c.kind !== 'gate' || !c.targetAgentId) return false;
+    try { return !((JSON.parse(c.contract || '{}') as { command?: string }).command || '').trim(); } catch { return true; }
+  }
+
+  exprCheck(which: string): (ExpressionCheck & { expr: string }) | null {
+    return this.exprChecks()[which] ?? null;
+  }
+
+  /** Debounced server-side validation (POST /graph/validate-expression). */
+  checkExpression(which: string, expr: string, budgetConfigured: boolean): void {
+    if (this.exprTimers[which]) clearTimeout(this.exprTimers[which]);
+    const text = (expr || '').trim();
+    if (!text) { this.exprChecks.update(m => ({ ...m, [which]: null })); return; }
+    this.exprTimers[which] = setTimeout(() => {
+      this.pipelineService.validateExpression(text, budgetConfigured).subscribe({
+        next: (res) => this.exprChecks.update(m => ({ ...m, [which]: { ...res, expr: text } })),
+        error: () => this.exprChecks.update(m => ({ ...m, [which]: null })),
+      });
+    }, 250);
+  }
+
+  /** Runs fn only when the expression is empty or the gateway accepts it. */
+  private ensureValidExpression(expr: string, budgetConfigured: boolean, which: string, fn: () => void): void {
+    const text = (expr || '').trim();
+    const setErr = (msg: string) => which === 'add' ? this.schemaError.set(msg) : this.configError.set(msg);
+    if (!text) { fn(); return; }
+    this.pipelineService.validateExpression(text, budgetConfigured).subscribe({
+      next: (res) => {
+        this.exprChecks.update(m => ({ ...m, [which]: { ...res, expr: text } }));
+        if (res.ok === false) { setErr('Ungültiger Ausdruck: ' + (res.error || '')); return; }
+        fn();
+      },
+      // An older gateway without the endpoint: the daemon still fails closed at run time.
+      error: () => fn(),
+    });
+  }
+
   gateSyncLabel(): string {
     const s = this.gateSyncStatus();
     if (!s || !s.enabled) return 'Sync inaktiv';
@@ -1261,8 +1496,10 @@ export class GraphComponent implements OnChanges {
       next: (res) => {
         this.graphRevision = res.revision ?? this.graphRevision + 1;
         if (this.paperclipSync()) this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+        this.pipelineSync.set(res.pipeline_sync ?? null);
         this.loadGateSyncStatus();
         this.loadGateHealth();
+        this.loadPipelineStatus();
       },
       error: (err) => {
         if (err?.status === 409) {
@@ -1542,7 +1779,8 @@ export class GraphComponent implements OnChanges {
     const cfg: ConnectorConfig = {
       id, agentId: a.id, kind: mapped as ConnectorConfig['kind'], name,
       direction: 'out', enabled: true, connected: false, draft: kind === 'mcp' || kind === 'skill',
-      contract: kind === 'gate' ? JSON.stringify({ gate_id: newId('gate'), expression: 'true', on_true: 'allow', on_false: 'deny' }) : undefined,
+      // No expression: the exit code decides (an empty expression is always valid).
+      contract: kind === 'gate' ? JSON.stringify({ gate_id: newId('gate'), on_true: 'allow', on_false: 'deny' }) : undefined,
     };
     const next = [...this.connectors(), cfg];
     this.connectors.set(next);
@@ -1807,8 +2045,14 @@ export class GraphComponent implements OnChanges {
     this.ecURL = c.url || '';
     this.ecContract = c.contract || '';
     this.ecExpression = '';
-    this.ecTrue = '';
-    this.ecFalse = '';
+    this.ecTrue = 'allow';
+    this.ecTrueWake = '';
+    this.ecFalse = 'deny';
+    this.ecReasonTrue = '';
+    this.ecReasonFalse = '';
+    this.ecMaxAge = 0;
+    this.ecBudget = false;
+    this.exprChecks.update(m => ({ ...m, edit: null }));
     this.ecCommand = '';
     this.ecCwd = '';
     this.ecTimeout = 300;
@@ -1819,13 +2063,23 @@ export class GraphComponent implements OnChanges {
       try {
         const g = JSON.parse(c.contract) as {
           expression?: string; on_true?: string; on_false?: string;
+          reason_true?: string; reason_false?: string; max_age_sec?: number;
           command?: string; cwd?: string; timeout_sec?: number;
           review_required?: boolean; human_approval_required?: boolean;
-          workspace?: string;
+          workspace?: string; budget?: unknown;
         };
         this.ecExpression = g.expression || '';
-        this.ecTrue = g.on_true || '';
-        this.ecFalse = g.on_false || '';
+        // Backwards compatible: free text from older contracts becomes the reason.
+        const t = parseRouting(g.on_true, g.reason_true, 'allow', ['allow', 'deny', 'wake']);
+        const f = parseRouting(g.on_false, g.reason_false, 'deny', ['deny', 'rework']);
+        this.ecTrue = t.action;
+        this.ecTrueWake = t.wake;
+        this.ecReasonTrue = t.reason;
+        this.ecFalse = f.action;
+        this.ecReasonFalse = f.reason;
+        this.ecMaxAge = Number(g.max_age_sec) || 0;
+        this.ecBudget = !!g.budget;
+        if (this.ecExpression) this.checkExpression('edit', this.ecExpression, this.ecBudget);
         this.ecCommand = g.command || '';
         this.ecCwd = g.cwd || '';
         this.ecTimeout = g.timeout_sec || 300;
@@ -1837,19 +2091,37 @@ export class GraphComponent implements OnChanges {
   }
 
   saveLocalEditor(): void {
-    this.commit();
     const id = this.editConnectorId();
     if (!id) return;
+    if (this.ecKind === 'gate') {
+      if (this.ecTrue === 'wake' && !this.ecTrueWake) { this.configError.set('wake braucht einen Agenten'); return; }
+      this.ensureValidExpression(this.ecExpression, this.ecBudget, 'edit', () => this.applyLocalEditor(id));
+      return;
+    }
+    this.applyLocalEditor(id);
+  }
+
+  private applyLocalEditor(id: string): void {
+    this.commit();
+    this.configError.set('');
     const next = this.connectors().map(c => {
       if (c.id !== id) return c;
       let contract = this.ecContract;
       if (this.ecKind === 'gate') {
+        const previous = this.parseJsonSafe(c.contract || '') as Record<string, unknown> | null;
         const gate: Record<string, unknown> = {
           gate_id: this.existingGateId(c.contract) || slug(this.ecName.trim()) || newId('gate'),
-          expression: this.ecExpression.trim(),
-          on_true: this.ecTrue.trim() || 'allow',
-          on_false: this.ecFalse.trim() || 'deny',
+          on_true: composeRouting(this.ecTrue, this.ecTrueWake),
+          on_false: composeRouting(this.ecFalse, ''),
         };
+        if (this.ecExpression.trim()) gate['expression'] = this.ecExpression.trim();
+        if (this.ecReasonTrue.trim()) gate['reason_true'] = this.ecReasonTrue.trim();
+        if (this.ecReasonFalse.trim()) gate['reason_false'] = this.ecReasonFalse.trim();
+        if (Number(this.ecMaxAge) > 0) gate['max_age_sec'] = Number(this.ecMaxAge);
+        // Keep contract fields this editor does not show (budget, policies ...).
+        for (const key of ['budget', 'runner_image', 'protected', 'allow_paths', 'deny_new_dependencies', 'secret_scan', 'when']) {
+          if (previous && previous[key] !== undefined) gate[key] = previous[key];
+        }
         if (this.ecCommand.trim()) gate['command'] = this.ecCommand.trim();
         if (this.ecCwd.trim()) gate['cwd'] = this.ecCwd.trim();
         if (this.ecTimeout) gate['timeout_sec'] = Number(this.ecTimeout) || 300;
@@ -1882,8 +2154,11 @@ export class GraphComponent implements OnChanges {
 
   gateSummary(raw: string): string {
     try {
-      const c = JSON.parse(raw) as { expression?: string; on_true?: string; on_false?: string };
-      return `${c.expression || 'condition'} · true→${c.on_true || 'allow'} · false→${c.on_false || 'deny'}`;
+      const c = JSON.parse(raw) as { expression?: string; on_true?: string; on_false?: string; command?: string };
+      const t = parseRouting(c.on_true, '', 'allow', ['allow', 'deny', 'wake']);
+      const f = parseRouting(c.on_false, '', 'deny', ['deny', 'rework']);
+      const when = c.expression || (c.command ? 'exit 0' : 'kein Befehl');
+      return `${when} · PASS→${composeRouting(t.action, t.wake)} · FAIL→${f.action}`;
     } catch {
       return 'gate';
     }
@@ -2307,8 +2582,13 @@ export class GraphComponent implements OnChanges {
     this.skillSource = '';
     this.skillConfig = '';
     this.gateExpression = '';
-    this.gateTrue = '';
-    this.gateFalse = '';
+    this.gateTrue = 'allow';
+    this.gateTrueWake = '';
+    this.gateFalse = 'deny';
+    this.gateReasonTrue = '';
+    this.gateReasonFalse = '';
+    this.gateMaxAge = 0;
+    this.exprChecks.update(m => ({ ...m, add: null }));
     this.gateCommand = '';
     this.gateCwd = '';
     this.gateTimeout = 300;
@@ -2320,6 +2600,15 @@ export class GraphComponent implements OnChanges {
   }
 
   addConnector(): void {
+    if (this.connKind === 'gate') {
+      if (this.gateTrue === 'wake' && !this.gateTrueWake) { this.schemaError.set('wake braucht einen Agenten'); return; }
+      this.ensureValidExpression(this.gateExpression, false, 'add', () => this.applyAddConnector());
+      return;
+    }
+    this.applyAddConnector();
+  }
+
+  private applyAddConnector(): void {
     this.commit();
     const a = this.connectorAgent();
     if (!a) return;
@@ -2333,10 +2622,13 @@ export class GraphComponent implements OnChanges {
     if (this.connKind === 'gate') {
       const contract: Record<string, unknown> = {
         gate_id: slug(name) || newId('gate'),
-        expression: this.gateExpression.trim(),
-        on_true: this.gateTrue.trim() || 'allow',
-        on_false: this.gateFalse.trim() || 'deny',
+        on_true: composeRouting(this.gateTrue, this.gateTrueWake),
+        on_false: composeRouting(this.gateFalse, ''),
       };
+      if (this.gateExpression.trim()) contract['expression'] = this.gateExpression.trim();
+      if (this.gateReasonTrue.trim()) contract['reason_true'] = this.gateReasonTrue.trim();
+      if (this.gateReasonFalse.trim()) contract['reason_false'] = this.gateReasonFalse.trim();
+      if (Number(this.gateMaxAge) > 0) contract['max_age_sec'] = Number(this.gateMaxAge);
       if (this.gateCommand.trim()) contract['command'] = this.gateCommand.trim();
       if (this.gateCwd.trim()) contract['cwd'] = this.gateCwd.trim();
       if (this.gateTimeout) contract['timeout_sec'] = Number(this.gateTimeout) || 300;
@@ -2788,10 +3080,11 @@ export class GraphComponent implements OnChanges {
       if (c.kind === 'gate' && c.targetAgentId) {
         const src = this.pickPort(connId, 'out', 'right');
         const tgt = this.pickPort(`agent-${c.targetAgentId}`, 'in', 'left');
+        const st = this.proceedState(c);
         if (src && tgt) edges.push({
           id: `proceed-${c.id}`, source: connId, target: `agent-${c.targetAgentId}`,
-          sourcePort: src.id, targetPort: tgt.id, label: 'proceed', kind: 'proceed',
-          sourceSide: src.side, targetSide: tgt.side, type: 'bezier',
+          sourcePort: src.id, targetPort: tgt.id, label: st.label, kind: 'proceed',
+          sourceSide: src.side, targetSide: tgt.side, type: 'bezier', state: st.state, tooltip: st.tooltip,
         });
       }
     }
@@ -3784,6 +4077,43 @@ export class GraphComponent implements OnChanges {
     }
     return edges;
   }
+}
+
+/** Parses an on_true/on_false value; free text from older contracts becomes the reason. */
+function parseRouting(raw: string | undefined, reason: string | undefined, def: string, allowed: string[]): { action: string; wake: string; reason: string } {
+  const v = (raw || '').trim();
+  const r = (reason || '').trim();
+  const lower = v.toLowerCase();
+  if (!v) return { action: def, wake: '', reason: r };
+  if (lower.startsWith('wake:') && allowed.includes('wake')) return { action: 'wake', wake: v.slice(5).trim(), reason: r };
+  if (allowed.includes(lower)) return { action: lower, wake: '', reason: r };
+  if (['allow', 'deny', 'rework'].includes(lower)) return { action: def, wake: '', reason: r };
+  return { action: def, wake: '', reason: r || v };
+}
+
+function composeRouting(action: string, wake: string): string {
+  return action === 'wake' ? `wake:${wake}` : action;
+}
+
+const PIPELINE_CODE_TEXT: Record<string, string> = {
+  ok: 'bestanden', override: 'Override aktiv', no_run: 'noch kein Lauf', failed: 'fehlgeschlagen',
+  error: 'Fehler im Lauf', stale: 'Workspace seit PASS geändert', expired: 'PASS zu alt',
+  tamper: 'Manipulation erkannt', fingerprint_unavailable: 'Fingerabdruck nicht berechenbar',
+  unknown_gate: 'Gate nicht konfiguriert', denied: 'on_true gibt nicht frei', internal: 'interner Fehler',
+};
+
+function pipelineCodeText(code: string): string {
+  return PIPELINE_CODE_TEXT[code] || code;
+}
+
+function ageText(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return '–';
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'gerade eben';
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`;
 }
 
 function slug(s: string): string {

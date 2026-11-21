@@ -36,6 +36,8 @@ export interface GraphDocumentResponse {
   body: GraphDocument | null;
   revision?: number;
   gates?: GraphGateSyncResult;
+  /** Transfer of the derived gate -> agent edges to the daemon (ADR 0002). */
+  pipeline_sync?: { pushed: boolean; edges: number; warnings?: string[]; error?: string };
 }
 
 export interface GateSyncStatus {
