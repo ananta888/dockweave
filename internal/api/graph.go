@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -33,14 +35,33 @@ func (s *Server) getGraph(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	var body json.RawMessage
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
+	if err := decoder.Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode graph: %w", err))
 		return
 	}
-	var probe map[string]any
-	if err := json.Unmarshal(body, &probe); err != nil {
+	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		writeErr(w, http.StatusBadRequest, "invalid", errors.New("graph must contain exactly one JSON object"))
+		return
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(body, &probe); err != nil || probe == nil {
+		if err == nil {
+			err = errors.New("null is not an object")
+		}
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("graph must be a JSON object: %w", err))
 		return
+	}
+	if rev, ok := probe["revision"]; ok {
+		var n int
+		if string(rev) == "null" {
+			writeErr(w, http.StatusBadRequest, "invalid", errors.New("revision must be a nonnegative integer"))
+			return
+		}
+		if err := json.Unmarshal(rev, &n); err != nil || n < 0 {
+			writeErr(w, http.StatusBadRequest, "invalid", errors.New("revision must be a nonnegative integer"))
+			return
+		}
 	}
 	if err := s.Store.SaveGraphDocument(r.Context(), graphDocumentID, string(body)); err != nil {
 		s.fail(w, err)

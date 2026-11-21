@@ -296,7 +296,8 @@ paths:
               schema: { $ref: "#/components/schemas/PipelineState" }
         "400": { description: Validation error }
         "403": { description: Not an admin peer }
-        "409": { description: Stale revision }
+        "409": { description: "stale_revision for an older revision; revision_conflict for different content at an existing revision" }
+        "500": { description: Persistence or mandatory audit write failed; mutation rolled back }
 
   /api/v1/pipelines/admission:
     get:
@@ -308,8 +309,13 @@ paths:
           description: Admission (or {revision, admissions[]} without agent)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Admission" }
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Admission" }
+                  - { $ref: "#/components/schemas/Admissions" }
+        "403": { description: Peer UID not authorized }
         "404": { $ref: "#/components/responses/NotFound" }
+        "500": { description: Pipeline snapshot unavailable }
 
   /api/v1/agents/{id}/pipeline:
     get:
@@ -322,6 +328,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Admission" }
+        "403": { description: Peer UID not authorized }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/pipelines/override:
     post:
@@ -337,7 +345,7 @@ paths:
                 agent: { type: string }
                 gate_id: { type: string, description: "gate id or * for every gate of the agent" }
                 reason: { type: string, minLength: 3 }
-                ttl_sec: { type: integer, default: 900, maximum: 86400 }
+                ttl_sec: { type: integer, default: 900, minimum: 0, maximum: 86400, description: "0 selects the 900-second default" }
                 single_use: { type: boolean, default: true }
       responses:
         "200":
@@ -347,6 +355,8 @@ paths:
               schema: { $ref: "#/components/schemas/PipelineOverride" }
         "400": { description: Validation error }
         "403": { description: Not an admin peer }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { description: Persistence or mandatory audit write failed; override not created }
 
   /api/v1/pipelines/overrides:
     get:
@@ -519,11 +529,11 @@ components:
         upstream_agent_id: { type: string }
         downstream_agent_id: { type: string }
         workspace: { type: string, description: canonical absolute path }
-        on_true: { type: string, description: "allow | deny | wake:<agent-id>" }
-        on_false: { type: string, description: "deny | rework" }
+        on_true: { type: string, description: "allow | deny | wake:<agent-id> | rework" }
+        on_false: { type: string, description: "allow | deny | wake:<agent-id> | rework; failing gates never admit work" }
         reason_true: { type: string }
         reason_false: { type: string }
-        max_age_sec: { type: integer }
+        max_age_sec: { type: integer, minimum: 0, maximum: 315360000, description: "0 disables age expiry. Completion must be present, no earlier than start and no more than 60 seconds in the future." }
         source_revision: { type: integer }
         updated_at: { type: string, format: date-time }
 
@@ -536,6 +546,7 @@ components:
 
     AdmissionEdge:
       type: object
+      required: [edge_id, gate_id, workspace, satisfied, code, action]
       properties:
         edge_id: { type: string }
         gate_id: { type: string }
@@ -555,6 +566,7 @@ components:
 
     Admission:
       type: object
+      required: [agent_id, allowed, action, edges, revision, checked_at]
       properties:
         agent_id: { type: string }
         agent: { type: string }
@@ -564,6 +576,13 @@ components:
         revision: { type: integer }
         checked_at: { type: string, format: date-time }
         fingerprints: { type: object, additionalProperties: { type: string } }
+
+    Admissions:
+      type: object
+      required: [revision, admissions]
+      properties:
+        revision: { type: integer, description: Revision of the single edge snapshot used for all admissions }
+        admissions: { type: array, items: { $ref: "#/components/schemas/Admission" } }
 
     PipelineOverride:
       type: object

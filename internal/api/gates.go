@@ -33,6 +33,10 @@ func (s *Server) runGate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode gate request: %w", err))
 		return
 	}
+	if body.TimeoutSec < 0 || body.TimeoutSec > 86400 {
+		writeErr(w, http.StatusBadRequest, "invalid", errors.New("timeout_sec must be between 0 and 86400"))
+		return
+	}
 	timeout := time.Duration(body.TimeoutSec) * time.Second
 	run, err := s.Gates.Run(r.Context(), gateexec.Request{
 		Workspace: body.Workspace,
@@ -218,7 +222,11 @@ func (s *Server) pruneGateRuns(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode prune: %w", err))
 		return
 	}
-	if body.Days <= 0 {
+	if body.Days < 0 || body.Days > 36500 || body.KeepPerWorkspace < 0 || body.KeepPerWorkspace > 100000 {
+		writeErr(w, http.StatusBadRequest, "invalid", errors.New("days must be 0..36500 and keep_per_workspace 0..100000"))
+		return
+	}
+	if body.Days == 0 {
 		body.Days = 30
 	}
 	if body.KeepPerWorkspace <= 0 {

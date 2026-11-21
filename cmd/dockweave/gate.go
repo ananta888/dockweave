@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -71,7 +72,7 @@ func gateCmd() *cobra.Command {
 			}
 			path := fmt.Sprintf("/api/v1/gates/runs?limit=%d", limit)
 			if workspace != "" {
-				path += "&workspace=" + workspace
+				path += "&workspace=" + url.QueryEscape(workspace)
 			}
 			if err := client().Do(context.Background(), "GET", path, nil, &out); err != nil {
 				return err

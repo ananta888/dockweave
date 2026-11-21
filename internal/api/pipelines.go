@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -108,26 +107,22 @@ func (s *Server) putPipelines(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", errors.New(strings.Join(problems, "; ")))
 		return
 	}
-	err := s.Store.ReplacePipelineEdges(r.Context(), body.Revision, edges, body.Reset)
+	err := s.Store.ReplacePipelineEdgesAudited(r.Context(), body.Revision, edges, body.Reset, &model.Event{
+		ID: model.NewID("evt"), Type: model.EventPipelineUpdate, Actor: actor(r),
+		Message: fmt.Sprintf("pipeline revision %d reset=%t: %d edges", body.Revision, body.Reset, len(edges)), Timestamp: time.Now().UTC(),
+	})
 	if errors.Is(err, persistence.ErrStaleRevision) {
 		writeErr(w, http.StatusConflict, "stale_revision", err)
+		return
+	}
+	if errors.Is(err, persistence.ErrRevisionConflict) {
+		writeErr(w, http.StatusConflict, "revision_conflict", err)
 		return
 	}
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	reset := ""
-	if body.Reset {
-		reset = " (reset)"
-	}
-	_ = s.Store.AppendEvent(r.Context(), &model.Event{
-		ID:        fmt.Sprintf("evt-pipeline-%d", time.Now().UnixNano()),
-		Type:      model.EventPipelineUpdate,
-		Actor:     actor(r),
-		Message:   fmt.Sprintf("pipeline revision %d%s: %d edge(s)", body.Revision, reset, len(edges)),
-		Timestamp: time.Now().UTC(),
-	})
 	state, err := s.Store.ListPipelineEdges(r.Context(), persistence.PipelineEdgeFilter{})
 	if err != nil {
 		s.fail(w, err)
@@ -178,8 +173,8 @@ func (s *Server) validateEdge(ctx context.Context, e *model.PipelineEdge) error 
 		}
 	}
 	e.OnTrue, e.OnFalse, e.ReasonTrue, e.ReasonFalse = tAct.String(), fAct.String(), tReason, fReason
-	if e.MaxAgeSec < 0 {
-		return errors.New("max_age_sec must not be negative")
+	if e.MaxAgeSec < 0 || e.MaxAgeSec > model.MaxPipelineAgeSec {
+		return fmt.Errorf("max_age_sec must be between 0 and %d", model.MaxPipelineAgeSec)
 	}
 	e.ID = strings.TrimSpace(e.ID)
 	if e.ID == "" {
@@ -273,23 +268,12 @@ func (s *Server) allAdmissions(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	seen := map[string]bool{}
-	var ids []string
-	for _, e := range state.Edges {
-		if !seen[e.DownstreamAgentID] {
-			seen[e.DownstreamAgentID] = true
-			ids = append(ids, e.DownstreamAgentID)
-		}
-	}
-	sort.Strings(ids)
 	ev := s.pipelineEvaluator()
-	out := make([]*model.Admission, 0, len(ids))
-	for _, id := range ids {
-		adm := ev.Admission(r.Context(), id)
-		if a, err := s.Agents.Get(r.Context(), id); err == nil {
+	out := ev.Admissions(r.Context(), state)
+	for _, adm := range out {
+		if a, err := s.Agents.Get(r.Context(), adm.AgentID); err == nil {
 			adm.Agent = a.Name
 		}
-		out = append(out, adm)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"revision": state.Revision, "admissions": out})
 }
@@ -320,13 +304,13 @@ func (s *Server) createPipelineOverride(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, http.StatusBadRequest, "invalid", errors.New("a reason is required"))
 		return
 	}
-	ttl := time.Duration(body.TTLSec) * time.Second
-	if ttl <= 0 {
-		ttl = defaultOverrideTTL
-	}
-	if ttl > maxOverrideTTL {
-		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("ttl_sec must be at most %d", int(maxOverrideTTL.Seconds())))
+	if body.TTLSec < 0 || body.TTLSec > int(maxOverrideTTL/time.Second) {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("ttl_sec must be between 0 and %d", int(maxOverrideTTL/time.Second)))
 		return
+	}
+	ttl := time.Duration(body.TTLSec) * time.Second
+	if ttl == 0 {
+		ttl = defaultOverrideTTL
 	}
 	a, err := s.Agents.Get(r.Context(), strings.TrimSpace(body.Agent))
 	if err != nil {
@@ -346,15 +330,6 @@ func (s *Server) createPipelineOverride(w http.ResponseWriter, r *http.Request) 
 		s.fail(w, err)
 		return
 	}
-	_ = s.Store.AppendEvent(r.Context(), &model.Event{
-		ID:      fmt.Sprintf("evt-pipeline-override-%d", now.UnixNano()),
-		Type:    model.EventPipelineOverride,
-		Actor:   o.Actor,
-		AgentID: a.ID,
-		Message: fmt.Sprintf("override %s for agent %s gate %s until %s (single_use=%t): %s",
-			o.ID, a.Name, o.GateID, o.ExpiresAt.Format(time.RFC3339), o.SingleUse, o.Reason),
-		Timestamp: now,
-	})
 	writeJSON(w, http.StatusOK, o)
 }
 
@@ -387,22 +362,12 @@ func (s *Server) listPipelineOverrides(w http.ResponseWriter, r *http.Request) {
 // driven. It writes a 409 pipeline_blocked response and returns false when
 // the agent may not work; nothing has been sent to the agent at that point.
 func (s *Server) admitPipelineWork(w http.ResponseWriter, r *http.Request, a *model.Agent) bool {
-	adm := s.pipelineEvaluator().Admit(r.Context(), a.ID)
+	ev := *s.pipelineEvaluator()
+	ev.WorkActor, ev.WorkIssue = actor(r), strings.TrimSpace(r.Header.Get(issueHeader))
+	adm := ev.Admit(r.Context(), a.ID)
 	adm.Agent = a.Name
 	issue := strings.TrimSpace(r.Header.Get(issueHeader))
 	if adm.Allowed {
-		for _, e := range adm.Edges {
-			if e.Code == model.AdmitOverride && s.Store != nil {
-				_ = s.Store.AppendEvent(r.Context(), &model.Event{
-					ID:        fmt.Sprintf("evt-pipeline-override-used-%d", time.Now().UnixNano()),
-					Type:      model.EventPipelineOverrideUsed,
-					Actor:     actor(r),
-					AgentID:   a.ID,
-					Message:   fmt.Sprintf("agent %s gate %s released by override %s (issue %s)", a.Name, e.GateID, e.OverrideID, firstNonEmptyStr(issue, "-")),
-					Timestamp: time.Now().UTC(),
-				})
-			}
-		}
 		return true
 	}
 	s.auditBlocked(r, a, adm, issue)
@@ -462,6 +427,8 @@ func (b *blockedAudit) allow(key string, now time.Time) bool {
 	return true
 }
 
+func (b *blockedAudit) forget(key string) { b.mu.Lock(); defer b.mu.Unlock(); delete(b.last, key) }
+
 func (s *Server) auditBlocked(r *http.Request, a *model.Agent, adm *model.Admission, issue string) {
 	if s.Store == nil {
 		return
@@ -474,14 +441,16 @@ func (s *Server) auditBlocked(r *http.Request, a *model.Agent, adm *model.Admiss
 	if !s.blocked.allow(key, time.Now()) {
 		return
 	}
-	_ = s.Store.AppendEvent(r.Context(), &model.Event{
+	if err := s.Store.AppendEvent(r.Context(), &model.Event{
 		ID:        fmt.Sprintf("evt-pipeline-blocked-%d", time.Now().UnixNano()),
 		Type:      model.EventPipelineBlocked,
 		Actor:     actor(r),
 		AgentID:   a.ID,
 		Message:   fmt.Sprintf("agent %s blocked (issue %s): %s", a.Name, firstNonEmptyStr(issue, "-"), strings.Join(codes, ", ")),
 		Timestamp: time.Now().UTC(),
-	})
+	}); err != nil {
+		s.blocked.forget(key)
+	}
 }
 
 func firstNonEmptyStr(v ...string) string {
