@@ -141,3 +141,60 @@ func TestSyncRepairsDriftAndPreservesManifestScope(t *testing.T) {
 		t.Fatalf("restored config: %+v", cfg)
 	}
 }
+
+// RF-025: duplicate gate names get suffixes by stable connector identity, so
+// reordering connectors never swaps gate IDs (and with them run history).
+func TestDuplicateGateIDsDoNotDependOnConnectorOrder(t *testing.T) {
+	ws := t.TempDir()
+	a := Connector{ID: "conn-a", Kind: "gate", Enabled: true, TargetAgentID: "b", Contract: `{"gate_id":"same","command":"true"}`}
+	b := Connector{ID: "conn-b", Kind: "gate", Enabled: true, TargetAgentID: "b", Contract: `{"gate_id":"same","command":"false"}`}
+	gateOf := func(conns ...Connector) map[string]string {
+		edges, bindings, _, err := DerivePipelineBindings(pipelineDoc(t, ws, conns...), []string{ws})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for conn, edgeID := range bindings {
+			for _, e := range edges {
+				if e.ID == edgeID {
+					out[conn] = e.GateID
+				}
+			}
+		}
+		return out
+	}
+	forward, reversed := gateOf(a, b), gateOf(b, a)
+	if forward["conn-a"] == forward["conn-b"] {
+		t.Fatalf("duplicate gate IDs not separated: %v", forward)
+	}
+	if forward["conn-a"] != reversed["conn-a"] || forward["conn-b"] != reversed["conn-b"] {
+		t.Fatalf("gate IDs depend on connector order: %v vs %v", forward, reversed)
+	}
+}
+
+func TestSameGateNameInTwoWorkspacesKeepsSeparateIdentity(t *testing.T) {
+	root := t.TempDir()
+	ws1, ws2 := filepath.Join(root, "one"), filepath.Join(root, "two")
+	for _, d := range []string{ws1, ws2} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := Connector{ID: "c1", Kind: "gate", Enabled: true, TargetAgentID: "b", Contract: `{"gate_id":"tests","command":"true"}`}
+	b := Connector{ID: "c2", Kind: "gate", Enabled: true, TargetAgentID: "b",
+		Contract: fmt.Sprintf(`{"gate_id":"tests","command":"false","workspace":%q}`, ws2)}
+	edges, bindings, _, err := DerivePipelineBindings(pipelineDoc(t, ws1, a, b), []string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 2 || bindings["c1"] == "" || bindings["c1"] == bindings["c2"] {
+		t.Fatalf("connectors share an identity: %+v %+v", edges, bindings)
+	}
+	byID := map[string]string{}
+	for _, e := range edges {
+		byID[e.ID] = e.Workspace + "|" + e.GateID
+	}
+	if byID[bindings["c1"]] != ws1+"|tests" || byID[bindings["c2"]] != ws2+"|tests" {
+		t.Fatalf("wrong binding: %v %v", byID, bindings)
+	}
+}

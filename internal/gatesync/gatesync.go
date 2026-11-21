@@ -220,7 +220,6 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 	}
 	groups := map[string]Config{defaultWS: {Version: 1, Gates: []Gate{}}}
 	var warnings []string
-	seen := map[string]bool{}
 	refs := map[string]gateRef{}
 
 	ensure := func(ws string) Config {
@@ -230,7 +229,8 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 		return Config{Version: 1, Gates: []Gate{}}
 	}
 
-	for _, c := range doc.Connectors {
+	ids := assignGateIDs(doc.Connectors, defaultWS)
+	for i, c := range doc.Connectors {
 		if !c.Enabled || c.Kind != "gate" {
 			continue
 		}
@@ -272,12 +272,7 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 			groups[ws] = cfg
 			continue
 		}
-		id := gateID(c, ct, len(cfg.Gates))
-		base := id
-		for n := 2; seen[ws+"|"+id]; n++ {
-			id = fmt.Sprintf("%s-%d", base, n)
-		}
-		seen[ws+"|"+id] = true
+		id := ids[i]
 		refs[c.ID] = gateRef{Workspace: ws, ID: id, Contract: ct}
 
 		when := strings.TrimSpace(ct.When)
@@ -308,6 +303,55 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 // gateID derives a stable gate identifier. An explicit gate_id in the contract
 // wins (so renames never change the identity), then the connector name and
 // finally the connector id.
+// assignGateIDs gives every runnable gate connector a workspace-unique gate
+// ID. Duplicates are suffixed (-2, -3, ...) in the order of the stable
+// connector ID, not the array order, so reordering connectors in the editor
+// never swaps gate IDs and thereby run history (RF-025). The result is keyed
+// by connector index.
+func assignGateIDs(conns []Connector, defaultWS string) map[int]string {
+	type entry struct {
+		index int
+		c     Connector
+		ct    Contract
+		ws    string
+	}
+	var entries []entry
+	for i, c := range conns {
+		if !c.Enabled || c.Kind != "gate" {
+			continue
+		}
+		var ct Contract
+		if raw := strings.TrimSpace(c.Contract); raw != "" {
+			if json.Unmarshal([]byte(raw), &ct) != nil {
+				continue
+			}
+		}
+		if strings.TrimSpace(ct.Command) == "" {
+			continue
+		}
+		ws := defaultWS
+		if override := strings.TrimSpace(ct.Workspace); override != "" {
+			ws = override
+		}
+		entries = append(entries, entry{i, c, ct, ws})
+	}
+	sort.SliceStable(entries, func(a, b int) bool { return entries[a].c.ID < entries[b].c.ID })
+	ids := map[int]string{}
+	seen := map[string]bool{}
+	perWS := map[string]int{}
+	for _, e := range entries {
+		base := gateID(e.c, e.ct, perWS[e.ws])
+		perWS[e.ws]++
+		id := base
+		for n := 2; seen[e.ws+"|"+id]; n++ {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		seen[e.ws+"|"+id] = true
+		ids[e.index] = id
+	}
+	return ids
+}
+
 func gateID(c Connector, ct Contract, fallback int) string {
 	if id := slug(ct.GateID); id != "" {
 		return id

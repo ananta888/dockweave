@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 63.0,
+      "progress_percent": 69.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -1638,7 +1638,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 50,
+      "progress_percent": 80,
       "description": "proceedState sucht die Admission-Kante nur nach gate_id. Backend-Ableitung suffixiert doppelte IDs und unterscheidet Kanten über Workspace/Gate/Downstream; die UI kann deshalb Status des falschen Gates anzeigen oder eine vorhandene Kante als unsynchronisiert einstufen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1690,8 +1690,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Duplikat-Suffix hängt von Connector-Reihenfolge ab (Vertauschen tauscht Gate-IDs/Historie)",
-          "Kein Test mit zwei Workspaces bzw. gleichnamigen Gates mit PASS und FAIL"
+          "Browser-Test mit gleichnamigen Gates (ein PASS, ein FAIL) fehlt"
+        ],
+        "resolved": [
+          "2026-11-21: Duplikat-Suffixe nach stabiler Connector-ID vergeben (assignGateIDs); TestDuplicateGateIDsDoNotDependOnConnectorOrder (scheiterte vorher), TestSameGateNameInTwoWorkspacesKeepsSeparateIdentity. Hinweis: bestehende Duplikate, deren Array-Reihenfolge nicht der ID-Reihenfolge entsprach, erhalten einmalig getauschte IDs."
         ]
       }
     },
