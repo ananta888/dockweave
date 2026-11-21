@@ -85,7 +85,7 @@ func pipelineCmd() *cobra.Command {
 	var multi bool
 	override := &cobra.Command{
 		Use:   "override AGENT --gate ID --reason TEXT",
-		Short: "Allow a blocked agent despite a gate (admin, audited; never for tamper)",
+		Short: "Allow a blocked agent despite a failed, missing or stale gate (admin, audited; never for tamper or a deliberate deny)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			if strings.TrimSpace(gate) == "" || strings.TrimSpace(reason) == "" {

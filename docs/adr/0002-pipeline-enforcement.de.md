@@ -67,7 +67,7 @@ Gate ausgeführt hat, ein Tamper-Lauf oder ein Lauf über alle Phasen):
 | `tamper` | geschützte Gate-Dateien wurden während des Laufs geändert (nie per Override aufhebbar) |
 | `fingerprint_unavailable` | der aktuelle Fingerabdruck ließ sich nicht berechnen (Limits, Rechte) |
 | `unknown_gate` | ein vollständiger Lauf enthielt das Gate nicht (nicht konfiguriert) |
-| `denied` | Gate bestanden, aber `on_true` gibt nicht frei (`deny`) |
+| `denied` | Gate bestanden, aber `on_true` gibt nicht frei (`deny`/`rework`); nie per Override aufhebbar |
 | `internal` | Fehler im Evaluator |
 | `override` | durch einen aktiven Admin-Override freigegeben |
 

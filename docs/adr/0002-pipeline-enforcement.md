@@ -65,7 +65,7 @@ gate, a tamper run, or a run over all phases):
 | `tamper` | protected gate files changed during the run (never overridable) |
 | `fingerprint_unavailable` | the current fingerprint could not be computed (limits, permissions) |
 | `unknown_gate` | a full run did not contain the gate (not configured) |
-| `denied` | the gate passed but `on_true` does not release (`deny`) |
+| `denied` | the gate passed but `on_true` does not release (`deny`/`rework`); never overridable |
 | `internal` | evaluator error |
 | `override` | released by an active admin override |
 

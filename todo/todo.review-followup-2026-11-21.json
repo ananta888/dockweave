@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 84.17,
+      "progress_percent": 85.83,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -317,10 +317,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "Einmalige Overrides pro Auftrag dedupliziert und atomar verbrauchen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "Admit verbraucht Overrides pro Kante. Ein Wildcard-Override scheitert bei der zweiten Kante; mehrere verschiedene Overrides können bei späterem Fehler teilweise verbraucht bleiben.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "today",
@@ -357,12 +357,11 @@
         "go test -race ./internal/pipeline ./internal/persistence ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Policy-Entscheidung offen: Wildcard-Override gibt frischen PASS mit on_true=deny/rework frei"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: zweiter Admit nach Wildcard-Verbrauch blockiert (TestWildcardOverrideConsumesOnceForMultipleEdges); toter consumeFails-Code korrigiert (überschreibt jetzt den Batch-Verbrauch, kein Teilverbrauch); wiederverwendbarer Override gegen echten Store 3x (TestReusableOverrideAdmitsRepeatedWork); Batch mit bereits verbrauchtem Override -> ErrConflict ohne Teilverbrauch (TestOverrideBatchRollsBackWhenOneWasAlreadyUsed); nebenläufige echte Admissions über HTTP+SQLite und 409 bei verlorenem Verbrauch (TestConcurrentPromptsConsumeSingleUseOverrideOnce); Tamper (TestOverrideNeverReleasesTamper)"
+          "2026-11-21: zweiter Admit nach Wildcard-Verbrauch blockiert (TestWildcardOverrideConsumesOnceForMultipleEdges); toter consumeFails-Code korrigiert (überschreibt jetzt den Batch-Verbrauch, kein Teilverbrauch); wiederverwendbarer Override gegen echten Store 3x (TestReusableOverrideAdmitsRepeatedWork); Batch mit bereits verbrauchtem Override -> ErrConflict ohne Teilverbrauch (TestOverrideBatchRollsBackWhenOneWasAlreadyUsed); nebenläufige echte Admissions über HTTP+SQLite und 409 bei verlorenem Verbrauch (TestConcurrentPromptsConsumeSingleUseOverrideOnce); Tamper (TestOverrideNeverReleasesTamper)",
+          "Erledigt 2026-11-21. Nutzerentscheidung 2026-11-21: Overrides überbrücken nur fehlende/gescheiterte/veraltete Nachweise; tamper und denied (bewusstes deny/rework nach PASS) nie. Umsetzung internal/pipeline/admission.go, Test TestOverrideNeverReleasesDeliberateDenyAfterPass (vorher gescheitert; FAIL bleibt überbrückbar); Doku SD-020, ADR 0002 EN/DE, Delegation EN/DE, OpenAPI, CLI-Hilfe."
         ]
       }
     },
@@ -3121,11 +3120,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 26,
+      "partial": 25,
       "blocked": 0,
-      "done": 18
+      "done": 19
     },
-    "progress_percent_done": 40.0,
+    "progress_percent_done": 42.22,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3140,8 +3139,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 5,
-      "remaining": 18
+      "done": 6,
+      "remaining": 17
     },
     "milestones": {
       "total": 7,
@@ -3170,9 +3169,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 26,
+    "partial": 25,
     "blocked": 0,
-    "done": 18
+    "done": 19
   },
   "evidence_summary": {
     "by_level": {

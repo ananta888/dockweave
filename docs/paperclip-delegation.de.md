@@ -205,7 +205,9 @@ Die Zuordnung Paperclip ↔ DockWeave-Agent für das Wecken ist explizit:
 zugeordnete Agenten werden als `UNMAPPED` gemeldet und nie geraten.
 
 Notausgang für Admins: `dockweave pipeline override <B> --gate <id> --reason …`
-(einmalig, 15 Minuten, auditiert; nie für `tamper`).
+(einmalig, 15 Minuten, auditiert). Overrides überbrücken nur fehlende,
+gescheiterte oder veraltete Nachweise; `tamper` und ein bewusstes
+`deny`/`rework` nach einem PASS (`denied`) werden nie freigegeben.
 
 ### Schutz je Wrapper-Modus
 

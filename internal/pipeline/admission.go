@@ -167,7 +167,9 @@ func (e *Evaluator) evaluate(ctx context.Context, agentID string) *model.Admissi
 			runsCache[cacheKey], runsErr[cacheKey] = runs, err
 		}
 		ae := e.evalEdge(edge, runs, runsErr[cacheKey], fingerprint, adm.CheckedAt)
-		if !ae.Satisfied && ae.Code != model.AdmitTamper {
+		// Overrides bridge missing, failed or stale evidence only. Tamper and
+		// a deliberate deny/rework after a fresh PASS (denied) stay blocked.
+		if !ae.Satisfied && ae.Code != model.AdmitTamper && ae.Code != model.AdmitDenied {
 			if overrideErr == nil {
 				if o := findOverride(overrides, edge.GateID); o != nil {
 					ae.Satisfied = true

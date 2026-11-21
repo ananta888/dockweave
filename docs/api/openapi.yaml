@@ -346,7 +346,7 @@ paths:
 
   /api/v1/pipelines/override:
     post:
-      summary: Audited admin override for a blocked edge (never for tamper)
+      summary: Audited admin override for a blocked edge (never for tamper or denied)
       requestBody:
         required: true
         content:

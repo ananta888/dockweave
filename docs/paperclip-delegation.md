@@ -197,7 +197,9 @@ The Paperclip ↔ DockWeave agent mapping for waking is explicit:
 are reported as `UNMAPPED` and never guessed.
 
 Admin escape hatch: `dockweave pipeline override <B> --gate <id> --reason …`
-(single use, 15 minutes, audited; never for `tamper`).
+(single use, 15 minutes, audited). Overrides bridge missing, failed or stale
+evidence only; `tamper` and a deliberate `deny`/`rework` after a PASS
+(`denied`) are never released.
 
 ### Protection per wrapper mode
 

@@ -373,7 +373,8 @@ start. Full decision record: `docs/adr/0002-pipeline-enforcement.md`.
    previous (stricter or equal) enforcement and is reported in the UI.
 5. Admin overrides need a reason, expire (default 15 minutes, max. 24 h), are
    single use by default (consumed transactionally) and never release
-   `tamper`. Creation and use are audited (`pipeline.override`,
+   `tamper` or `denied` (a deliberate `deny`/`rework` after a fresh PASS;
+   decided 2026-11-21: overrides bridge missing, failed or stale evidence only). Creation and use are audited (`pipeline.override`,
    `pipeline.override_used`); blocks are audited as `pipeline.blocked`
    (rate-limited).
 6. The Paperclip wrapper additionally asks the admission before each turn

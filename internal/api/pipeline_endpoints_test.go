@@ -298,3 +298,39 @@ func TestReusableOverrideAdmitsRepeatedWork(t *testing.T) {
 		t.Fatalf("reusable override admitted %d of 3 requests", n)
 	}
 }
+
+// Decision 2026-11-21: an override bridges failed, missing or stale evidence
+// only. A deliberate deny/rework after a fresh PASS is not overridable.
+func TestOverrideNeverReleasesDeliberateDenyAfterPass(t *testing.T) {
+	for _, action := range []string{"deny", "rework"} {
+		t.Run(action, func(t *testing.T) {
+			f := newPipelineFixture(t)
+			body := fmt.Sprintf(`{"revision":1,"edges":[{"id":"e","gate_id":"tests","upstream_agent_id":"alpha","downstream_agent_id":"beta","workspace":%q,"on_true":%q}]}`, f.ws, action)
+			if rec := f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", body); rec.Code != http.StatusOK {
+				t.Fatal(rec.Body)
+			}
+			f.saveRun(t, "pass", model.GatePassed, "sha256:one")
+			for _, gate := range []string{"tests", "*"} {
+				if rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/pipelines/override", fmt.Sprintf(`{"agent":"beta","gate_id":%q,"reason":"try it","single_use":false}`, gate)); rec.Code != http.StatusOK {
+					t.Fatal(rec.Body)
+				}
+			}
+			rec := f.do(t, RoleAdmin, http.MethodGet, "/api/v1/pipelines/admission?agent=beta", "")
+			var adm model.Admission
+			_ = json.Unmarshal(rec.Body.Bytes(), &adm)
+			if adm.Allowed || adm.Edges[0].Code != model.AdmitDenied || adm.Edges[0].Action != action {
+				t.Fatalf("override released a deliberate %s: %+v", action, adm.Edges)
+			}
+		})
+	}
+	// A failed run is still overridable.
+	f := newPipelineFixture(t)
+	if rec := f.pushEdges(t, 1); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body)
+	}
+	f.saveRun(t, "fail", model.GateFailed, "sha256:one")
+	f.do(t, RoleAdmin, http.MethodPost, "/api/v1/pipelines/override", `{"agent":"beta","gate_id":"*","reason":"hotfix","single_use":false}`)
+	if rec := f.do(t, RoleAdmin, http.MethodGet, "/api/v1/pipelines/admission?agent=beta", ""); !strings.Contains(rec.Body.String(), `"allowed":true`) {
+		t.Fatalf("failed run not overridable: %s", rec.Body)
+	}
+}
