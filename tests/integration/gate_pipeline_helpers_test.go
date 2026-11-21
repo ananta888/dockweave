@@ -88,3 +88,18 @@ func workspaceWithGates(t *testing.T, root string, cfg map[string]any, files map
 }
 
 var bg = context.Background()
+
+// requireHostFirewall guards tests that change nftables rules. The
+// integration runner shares the host network namespace, so these tests run
+// only where that is acceptable: a disposable VM such as CI
+// (DOCKWEAVE_INTEGRATION_HOST_FIREWALL=1, set by scripts/test-integration.sh
+// when CI=true). There, a missing nft binary is a failure, not a skip.
+func requireHostFirewall(t *testing.T) {
+	t.Helper()
+	if os.Getenv("DOCKWEAVE_INTEGRATION_HOST_FIREWALL") != "1" {
+		t.Skip("changes the host firewall; runs only in a disposable VM (DOCKWEAVE_INTEGRATION_HOST_FIREWALL=1, set in CI)")
+	}
+	if _, err := exec.LookPath("nft"); err != nil {
+		gatePrerequisite(t, "nft binary not available")
+	}
+}

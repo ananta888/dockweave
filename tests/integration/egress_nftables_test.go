@@ -18,9 +18,7 @@ import (
 // never collides with the production table.
 func TestEgressTableRoundTrip(t *testing.T) {
 	requireRoot(t)
-	if _, err := exec.LookPath("nft"); err != nil {
-		t.Skip("nft binary not available")
-	}
+	requireHostFirewall(t)
 	m := egress.New(egress.Config{Table: "dockweave-egress-test", BrokerPort: 8787})
 	t.Cleanup(func() { _ = m.Remove(context.Background()) })
 
@@ -55,9 +53,7 @@ func TestEgressTableRoundTrip(t *testing.T) {
 // docs/egress-security.md.
 func TestEgressTableRulesInKernel(t *testing.T) {
 	requireRoot(t)
-	if _, err := exec.LookPath("nft"); err != nil {
-		t.Skip("nft binary not available")
-	}
+	requireHostFirewall(t)
 	m := egress.New(egress.Config{Table: "dockweave-egress-test", BrokerPort: 8787})
 	t.Cleanup(func() { _ = m.Remove(context.Background()) })
 	if err := m.Ensure(context.Background(), "br-nonexistent", []string{"172.30.0.1"}); err != nil {

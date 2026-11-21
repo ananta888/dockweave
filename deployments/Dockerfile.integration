@@ -3,6 +3,7 @@ FROM golang:1.27.3-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f09
 ENV GOTOOLCHAIN=local
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 # python3 runs the Paperclip wrapper helpers in the wrapper end-to-end test.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 \
+# nftables: egress tests, enabled only in CI (see scripts/test-integration.sh).
+RUN apt-get update && apt-get install -y --no-install-recommends python3 nftables \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src

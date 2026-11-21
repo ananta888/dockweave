@@ -25,9 +25,7 @@ func TestEgressBypassMatrix(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not available")
 	}
-	if _, err := exec.LookPath("nft"); err != nil {
-		t.Skip("nft not available")
-	}
+	requireHostFirewall(t)
 	if err := exec.Command("docker", "image", "inspect", gateTestImage).Run(); err != nil {
 		t.Skip(gateTestImage + " image not available")
 	}

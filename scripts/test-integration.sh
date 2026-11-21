@@ -26,14 +26,16 @@ docker image inspect "$gate_image" >/dev/null 2>&1 || docker pull "$gate_image"
 # --network host: the broker-isolation test listens on the gateway IP of a
 # Docker bridge network, which exists only in the host network namespace.
 # The mount namespace stays private to this disposable container.
-# Consequence: the image deliberately ships no nft binary. With the host
-# network namespace, the nftables egress tests (TestEgressTable*,
-# TestEgressBypassMatrix) would change the host firewall; they need their own
-# network namespace or a disposable VM runner and skip here.
+# Consequence: the nftables egress tests (TestEgressTable*,
+# TestEgressBypassMatrix) would change the host firewall. They run only in a
+# disposable VM: CI=true enables them (DOCKWEAVE_INTEGRATION_HOST_FIREWALL=1);
+# on a developer machine they skip.
+host_firewall=0
+[ "${CI:-}" = "true" ] && host_firewall=1
 docker run --rm --name "$runner" --privileged --network host \
   -v "$repo:/src:ro" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$scratch:$scratch" \
-  -e "TMPDIR=$scratch" -e DOCKWEAVE_INTEGRATION_REQUIRED=1 -e "DOCKWEAVE_GATE_TEST_IMAGE=$gate_image" \
+  -e "TMPDIR=$scratch" -e DOCKWEAVE_INTEGRATION_REQUIRED=1 -e "DOCKWEAVE_GATE_TEST_IMAGE=$gate_image" -e "DOCKWEAVE_INTEGRATION_HOST_FIREWALL=$host_firewall" \
   dockweave-integration:go1.27.3 \
   go test -count=1 -tags integration -v ./tests/integration/... "$@"
