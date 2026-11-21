@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 71.67,
+      "progress_percent": 73.75,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -1157,10 +1157,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Zeitgrenzen und numerische API-Parameter vor Duration-Konvertierung validieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "max_age_sec erhält nur eine Untergrenze; ttl_sec und prune days werden vor vollständiger Bereichsprüfung in time.Duration multipliziert. Überläufe sowie fehlende oder zukünftige finished_at-Werte sind nicht durch eine einheitliche Zeitsemantik abgesichert.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1207,12 +1207,11 @@
         "go test ./internal/api ./internal/pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "API-Tests für riesige/negative timeout_sec und max_age_sec fehlen noch"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: POST /api/v1/gates/prune mit days/keep_per_workspace-Grenzen in OpenAPI; Fixtures prüfen days>36500, keep<0 und Überlauf-Integer -> 400"
+          "2026-11-21: POST /api/v1/gates/prune mit days/keep_per_workspace-Grenzen in OpenAPI; Fixtures prüfen days>36500, keep<0 und Überlauf-Integer -> 400",
+          "Erledigt 2026-11-21: TestNumericLimitsRejectedBeforeDurationConversion (timeout_sec -1/86401/int64-max/Überlauf, max_age_sec -1/Grenze+1/int64-max -> 400; Grenze selbst 200), ttl_sec in TestPipelineOverrideEndpoint und SDK-Vertrag, days/keep in OpenAPI-Fixtures; 0-Semantik in OpenAPI (max_age 0 = unbegrenzt, ttl 0 = 900 s, days 0 = 30); TestFreshnessTimeBoundaries (Fake-Clock vor/auf/nach Ablauf, fehlende/invertierte/zukünftige Abschlusszeit, 60 s Skew dokumentiert). Hinweis: /api/v1/gates/run ist noch nicht in OpenAPI beschrieben."
         ]
       }
     },
@@ -3117,11 +3116,11 @@
     "by_status": {
       "todo": 2,
       "in_progress": 0,
-      "partial": 36,
+      "partial": 35,
       "blocked": 0,
-      "done": 7
+      "done": 8
     },
-    "progress_percent_done": 15.56,
+    "progress_percent_done": 17.78,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3166,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 36,
+    "partial": 35,
     "blocked": 0,
-    "done": 7
+    "done": 8
   },
   "evidence_summary": {
     "by_level": {

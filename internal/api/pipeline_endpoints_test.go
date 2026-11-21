@@ -206,3 +206,25 @@ func TestGateRunRejectsUnknownUpstreamAgent(t *testing.T) {
 		t.Fatalf("unknown upstream: %d %s", rec.Code, rec.Body)
 	}
 }
+
+// RF-017: numeric limits are rejected before any duration arithmetic.
+func TestNumericLimitsRejectedBeforeDurationConversion(t *testing.T) {
+	f := newPipelineFixture(t)
+	f.srv.Gates = &gateexec.Runner{}
+	for _, v := range []string{"-1", "86401", "9223372036854775807", "99999999999999999999"} {
+		rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/gates/run", fmt.Sprintf(`{"workspace":%q,"timeout_sec":%s}`, f.ws, v))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("timeout_sec=%s: %d %s", v, rec.Code, rec.Body)
+		}
+	}
+	for _, v := range []string{"-1", fmt.Sprint(model.MaxPipelineAgeSec + 1), "9223372036854775807"} {
+		body := fmt.Sprintf(`{"revision":1,"edges":[{"id":"e","gate_id":"tests","downstream_agent_id":"beta","workspace":%q,"max_age_sec":%s}]}`, f.ws, v)
+		if rec := f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("max_age_sec=%s: %d %s", v, rec.Code, rec.Body)
+		}
+	}
+	ok := fmt.Sprintf(`{"revision":1,"edges":[{"id":"e","gate_id":"tests","downstream_agent_id":"beta","workspace":%q,"max_age_sec":%d}]}`, f.ws, model.MaxPipelineAgeSec)
+	if rec := f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", ok); rec.Code != http.StatusOK {
+		t.Fatalf("max_age_sec at the limit: %d %s", rec.Code, rec.Body)
+	}
+}
