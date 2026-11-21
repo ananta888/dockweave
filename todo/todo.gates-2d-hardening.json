@@ -1,0 +1,526 @@
+{
+  "version": 1,
+  "owner": "dockweave-developer-agent",
+  "track": "gates-2d-hardening",
+  "purpose": "Die bei der Code-Analyse von DockWeave identifizierten Korrektheits-, Sicherheits- und Darstellungslücken im Gate-System (internal/gateexec, internal/gatesync, internal/api/gates.go, deployments/paperclip) und in der 2D-Darstellung (ui/web/src/app/components/graph.component.ts, core/graph-*.ts) schließen. Basis ist die bestehende, abgeschlossene Gate-Ausbaustufe in todo/archive/gate-enforcement.json.",
+  "goal": "Gates verhalten sich fail-closed und durchsetzungsstark (Budget, Review-Attribution, ausführbare Verträge, echte Phasen) und die 2D-Darstellung zeigt die Wahrheit: Gate-Laufzeitstatus und Gate↔Workspace-Beziehungen sind sichtbar, Layouts deterministisch, Verbindungstypen validiert und der Graph-Editor robust (Undo, Concurrency, A11y).",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Korrektheits- und Sicherheitslücken schließen",
+      "task_ids": [
+        "GD-001",
+        "GD-002",
+        "GD-003",
+        "GD-004"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Funktionale Lücken schließen",
+      "task_ids": [
+        "GD-005",
+        "GD-006",
+        "GD-007",
+        "GD-008",
+        "GD-009",
+        "GD-010",
+        "GD-011",
+        "GD-012"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "title": "UX & Robustheit der 2D-Darstellung",
+      "task_ids": [
+        "GD-013",
+        "GD-014",
+        "GD-015",
+        "GD-016",
+        "GD-017",
+        "GD-018",
+        "GD-019"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "GD-001",
+      "milestone": "M1",
+      "type": "security",
+      "priority": "P0",
+      "risk": "critical",
+      "status": "done",
+      "title": "Budget-Gate fail-closed machen",
+      "description": "Runner.checkBudget (internal/gateexec/runner.go:335-369) liefert bei fehlendem/unerreichbarem Broker Exceeded=false + Reason; der Lauf läuft weiter. Das widerspricht den Fail-closed-Regeln in docs/gate-model.md. Bei konfiguriertem Budget und nicht verfügbarem Broker muss der Lauf fehlschlagen (oder explizit konfigurierbar warnen).",
+      "acceptance_criteria": [
+        "Konfiguriertes Budget + Broker unerreichbar => Lauf schlägt fehl (Status failed), nicht nur Warnung.",
+        "Optional konfigurierbar über budget.on_unavailable: \"fail\" (Default) | \"warn\".",
+        "Kein Budget konfiguriert => Verhalten unverändert (kein stiller Fehlschlag).",
+        "Unit-Test: checkBudget mit nil/fehlerhaftem Broker liefert Exceeded/fehlschlagendes Ergebnis."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-002",
+      "milestone": "M1",
+      "type": "security",
+      "priority": "P0",
+      "risk": "critical",
+      "status": "done",
+      "title": "Review-Attribution im Daemon erzwingen",
+      "description": "createGateReview (internal/api/gates.go:112-158) prüft nur das Verdict-Format, nicht ob der Akteur der zugewiesene Reviewer oder Admin ist. Die Zuschreibungsprüfung liegt nur im Paperclip-Wrapper (gate-020 ist als done markiert, aber die DockWeave-Seite erzwingt es nicht). Jeder Admin-Peer kann per POST /gates/reviews ein Review für jedes Issue schreiben.",
+      "acceptance_criteria": [
+        "POST /gates/reviews prüft, dass der Akteur dem Review-Issue zugewiesen ist oder RoleAdmin besitzt.",
+        "Nicht zugewiesener Akteur erhält 403 mit klarer Meldung.",
+        "Bestehendes idempotentes Verhalten (gleiche Verdict => idempotent, andere => 409) bleibt erhalten.",
+        "Unit/API-Test: fremder vs. zugewiesener Reviewer vs. Admin."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-003",
+      "milestone": "M1",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "high",
+      "status": "done",
+      "title": "expression/on_true/on_false ausführbar machen oder ehrlich deklarieren",
+      "description": "gatesync.Contract definiert expression/on_true/on_false (internal/gatesync/gatesync.go:59-61), aber Derive() wertet sie nie aus; Gates ohne command werden in Derive() (Zeile 166-168) stillschweigend übersprungen. gate-022 nennt es selbst 'ausführbar statt Doku'. Der UI-Begriff 'deterministic gate' erweckt eine Bedingungslogik, die es nicht gibt.",
+      "acceptance_criteria": [
+        "Entweder (a) minimale Ausdruckssprache für command==0 und budget<N implementiert, oder (b) die Felder klar als Dokumentation deklariert.",
+        "Gates ohne command, aber mit expression, erzeugen eine sichtbare Warnung (nicht stillschweigend droppen).",
+        "UI zeigt an, was tatsächlich ausgewertet wird (Exit-Code, Budget) statt eines toten expression-Strings.",
+        "Unit-Test: Derive mit expression-only Gate erzeugt Warnung; command==0 wird korrekt ausgewertet (falls a)."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-004",
+      "milestone": "M1",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Gate-Phasen-Semantik klären",
+      "description": "runner.go validiert und sortiert pre_run/after_run/post_run (phaseOrder, Zeile 60/156-178), aber der Paperclip-Wrapper ruft den Runner nur nach dem Lauf auf; dockweave gate run führt alle Phasen sequentiell in einem Rutsch aus. gates.py (Host-Fallback) filtert nur after_run (Zeile 125). when beeinflusst nur Reihenfolge, nicht den Zeitpunkt.",
+      "acceptance_criteria": [
+        "Entweder echte pre_run/post_run-Auslöser in der Orchestrierung (dockweave-run.sh vor/nach dem Agentenlauf) oder die Phasen bis dahin als 'nur after_run unterstützt' markieren.",
+        "Unbekannte Phasen bleiben Konfigurationsfehler (bestehendes Verhalten).",
+        "Doku (gate-model.md) nennt die tatsächliche Semantik und erlaubte Werte."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-005",
+      "milestone": "M2",
+      "type": "ui",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Gate-Node-Status im 2D-Graph aus gateRuns() ableiten",
+      "description": "Agenten pulsieren grün/grau/blinken rot über node.state, aber Gate-Nodes erhalten nie einen State aus gateRuns(). Der letzte PASS/FAIL/TAMPER liegt nur im Settings-Modal 'Gate-Health'. Ein rot gefailtes Gate sieht im Graphen wie ein neutraler gelber Knoten aus.",
+      "acceptance_criteria": [
+        "Gate-Node zeigt den Status des letzten Laufs: grün=passed, rot=failed/tamper, grau=kein Lauf.",
+        "Status wird aus gateRuns() (daemon) gemappt, nicht aus statischen Daten.",
+        "Node-Detail zeigt kompakt letzter Lauf (passed/gates, duration, tamper).",
+        "E2E: Fake-API mit failed-Run färbt den Gate-Node rot."
+      ],
+      "depends_on": [
+        "GD-011"
+      ],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-006",
+      "milestone": "M2",
+      "type": "schema",
+      "priority": "P1",
+      "risk": "high",
+      "status": "done",
+      "title": "Gate↔Workspace-Beziehung als Kante + per-Gate-Workspace",
+      "description": "Es gibt nur agent→gate-Kanten. Dass ein Gate gegen ein bestimmtes Workspace läuft, ist eine einzige globale paperclip.workspace-Einstellung — keine Kante gate→workspace. Multi-Projekt-Setups sind nicht abbildbar.",
+      "acceptance_criteria": [
+        "Optional workspace-Referenz am Gate-Connector (Kante gate→workspace im Resources-Modus).",
+        "paperclip.workspace bleibt als Default für Altbestand; pro-Gate-Workspace überstimmt.",
+        "gatesync.Derive/Sync unterstützt mehrere Workspaces (eine gates.json pro Workspace).",
+        "Unit-Test: mehrere Gate-Workspaces erzeugen je eine korrekte gates.json."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-007",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "deny_new_dependencies auf weitere Manifeste erweitern",
+      "description": "deny_new_dependencies liest hartcodiert nur package.json (runner.go:211-212). Kein go.mod/go.sum, requirements.txt, pyproject.toml, Cargo.toml/Cargo.lock, bun.lockb — trotz generischem Namen.",
+      "acceptance_criteria": [
+        "Manifest-Erkennung deckt mindestens package.json, go.mod, requirements.txt, pyproject.toml, Cargo.toml ab.",
+        "Neue Dependencies in diesen Manifesten führen zu FAIL mit Liste.",
+        "Unit-Test pro unterstütztem Manifest."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-008",
+      "milestone": "M2",
+      "type": "security",
+      "priority": "P1",
+      "risk": "high",
+      "status": "done",
+      "title": "Secret-Scan verbessern",
+      "description": "scanSecrets (policy.go:89-128) hat nur 6 Regex-Muster, keine Entropie-Erkennung und scannt nur geänderte Dateien — ein bereits eingechecktes Secret bleibt unentdeckt. Der Secret-Wert selbst wird korrekt nie geloggt.",
+      "acceptance_criteria": [
+        "Shannon-Entropie-basierte Erkennung zusätzlich zu Regex-Mustern.",
+        "Mehr Muster (z.B. private key variants, cloud/CI tokens).",
+        "Optionaler Full-Scan (ganze Datei) bei secret_scan, nicht nur Diff.",
+        "Weiterhin wird nie der Secret-Wert geloggt, nur Pfad + Muster."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-009",
+      "milestone": "M2",
+      "type": "ui",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "strict-Verbindungstypen durchsetzen",
+      "description": "ConnectionType.strict (rw/ro) ist im Schema definiert (graph-schema.ts:81-82), wird aber in createConnection/addCustomEdge nie geprüft. Man kann agent→workspace mit Typ memory verbinden.",
+      "acceptance_criteria": [
+        "Beim Erstellen einer Kante wird geprüft, dass Quell-/Ziel-Kind zum strict-Typ passt.",
+        "Unzulässige Kombination wird mit klarer Meldung abgelehnt.",
+        "Unit/E2E-Test: agent→workspace mit Typ memory wird blockiert."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-010",
+      "milestone": "M2",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "Deterministische Force-Layouts (Seed)",
+      "description": "forceLayout initialisiert mit Math.random() (graph.component.ts:3196-3198); optimizeLayout hat einen seed-Parameter, der nie gesetzt wird. 'Aufräumen'/Force liefert jedes Mal ein anderes Bild.",
+      "acceptance_criteria": [
+        "seed-Option wird tatsächlich durchgereicht; Initialisierung reproduzierbar.",
+        "Gleicher Graph + gleicher Seed => identisches Layout.",
+        "Deterministischer Default-Seed, optional per Auswahl variierbar."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-011",
+      "milestone": "M2",
+      "type": "schema",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Stabile Gate-Identität statt slug(Name)",
+      "description": "slug(Name) erzeugt die Gate-ID (gatesync.go:170). Umbenennen des Connectors = neue ID => altes Gate weg, neues angelegt (da generatedBy-managed). Keine stabile Identität über Renames; erschwert das Mapping von Gate-Runs auf Graph-Nodes.",
+      "acceptance_criteria": [
+        "Explizite id am Connector gespeichert; Rename ändert die ID nicht.",
+        "Migration: bestehende Connectors erhalten beim ersten Laden stabile IDs.",
+        "Gate-Run → Graph-Node-Mapping funktioniert über stabile IDs."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-012",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "Retention/Prune für gate_runs und Evidence",
+      "description": "gate-011 fordert 'Lösch-/Prune-Regeln dokumentiert', aber es gibt keinen Prune-Code; gate_runs und evidence wachsen unbeschränkt.",
+      "acceptance_criteria": [
+        "Prune-Regel (Alter/Anzahl pro Workspace) im Supervisor oder als CLI.",
+        "Dokumentation der Retention in docs/gate-model.md.",
+        "Persistence-Test: Prune entfernt nur alte Einträge."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-013",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "medium",
+      "status": "done",
+      "title": "Undo/Redo im Graph-Editor",
+      "description": "Jede Änderung wird sofort (debounced) persistiert; komplexe Graph-Edits ohne Undo sind fehleranfällig.",
+      "acceptance_criteria": [
+        "Command-Stack für Node-/Kanten-/Connector-Mutationen.",
+        "Undo/Redo wirkt auf alle editierbaren Graph-Entitäten.",
+        "Persistenz bleibt nach Undo/Redo konsistent (nicht doppelt gespeichert)."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-014",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "high",
+      "status": "done",
+      "title": "Optimistisches Concurrency für das Graph-Dokument",
+      "description": "Graph-Dokument version:1 wird nie erhöht oder per If-Match geprüft; localStorage bleibt Schreib-Puffer mit debounced PUT. Zwei Tabs überschreiben sich verlustfrei (last writer wins).",
+      "acceptance_criteria": [
+        "PUT /graph prüft eine Version/Revision und lehnt veraltete Schreibvorgänge ab (409).",
+        "Konflikt wird in der UI sichtbar gemacht (nicht still überschrieben).",
+        "Version wird bei jedem Schreibvorgang erhöht."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-015",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "flowPoint über Foblex-API statt Regex-Matrix",
+      "description": "flowPoint (graph.component.ts:1470-1476) parst die Canvas-transform-Matrix per Regex. Bricht bei matrix3d oder wissenschaftlicher Notation. Besser die Foblex-eigene Screen→Flow-Konvertierung nutzen.",
+      "acceptance_criteria": [
+        "Screen→Flow-Koordinaten über die Foblex-API statt Regex-Parsing.",
+        "Korrekt bei Zoom/Pan inkl. Skalierung.",
+        "Regressionstest: Drop auf Canvas platziert Node an der Mausposition."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-016",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "UUID statt Date.now() für IDs",
+      "description": "Node-/Kanten-IDs via conn-${Date.now()} kollidieren bei gleicher Millisekunde und sind vorhersagbar.",
+      "acceptance_criteria": [
+        "Kollisionssichere ID-Erzeugung (crypto.randomUUID).",
+        "Keine Regression bei Referenzen (Node-ID ↔ Position ↔ Kante)."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-017",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "Chain-Palette konsistent machen",
+      "description": "createPaletteNode mappt agent-chain→custom (Zeile 1492), aber connectorNodes überspringt agent-chain-Knoten (Zeile 2546). 'Chain' ziehen erzeugt einen custom-Node statt einer Chain.",
+      "acceptance_criteria": [
+        "Entweder echte Chain-Node oder 'Chain' aus der Palette entfernen.",
+        "UX darf nicht suggerieren, dass ein Chain-Node entsteht, wenn ein custom-Node entsteht."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-018",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "medium",
+      "status": "done",
+      "title": "openReviews/issue_match auf echtes Flag statt Titel-Regex",
+      "description": "openReviews() nutzt /review/i.test(title) (Zeile 1100-1101); issue_match default 'review' ist dieselbe fragile Heuristik — dupliziert und abhängig vom Issue-Titel.",
+      "acceptance_criteria": [
+        "Review-Erkennung nutzt ein echtes Status-/Typ-Feld statt Titel-Substring.",
+        "Einheitliche Quelle für UI und gatesync-issue_match."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    },
+    {
+      "id": "GD-019",
+      "milestone": "M3",
+      "type": "ui",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "A11y: Tastatur, ARIA, Text-Labels für Status",
+      "description": "Graph ist pointer-only: keine tabindex/ARIA auf Nodes, Status nur farbcodiert (grün/rot) ohne Textalternative für Farbenblinde.",
+      "acceptance_criteria": [
+        "Nodes sind per Tastatur fokussierbar und aktivierbar.",
+        "Status hat zusätzlich zur Farbe eine Textalternative (role/label).",
+        "ARIA-Rollen für den Canvas-Bereich."
+      ],
+      "depends_on": [],
+      "progress_percent": 100
+    }
+  ],
+  "critical_path_tasks": [
+    "GD-001",
+    "GD-002",
+    "GD-003"
+  ],
+  "definition_of_done": [
+    "Budget-, Review- und Vertrags-Lücken sind fail-closed und in der Daemon-API durchgesetzt.",
+    "Die 2D-Darstellung zeigt Gate-Laufzeitstatus und Gate↔Workspace-Beziehungen aus echten Daemon-Daten.",
+    "Layouts sind deterministisch, Verbindungstypen validiert, der Graph-Editor robust (Undo, Concurrency, A11y)."
+  ],
+  "implementation_notes": [
+    "Bestehende Gate-Architektur (internal/gateexec, internal/gatesync) wiederverwenden, nicht neu aufbauen.",
+    "Änderungen an internal/mounts oder am Bedrohungsmodell erfordern docs/security-decisions.md (AGENTS.md).",
+    "Fail-closed-Änderungen (GD-001, GD-002) mit erweiterten Tests + Review.",
+    "Commits klein und thematisch (Conventional Commits); TODO-Stand im selben Commit pflegen."
+  ],
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 19,
+    "milestones_done": 3,
+    "milestones_total": 3
+  },
+  "tasks_status_summary": {
+    "total": 19,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 19
+    },
+    "progress_percent_done": 100.0,
+    "by_priority": {
+      "P0": 3,
+      "P1": 8,
+      "P2": 8,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 6,
+      "medium": 7,
+      "high": 4,
+      "critical": 2
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 3,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 3
+    }
+  },
+  "tasks_type_summary": {
+    "total": 19,
+    "by_type": {
+      "security": {
+        "total": 3,
+        "done": 3,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 3
+        }
+      },
+      "backend": {
+        "total": 4,
+        "done": 4,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 4
+        }
+      },
+      "ui": {
+        "total": 10,
+        "done": 10,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 10
+        }
+      },
+      "schema": {
+        "total": 2,
+        "done": 2,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 2
+        }
+      }
+    }
+  },
+  "summary_notes": [
+    "Abgeleitet aus der Code-Analyse des Gate-Systems und der 2D-Darstellung; Ergänzung zur abgeschlossenen todo/archive/gate-enforcement.json.",
+    "P0 = Sicherheits-/Korrektheitslücken (GD-001..003), P1 = funktionale Lücken, P2 = UX/Robustheit.",
+    "Statuswerte folgen dem Ananta-Track-Schema (todo/in_progress/partial/blocked/done), nicht den DockWeave-Legacy-Werten (pending/deferred).",
+    "Alle 19 Tasks umgesetzt: Backend (fail-closed Budget, Review-Attribution, Expression-Warnung, Phasen-Doku, per-Gate-Workspace, Multi-Manifest-Deps, Secret-Scan+Entropie, stabile Gate-ID, Retention) und 2D-Darstellung (Gate-Laufstatus, strict-Typen, deterministisches Force-Layout, Undo/Redo, Concurrency, DOMMatrix, UUID, Chain-Palette, Review-Erkennung, A11y)."
+  ]
+}

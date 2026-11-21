@@ -91,8 +91,12 @@ statt zu scheitern).
 - `pkg/sdk` — öffentlicher Go-Client
 - `ui/tui` — Bubble Tea TUI
 - `scripts/` — Install-/Uninstall-Skripte (`install.sh`, `uninstall.sh`)
-- `todo/*.json` — aktive, maschinenlesbare Aufgabenstände
-- `todo/archive/*.json` — abgeschlossene Aufgabenstände (alle Tasks `done`/`deferred`)
+- `todo/todo.schema.json`, `todo/todo.track.schema.json` — JSON-Schema
+  (Draft 2020-12) für Aufgabenstände; aus dem Ananta-Projekt übernommen
+- `todo/todo.*.json` — aktive, maschinenlesbare Aufgabenstände im
+  Track-Format (validierbar gegen `todo.track.schema.json`)
+- `todo/archive/*.json` — abgeschlossene Aufgabenstände im Legacy-Format
+  (alle Tasks `done`/`deferred`)
 - `tests/integration` — privilegierte Tests
 
 ## Docker-Label-Konvention
@@ -118,5 +122,17 @@ statt zu scheitern).
 
 ## Status-Felder der TODO-JSONs
 
-`pending` → `in_progress` → `done` | `blocked` | `deferred`.
+Aktive Aufgabenstände folgen dem Ananta-Track-Schema
+(`todo/todo.track.schema.json`):
+
+- Status: `todo` → `in_progress` → `done` | `partial` | `blocked`
+- Priorität: `P0`–`P3`; Risiko: `low`/`medium`/`high`/`critical`
+- Jeder Task hat `acceptance_criteria` (Pflichtfeld), `depends_on` und
+  `progress_percent`; die Zusammenfassungen (`tasks_status_summary`,
+  `tasks_type_summary`, `progress_summary`) werden mitgepflegt.
+
+Legacy-Dateien unter `todo/archive/` nutzen das ältere Format
+(`domain`/`tasks` mit `status` `pending` → `in_progress` → `done` |
+`blocked` | `deferred`).
+
 Geänderte Stände werden im selben Commit wie der zugehörige Code gepflegt.
