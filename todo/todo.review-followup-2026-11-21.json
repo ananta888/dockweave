@@ -1,0 +1,3159 @@
+{
+  "$schema": "./todo.track.schema.json",
+  "version": 1,
+  "owner": "dockweave-developer-agent",
+  "track": "review-followup-2026-11-21",
+  "created": "2026-11-21",
+  "updated": "2026-11-21",
+  "language": "de",
+  "purpose": "Quellcodegestützter Verbesserungs- und Prüfbacklog nach der Analyse aller 19 Commits vom 21.11.2026. Erfasst bestätigte Fehler, konkrete Sicherheits- und Zuverlässigkeitslücken, fehlende Verifikation sowie unmittelbar betroffene Altlasten.",
+  "goal": "Pipeline-Sperren bleiben bei fehlerhaften Eingaben und Teilfehlern wirksam; Graph-Bearbeitung verliert keine Änderungen; Gate-Ergebnisse sind an den tatsächlich geprüften Stand gebunden und dauerhaft nachvollziehbar; Wrapper-Aktionen sind wiederholbar; Tests, CI und Dokumentation belegen das ausgelieferte Verhalten.",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "review_basis": {
+    "reviewed_commit_range": "bac167c771c4e08b12e4ca688c23cd95f3050c8e..29eaa009535fd9b17818e84e34dc60c0badbe959",
+    "reviewed_head": "29eaa009535fd9b17818e84e34dc60c0badbe959",
+    "reviewed_date": "2026-11-21",
+    "timezone": "Europe/Berlin",
+    "commit_count": 19,
+    "changed_file_count": 82,
+    "source_rechecked_for_backlog": true,
+    "scope": "Heutige Gate-, Pipeline-, Graph-, Paperclip-, CLI/SDK-, Persistenz-, Test- und Dokumentationsänderungen einschließlich direkt berührter vorbestehender Pfade.",
+    "limits": [
+      "Diese Datei ist ein Arbeitsauftrag, keine Implementierung und kein Nachweis bereits behobener Fehler.",
+      "Quellverweise und Zeilen beziehen sich auf reviewed_head. Vor Umsetzung bei verändertem HEAD erneut prüfen; Symbole dienen als dauerhaftere Suchanker.",
+      "Nicht reproduzierte Race-, Ausfall- und Sicherheitsfolgen sind ausdrücklich als Untersuchungsaufträge markiert.",
+      "Frühere Archive bleiben historische Aufzeichnungen; neue offene Tasks werden nicht rückwirkend als erledigt behandelt.",
+      "Kein Deploy, Push, Commit oder produktiver Datenbank-/Mount-Eingriff ist Teil dieses Backlogs."
+    ],
+    "previous_verification": {
+      "passed": [
+        "go build ./...",
+        "go test ./...",
+        "go test -race ./...",
+        "go vet ./...",
+        "python3 -B -m unittest discover -s deployments/paperclip/tests -v (27 Tests)",
+        "cd ui/web && npm run build",
+        "cd ui/web && npm run e2e:pipeline (3 Tests; Backend simuliert)",
+        "go test -tags integration -v ./tests/integration -run 'TestGateExpression|TestPipelineEndToEnd' (echte unprivilegierte Gate-Container)"
+      ],
+      "reproduced_failures": [
+        "Fehlerhafter Connector-Vertrag: HTTP 200, leere Kantenliste und allowed=true nach zuvor gesperrtem Agenten.",
+        "Einmaliger Wildcard-Override: Status erlaubt, tatsächliche Admission bei zwei Kanten verweigert und Override verbraucht.",
+        "on_true=rework: frischer PASS liefert action=deny.",
+        "PUT /graph mit null bei neuem Graphen: Panic assignment to entry in nil map."
+      ],
+      "warnings": [
+        "Angular-Build erfolgreich, aber Komponenten-CSS bei etwa 14,32 kB über dem konfigurierten 12-kB-Warnbudget; im Build-Task RF-038 berücksichtigt."
+      ],
+      "not_verified": [
+        "staticcheck: im Review nicht installiert",
+        "make test-integration: privilegierte Gesamtsuite nicht ausgeführt",
+        "Vollständiger Wrapper-DONE-Ablauf gegen echte Daemon-/Gate-Komponenten",
+        "Adversariale Dateisystem-Races und produktive Ausfallbedingungen"
+      ],
+      "interpretation": "Grüne bestehende Tests decken die aufgeführten Regressionen und Lücken nicht vollständig ab; ihre Erfolge dürfen nicht als Abnahme dieses Tracks übernommen werden."
+    }
+  },
+  "evidence_levels": {
+    "runtime_reproduced": "Im vorausgehenden Review durch ausgeführte isolierte Regression reproduziert.",
+    "code_confirmed": "Konkreter Kontrollfluss, Datenfluss oder Konfigurationswiderspruch am geprüften HEAD belegt; kein zusätzlicher Laufzeitnachweis behauptet.",
+    "coverage_gap": "Implementierung oder zugesagte Funktion vorhanden, aber benannte Fehler-/Integrationsfälle fehlen im Nachweis.",
+    "investigation_required": "Konkrete Quellstelle begründet ein Risiko; zuerst deterministisch bestätigen oder nachvollziehbar widerlegen, bevor eine Lösung gewählt wird."
+  },
+  "execution_rules": [
+    "Jeder Task beginnt mit Prüfung der angegebenen Quellstellen und vorhandenen Tests; Abweichungen vom reviewed_head im Task dokumentieren.",
+    "Bestätigte Fehler vor dem Fix mit einem Verhaltenstest reproduzieren; Test muss auf dem fehlerhaften Stand scheitern und nach dem Fix bestehen.",
+    "Untersuchungsaufträge dürfen auch durch einen belastbaren Gegenbeleg abgeschlossen werden. Ein bloß grüner Happy-Path-Test genügt nicht.",
+    "AGENTS.md gilt vollständig: Mount-Rechte nur im Daemon, keine unsichere RO-Propagation, kein Lazy-Unmount ohne explizites Force, SO_PEERCRED plus Rollenprüfung, Pfad-Allowlist plus TOCTOU-Schutz.",
+    "Agenten- und Gate-Container erhalten weder Docker-Socket noch privileged oder CAP_SYS_ADMIN. Ein kontrollierter Integrationstest-Harness ist davon getrennt zu halten.",
+    "Privilegierte Mount-Tests nur in wegwerfbarer isolierter Umgebung; unprivilegierte Fixtures für Dateisystem-Regressionen bevorzugen.",
+    "Persistenzzugriff ausschließlich über internal/persistence; notwendige Änderungen an gespeicherten Formaten erhalten versionierte Migrationen.",
+    "Geänderte Sicherheitsgrenzen in docs/security-decisions.md dokumentieren; Nutzer- und Betriebsdokumentation in Englisch und Deutsch aktualisieren.",
+    "Status, progress_percent und Zusammenfassungen mit Umsetzung pflegen. done erfordert überprüfte Akzeptanzkriterien und dauerhaft benannten Test-/QA-Nachweis mit Commit-SHA.",
+    "Die Prüfung dieser JSON-Datei bedeutet nicht, dass die darin beschriebenen Implementierungsaufgaben begonnen oder abgeschlossen sind."
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Bestätigte Funktionsfehler und Regressionen",
+      "status": "in_progress",
+      "progress_percent": 52.5,
+      "task_ids": [
+        "RF-001",
+        "RF-002",
+        "RF-003",
+        "RF-004",
+        "RF-005",
+        "RF-006"
+      ]
+    },
+    {
+      "id": "M2",
+      "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
+      "status": "in_progress",
+      "progress_percent": 69.58,
+      "task_ids": [
+        "RF-007",
+        "RF-008",
+        "RF-009",
+        "RF-010",
+        "RF-011",
+        "RF-012",
+        "RF-013",
+        "RF-014",
+        "RF-015",
+        "RF-016",
+        "RF-017",
+        "RF-043"
+      ]
+    },
+    {
+      "id": "M3",
+      "title": "Persistenz, Admission-API und Auditierung",
+      "status": "in_progress",
+      "progress_percent": 74.0,
+      "task_ids": [
+        "RF-018",
+        "RF-019",
+        "RF-020",
+        "RF-021",
+        "RF-022"
+      ]
+    },
+    {
+      "id": "M4",
+      "title": "Graph-Editor, Autosave und Statusdarstellung",
+      "status": "in_progress",
+      "progress_percent": 59.0,
+      "task_ids": [
+        "RF-023",
+        "RF-024",
+        "RF-025",
+        "RF-026",
+        "RF-044"
+      ]
+    },
+    {
+      "id": "M5",
+      "title": "Paperclip-Wrapper und zuverlässiges Routing",
+      "status": "in_progress",
+      "progress_percent": 52.5,
+      "task_ids": [
+        "RF-027",
+        "RF-028",
+        "RF-029",
+        "RF-030"
+      ]
+    },
+    {
+      "id": "M6",
+      "title": "Tests, CI und reproduzierbare Builds",
+      "status": "in_progress",
+      "progress_percent": 39.0,
+      "task_ids": [
+        "RF-031",
+        "RF-032",
+        "RF-033",
+        "RF-034",
+        "RF-035",
+        "RF-036",
+        "RF-037",
+        "RF-038",
+        "RF-039",
+        "RF-040"
+      ]
+    },
+    {
+      "id": "M7",
+      "title": "Dokumentation, Track-Validierung und Gesamtabnahme",
+      "status": "in_progress",
+      "progress_percent": 28.33,
+      "task_ids": [
+        "RF-041",
+        "RF-042",
+        "RF-045"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "RF-001",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "Ungültige Gate-Verträge dürfen bestehende Pipeline-Sperren nicht entfernen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 60,
+      "description": "deriveGroups überspringt ungültiges Contract-JSON; DerivePipeline lässt dessen Kante weg und syncPipeline überträgt trotzdem die reduzierte Gesamtliste. Der zuvor gesperrte Folge-Agent kann dadurch ohne Gate arbeiten.",
+      "evidence_level": "runtime_reproduced",
+      "scope_origin": "today",
+      "components": [
+        "internal/gatesync",
+        "internal/webui"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gatesync/gatesync.go",
+          "line": 236,
+          "anchor": "json.Unmarshal([]byte(raw), &ct)"
+        },
+        {
+          "file": "internal/gatesync/pipeline.go",
+          "line": 46,
+          "anchor": "ref, ok := refs[c.ID]"
+        },
+        {
+          "file": "internal/webui/graph.go",
+          "line": 189,
+          "anchor": "func (s *Server) syncPipeline"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein aktivierter Gate-Connector mit Ziel-Agent und ungültigem Contract-JSON erzeugt einen strukturierten Fehler mit Connector- und Zielreferenz.",
+        "Die ungültige Ableitung kann weder die bisher erzwungene Kante entfernen noch teilweise abgeleitete Kanten als vollständigen Ersatz veröffentlichen.",
+        "Regression: gültige Kante ohne PASS speichern, Vertrag auf '{' ändern, erneut speichern; Folge-Agent bleibt gesperrt und der Fehler ist sichtbar.",
+        "Mehrere Connectoren: ein fehlerhafter Vertrag schwächt keine andere bereits gespeicherte Schutzbedingung.",
+        "Bewusstes Löschen oder Deaktivieren eines gültigen Connectors bleibt als explizite Änderung möglich und wird getrennt von Ableitungsfehlern getestet."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/gatesync/pipeline_test.go",
+        "internal/webui/graph_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gatesync ./internal/webui ./internal/api"
+      ],
+      "related_archive_tasks": [
+        "gate-pipeline:GP-007",
+        "gate-pipeline:GP-016"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "ContractError nur als String in pipeline_sync.error/gates.error, kein strukturiertes Objekt mit Connector-/Zielreferenz",
+          "Kein End-to-End-Nachweis, dass Admission gegen echten Store gesperrt bleibt",
+          "Kein GET-/UI-Sichtbarkeitstest nach Reload",
+          "Kein webui-Test mit mehreren bzw. deaktiviertem Connector"
+        ]
+      }
+    },
+    {
+      "id": "RF-002",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "409-Konflikte ohne Überschreiben fremder Graph-Änderungen auflösen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 40,
+      "description": "pushGraph übernimmt nach HTTP 409 nur die nachgeladene Revision. Das weiterhin veraltete lokale Gesamtdokument kann beim nächsten Autosave mit dieser gültigen Revision fremde Änderungen überschreiben.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "ui/web/src"
+      ],
+      "source_refs": [
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1480,
+          "anchor": "private pushGraph(): void"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1509,
+          "anchor": "this.graphRevision = res.revision ?? this.graphRevision;"
+        }
+      ],
+      "acceptance_criteria": [
+        "Nach 409 sind automatische Schreibversuche für das unreconciliierte Dokument gesperrt; eine neue Remote-Revision wird nicht auf alte lokale Inhalte übertragen.",
+        "Der Konflikt ist auch bei geschlossenem Konfigurationsdialog sichtbar und bietet vollständiges Neuladen oder einen expliziten Abgleich; lokale Änderungen bleiben bis zur Entscheidung wiederherstellbar.",
+        "Browserfall mit zwei Clients: A speichert, B erhält 409, B bearbeitet weiter; A's Änderungen werden durch keinen Hintergrund-Request überschrieben.",
+        "Nach vollständigem Neuladen oder bewusst abgeschlossenem Abgleich wird genau der bestätigte Dokumentstand mit passender Revision gespeichert.",
+        "Konflikttests prüfen die gespeicherten Connectoren, Positionen und Kanten statt nur eine Hinweismeldung."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "ui/web/e2e/pipeline.spec.ts",
+        "internal/webui/graph_test.go"
+      ],
+      "verification_commands": [
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Nach 'Serverstand laden' überschreibt persistRecovery() den Vor-Konflikt-Entwurf",
+          "Kein Zwei-Client-Browsertest, kein Reload-und-Speichern-Test",
+          "Tests prüfen keine gespeicherten Connectoren/Positionen/Kanten",
+          "Konflikt-e2e-Test scheitert aktuell (Timeout auf paperclipWorkspace-Eingabe)"
+        ]
+      }
+    },
+    {
+      "id": "RF-003",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "Einmalige Overrides pro Auftrag dedupliziert und atomar verbrauchen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 55,
+      "description": "Admit verbraucht Overrides pro Kante. Ein Wildcard-Override scheitert bei der zweiten Kante; mehrere verschiedene Overrides können bei späterem Fehler teilweise verbraucht bleiben.",
+      "evidence_level": "runtime_reproduced",
+      "scope_origin": "today",
+      "components": [
+        "internal/pipeline",
+        "internal/persistence"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 59,
+          "anchor": "func (e *Evaluator) Admit"
+        },
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 239,
+          "anchor": "func (s *Store) ConsumePipelineOverride"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein Single-Use-Override mit gate_id='*' gibt einen Auftrag mit mindestens zwei blockierten, nicht manipulierten Gates genau einmal frei.",
+        "Alle für einen Auftrag benötigten unterschiedlichen Override-IDs werden in einer Persistenztransaktion geprüft und verbraucht; bei Ablauf, Konflikt oder DB-Fehler wird keiner teilweise verbraucht.",
+        "Zwei konkurrierende echte Admissions können denselben einmaligen Override nicht beide erfolgreich nutzen.",
+        "Read-only Admission verbraucht weiterhin nichts; wiederverwendbare Overrides bleiben innerhalb ihrer Gültigkeit nutzbar.",
+        "Tamper bleibt auch mit Wildcard-Override gesperrt; die API liefert bei Konflikten weiterhin strukturierte pipeline_blocked-Antworten."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/pipeline/admission_test.go",
+        "internal/persistence/pipelines_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/pipeline ./internal/persistence ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein zweiter Admit nach Verbrauch",
+          "Keine nebenläufigen echten Admissions gegen SQLite",
+          "Wiederverwendbare Overrides über mehrere Admits ungetestet",
+          "API-409 bei fehlgeschlagenem Verbrauch ungetestet",
+          "Policy-Entscheidung offen: Wildcard-Override gibt frischen PASS mit on_true=deny/rework frei",
+          "Toter Code in consumeFails"
+        ]
+      }
+    },
+    {
+      "id": "RF-004",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "Routing-Aktion und Begründung in beiden Gate-Zweigen bis zum Wrapper erhalten",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 50,
+      "description": "evalEdge gibt bei on_true=rework oder deny vor dem Setzen von Action/Reason zurück. Zusätzlich verarbeitet cmd_route rework nur bei code='failed'; die reine Backend-Korrektur würde den erfolgreichen rework-Zweig noch nicht ausführbar machen.",
+      "evidence_level": "runtime_reproduced",
+      "scope_origin": "today",
+      "components": [
+        "internal/pipeline",
+        "deployments/paperclip",
+        "internal/gatesync"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 232,
+          "anchor": "if !tAct.Allows()"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 315,
+          "anchor": "if e.get(\"code\") == \"failed\" and e.get(\"action\") == \"rework\":"
+        },
+        {
+          "file": "internal/gatesync/action.go",
+          "line": 70,
+          "anchor": "func ResolveRouting"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein frischer PASS mit on_true=rework bleibt gesperrt, liefert aber action=rework und reason_true sowohl pro Kante als auch sinnvoll aggregiert.",
+        "Der Wrapper erstellt für diesen unterstützten rework-Zweig die Nacharbeit an den ausdrücklich zugeordneten Upstream-Agenten.",
+        "on_true=deny erhält seine konfigurierte Begründung; allow und wake behalten ihre bestehende Freigabesemantik.",
+        "Eine dokumentierte Testmatrix deckt alle akzeptierten true/false-Aktionen ab; ein fehlgeschlagener Gesamt-Run, Tamper oder interner Fehler wird durch allow/wake nicht unbeabsichtigt freigegeben.",
+        "UI-Auswahl, API-Validierung, Legacy-Textmigration und ADR beschreiben dieselben erlaubten Kombinationen; nicht unterstützte Kombinationen werden eindeutig abgewiesen."
+      ],
+      "depends_on": [
+        "RF-005",
+        "RF-027"
+      ],
+      "verification_files": [
+        "internal/pipeline/admission_test.go",
+        "internal/api/pipelines_test.go",
+        "deployments/paperclip/tests/test_wrapper.py",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "go test ./internal/pipeline ./internal/api ./internal/gatesync",
+        "make test-wrapper",
+        "cd ui/web && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein aggregiertes Reason-Feld in model.Admission",
+          "Kein Test on_true=deny mit reason_true",
+          "Keine dokumentierte Testmatrix; ADR 0002 D-2 nicht aktualisiert",
+          "API akzeptiert on_false=allow/wake:, UI bietet sie nicht an"
+        ]
+      }
+    },
+    {
+      "id": "RF-005",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "Rework- und Kommentar-Idempotenz gegen fehlgeschlagene Seiteneffekte absichern",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 55,
+      "description": "rework reserviert den dauerhaften once-Marker vor issue create und entfernt ihn bei Fehlern nicht. report_blocked markiert einen Kommentar ebenfalls vor dem ungeprüften Update. Eine spätere Wiederholung unterdrückt damit nie erfolgreich ausgeführte Aktionen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "deployments/paperclip"
+      ],
+      "source_refs": [
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 113,
+          "anchor": "def once(key):"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 126,
+          "anchor": "def report_blocked(adm, issue):"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 227,
+          "anchor": "def rework(pc_upstream, company, parent, gate, run_id, reason):"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein eindeutig fehlgeschlagenes issue create kann für dieselbe Company/Gate/Run-Kombination erneut versucht werden und erzeugt nach Erholung genau ein Ticket.",
+        "Erfolgreiche Erstellung wird dedupliziert; konkurrierende Versuche verwenden eine klar definierte Reservierung mit Wiederherstellung bei Prozessabbruch.",
+        "Nach unklarem Timeout wird der vorhandene Ticket-Tag zuverlässig abgefragt; eine fehlgeschlagene oder ungültige Liste wird nicht als sicher leere Liste behandelt.",
+        "Ein fehlgeschlagenes Issue-Update lässt den zugehörigen Sperrkommentar erneut zu; erfolgreich bestätigte Kommentare werden weiter nur einmal je Ursachensatz gesendet.",
+        "Tests decken Erfolg, eindeutigen Fehler, unbekanntes Ergebnis, Wiederanlauf und zwei konkurrierende Aufrufe ab; keine externen Paperclip-Nachrichten in Tests."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Crash nach 'pending' ohne Recovery: Rework-Routing hängt dauerhaft bei 'reconcile before retry'",
+          "report_blocked: Timeout (124) bei issue update lässt 'pending' stehen, spätere Aufrufe kehren früh zurück",
+          "Keine nebenläufigen Kommentar-Aufrufe getestet"
+        ]
+      }
+    },
+    {
+      "id": "RF-006",
+      "milestone": "M1",
+      "type": "bug",
+      "title": "Graph-Eingaben an beiden HTTP-Grenzen als JSON-Objekte validieren",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 55,
+      "description": "JSON null wird beim Unmarshal in eine Map nicht als Fehler behandelt. Der Gateway-Pfad panikt anschließend in stampRevision; der getrennte Daemon-Graphpfad akzeptiert null bereits vor den heutigen Änderungen.",
+      "evidence_level": "runtime_reproduced",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/webui",
+        "internal/api"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/webui/graph.go",
+          "line": 88,
+          "anchor": "var probe map[string]any"
+        },
+        {
+          "file": "internal/webui/graph.go",
+          "line": 258,
+          "anchor": "func stampRevision"
+        },
+        {
+          "file": "internal/api/graph.go",
+          "line": 40,
+          "anchor": "var probe map[string]any"
+        }
+      ],
+      "acceptance_criteria": [
+        "null, Arrays, Strings, Zahlen und boolesche JSON-Werte werden sowohl am Gateway- als auch am Daemon-Graphendpunkt mit strukturiertem HTTP 400 abgewiesen.",
+        "Null-Requests auf neuem, legacy- und bereits revisioniertem Graphen verursachen keinen Panic und verändern weder Graph noch Gate-Dateien noch Pipeline-Kanten.",
+        "Ungültige revision-Werte werden explizit abgewiesen statt still als 0 behandelt.",
+        "Ein Request enthält genau ein JSON-Dokument; angehängte weitere JSON-Werte oder unerlaubte Nutzlast werden nicht still akzeptiert.",
+        "Gültige Objekte bleiben kompatibel; große Integer und präzise Zahlen überstehen das Revision-Stamping unverändert."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/webui/graph_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/webui ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Keine Tests für Daemon-PUT /api/v1/graph",
+          "Boolean-Fall fehlt",
+          "Kein Test, dass bestehender Graph/Gate-Dateien/Kanten unverändert bleiben"
+        ]
+      }
+    },
+    {
+      "id": "RF-007",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Sandbox-Vorbereitung und Host-Hashing gegen externe Symlink-Ziele absichern",
+      "status": "partial",
+      "priority": "P0",
+      "risk": "critical",
+      "progress_percent": 70,
+      "description": "copyTree erhält Symlinks mit cp -a. makeWritable ruft os.Chmod auf allen Einträgen auf; hashPaths/hashFile folgen Pfaden mit os.Stat/os.Open. Damit sind Host-Zugriffe außerhalb der privaten Kopie möglich. Die Operationen sind im Code belegt, ein vollständiger Angriff wurde nicht ausgeführt.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "pre_existing",
+      "components": [
+        "internal/gateexec",
+        "AGENTS.md"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/hash.go",
+          "line": 161,
+          "anchor": "func copyTree"
+        },
+        {
+          "file": "internal/gateexec/hash.go",
+          "line": 174,
+          "anchor": "func makeWritable"
+        },
+        {
+          "file": "internal/gateexec/hash.go",
+          "line": 49,
+          "anchor": "func hashFile"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 35,
+          "anchor": "openat2(RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS)"
+        }
+      ],
+      "acceptance_criteria": [
+        "Unprivilegierte Regression mit externem Sentinel: Sandbox-Kopie mit absolutem und relativ ausbrechendem Symlink verändert weder Modus noch Inhalt des Zieles.",
+        "Vorbereitung und Host-Hashing öffnen keine außerhalb des verankerten Workspace liegenden Link-Ziele und folgen keinen Magiclinks.",
+        "Verschachtelte Symlinks, ausgetauschte Verzeichnisse und spezielle Dateien werden nach einer dokumentierten, fail-closed Link-Policy behandelt.",
+        "Sicherheitskritische Zugriffe nutzen verankerte Handles und den von AGENTS.md verlangten TOCTOU-Schutz; bloßes EvalSymlinks vor späterem pfadbasiertem Zugriff gilt nicht als Lösung.",
+        "Legitime reguläre Dateien bleiben für den unprivilegierten Gate-Container nutzbar; privilegierte Agentenrechte oder Docker-Socket-Freigaben werden nicht eingeführt.",
+        "Bedrohungsmodell, betroffene ältere Pfade und Regressionstests sind in docs/security-decisions.md dokumentiert."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/gateexec/runner_integration_test.go",
+        "internal/gateexec/fingerprint_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gateexec"
+      ],
+      "implementation_notes": [
+        "Zuerst den externen chmod-Effekt ausschließlich an eigenen temporären Dateien reproduzieren; keine fremden Host-Pfade verwenden.",
+        "Gezielte Tests für hash.go können als neue Datei im bestehenden Paket ergänzt werden."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "security-decisions.md-Eintrag fehlt (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung)",
+          "Escape-Prüfung in snapshot.go ist lexikalisch (verkettete Links)",
+          "Absolute Symlinks irgendwo im Tree (node_modules, .git) brechen den Lauf ab – Entscheidung nötig",
+          "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)"
+        ]
+      }
+    },
+    {
+      "id": "RF-008",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Fingerprint-Zugriffe an eine validierte Workspace-Wurzel binden",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 70,
+      "description": "Fingerprint prüft die Wurzel mit os.Stat, traversiert anschließend per Pfad und öffnet Dateien erneut per os.Open. Datei- oder Verzeichnisaustausch zwischen diesen Schritten ist nicht ausgeschlossen; für eine durch Symlink ersetzte Wurzel unterscheiden sich Stat- und WalkDir-Verhalten.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "today",
+      "components": [
+        "internal/gateexec",
+        "internal/api"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 56,
+          "anchor": "info, err := os.Stat(root)"
+        },
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 69,
+          "anchor": "err = filepath.WalkDir"
+        },
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 134,
+          "anchor": "func hashFileCtx"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 49,
+          "anchor": "func (s *Server) pipelineEvaluator"
+        }
+      ],
+      "acceptance_criteria": [
+        "Deterministische Tests ersetzen reguläre Datei, Unterverzeichnis und Workspace-Wurzel zwischen Erfassung und Öffnen; das tatsächliche Verhalten wird vor Änderungen protokolliert.",
+        "Fingerprinting kann keine Inhalte außerhalb der registrierten und verankerten Workspace-Wurzel lesen, auch nicht nach Umbenennung oder Symlink-Austausch.",
+        "Ein ungültiger oder ausgetauschter Wurzelpfad erzeugt einen Fehler statt eines scheinbar gültigen Fingerprints eines leeren Baums.",
+        "Symlinks werden gemäß bestehendem Vertrag anhand ihres Link-Ziels als Text erfasst; ihre Zielinhalte werden nicht verfolgt.",
+        "Nicht stabil erfassbare Inhalte ergeben fingerprint_unavailable oder einen gleichwertigen strukturierten Sperrgrund; keine Wiederverwendung eines früheren erfolgreichen Fingerprints als Ersatz."
+      ],
+      "depends_on": [
+        "RF-007"
+      ],
+      "verification_files": [
+        "internal/gateexec/fingerprint_test.go",
+        "internal/pipeline/admission_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/gateexec ./internal/pipeline ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Swap-Test zwischen Aufzählung und Öffnen innerhalb des Fingerprint-Walks fehlt"
+        ]
+      }
+    },
+    {
+      "id": "RF-009",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Fingerprint-Limits auf tatsächlich gelesene Daten und blockierende Zugriffe anwenden",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 60,
+      "description": "MaxBytes addiert die Dateigröße vor dem Lesen, während hashFileCtx bis EOF liest. Wachsende Dateien können die Grenze überschreiten; ein später gegen FIFO ausgetauschter Eintrag kann schon beim Öffnen blockieren. Timeout-Prüfungen finden nur zwischen Leseoperationen statt.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "today",
+      "components": [
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 107,
+          "anchor": "total += fi.Size()"
+        },
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 135,
+          "anchor": "f, err := os.Open(path)"
+        },
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 146,
+          "anchor": "n, err := f.Read(buf)"
+        }
+      ],
+      "acceptance_criteria": [
+        "MaxBytes begrenzt die tatsächlich konsumierten Bytes über den gesamten Lauf, auch bei wachsender oder nach Stat ersetzter Datei.",
+        "Ein kontrollierter FIFO-/Spezialdatei-Austausch kann weder Öffnen noch Lesen unbegrenzt blockieren; Abbruch und Deadline sind wirksam.",
+        "Überschreiten von MaxFiles, MaxBytes und Timeout erzeugt jeweils einen nachvollziehbaren Fehler und keine Freigabe.",
+        "Grenztests prüfen exakt erlaubte Größe, ein zusätzliches Byte, wachsende Datei und vorzeitig abgebrochenen Kontext ohne unbounded Sleeps.",
+        "Dokumentation nennt die tatsächlich garantierten Grenzen; unvermeidbare Einschränkungen blockierender Dateisysteme werden ausdrücklich benannt statt eine harte Frist vorzutäuschen."
+      ],
+      "depends_on": [
+        "RF-008"
+      ],
+      "verification_files": [
+        "internal/gateexec/fingerprint_test.go",
+        "internal/pipeline/admission_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/gateexec ./internal/pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein Test mit wachsender Datei während Fingerprint",
+          "FIFO-Swap nach stat ungetestet",
+          "Verzeichnisse zählen nicht zu MaxFiles, ReadDir(-1) unbegrenzt",
+          "Garantien nur im Code-Kommentar dokumentiert"
+        ]
+      }
+    },
+    {
+      "id": "RF-010",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Ausgeführte Gate-Konfiguration und Fingerprint aus demselben Snapshot ableiten",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 80,
+      "description": "Run liest cfg aus dem Live-Workspace vor Image-Vorbereitung und copyTree. Der Fingerprint entsteht später aus der Kopie, die Ausführung nutzt aber weiterhin die frühere cfg. Ein Konfigurationswechsel in diesem Fenster kann Ergebnis und angeblich geprüften Inhalt auseinanderbringen.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 100,
+          "anchor": "cfg, cfgRaw, err := readConfig(workspace)"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 163,
+          "anchor": "if err := copyTree"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 173,
+          "anchor": "if fp, err := Fingerprint"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein deterministischer Test ändert gates.json zwischen frühem Lesen und Kopieren; ein PASS darf nicht für eine Konfiguration gelten, deren Befehle nie ausgeführt wurden.",
+        "Befehle, Expressions, Phasen, Protected-/Policy-Einstellungen und GatesHash stammen aus genau dem privaten Snapshot, dessen WorkspaceFingerprint gespeichert wird.",
+        "Notwendige Image-Auswahl vor Snapshot-Erstellung wird nach Snapshot-Lesen konsistent abgeglichen; Änderungen können keinen anderen ungeprüften Runner einschleusen.",
+        "Instabile Snapshot-Erstellung schlägt explizit fehl oder wird nur begrenzt wiederholt; Fehler bleiben für Admission sperrend.",
+        "Bestehende All-Phases- und explizite Phasenläufe sowie Tamper-Erkennung funktionieren mit der gemeinsamen Snapshot-Quelle weiter."
+      ],
+      "depends_on": [
+        "RF-007",
+        "RF-008"
+      ],
+      "verification_files": [
+        "internal/gateexec/runner_integration_test.go",
+        "tests/integration/gate_expression_test.go",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gateexec",
+        "go test -tags integration ./tests/integration -run 'TestGateExpression|TestPipelineEndToEnd'"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein deterministischer Hook-Test für das Fenster Fingerprint→Copy→Fingerprint",
+          "Instabiler Snapshot ungetestet",
+          "tests/integration nicht gelaufen"
+        ]
+      }
+    },
+    {
+      "id": "RF-011",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Policy- und Tamper-Prüfungen mit vollständigen Daten und stabilem Ausgangsstand ausführen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 65,
+      "description": "hashPaths/walkHashes unterdrücken Lese- und Traversierungsfehler; Run ignoriert zurückgegebene Fehler. Der Nachhervergleich verwendet außerdem den inzwischen veränderbaren Live-Workspace als Ausgangsstand.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "pre_existing",
+      "components": [
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/hash.go",
+          "line": 64,
+          "anchor": "func hashPaths"
+        },
+        {
+          "file": "internal/gateexec/hash.go",
+          "line": 117,
+          "anchor": "func walkHashes"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 244,
+          "anchor": "originalHashes, _ := walkHashes"
+        }
+      ],
+      "acceptance_criteria": [
+        "Unerwartete Stat-, Lese- und Enumerationsfehler führen zu einem expliziten error/failed-Ergebnis und können keinen verified PASS erzeugen.",
+        "Bewusst optionale, anfangs nicht vorhandene Protected-Dateien sind von Permission-/I/O-Fehlern unterscheidbar; Hinzufügen und Löschen geschützter Dateien bleibt erkennbar.",
+        "Scope-, Dependency- und Secret-Prüfung vergleichen gegen einen vor Gate-Ausführung eingefrorenen Ausgangsstand der privaten Kopie.",
+        "Live-Änderungen während des Gate-Laufs erzeugen weder falsche Policy-Verstöße noch verschleiern sie Sandbox-Veränderungen; die Live-Frischeprüfung bleibt Aufgabe der Admission.",
+        "Fehlerinjektion prüft jeden unterdrückten Fehlerpfad und erfolgreiche Gegenfälle; Tests verwenden eigene temporäre Dateien."
+      ],
+      "depends_on": [
+        "RF-007",
+        "RF-010"
+      ],
+      "verification_files": [
+        "internal/gateexec/policy_test.go",
+        "internal/gateexec/runner_integration_test.go",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gateexec",
+        "go test -tags integration ./tests/integration -run TestPipelineEndToEnd"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Keine Fehlerinjektion (EACCES/readdir) für zuvor verschluckte Pfade",
+          "Kein Runner-Test, dass Baseline-Fehler nicht PASS ergibt"
+        ]
+      }
+    },
+    {
+      "id": "RF-012",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Gate-Läufe und verifizierte Evidenz dauerhaft konsistent erfassen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 80,
+      "description": "record loggt SaveGateRun-Fehler höchstens, ignoriert AddEvidence-Fehler und lässt Run erfolgreich zurückkehren. Mit neuer Admission kann ein nicht gespeicherter fehlgeschlagener Lauf einen älteren PASS als einzigen sichtbaren Stand zurücklassen.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/gateexec",
+        "internal/persistence"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 495,
+          "anchor": "func (r *Runner) record"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 497,
+          "anchor": "r.Store.SaveGateRun(context.Background(), run)"
+        },
+        {
+          "file": "internal/persistence/gates.go",
+          "line": 26,
+          "anchor": "func (s *Store) SaveGateRun"
+        }
+      ],
+      "acceptance_criteria": [
+        "Fehler beim dauerhaften Speichern sind für API/CLI sichtbar; ein nur im Speicher berechnetes Ergebnis wird nicht als erfolgreich protokolliert ausgegeben.",
+        "Ein notwendiger Beginn-/Unvollständig-Zustand oder gleichwertiger Mechanismus verhindert, dass ein späterer fehlgeschlagener oder ungespeicherter Lauf still den alten PASS maßgeblich lässt.",
+        "Gate-Ergebnis und darauf verweisende verified Evidence werden konsistent innerhalb der Persistenzschicht gespeichert; Teilwrites erzeugen keinen widersprüchlichen Freigabenachweis.",
+        "Abschlussprotokollierung nach Request-Abbruch verwendet einen explizit begrenzten Kontext statt unbegrenztem context.Background.",
+        "Fault-Injection prüft DB-Schreibfehler vor dem Start, beim Abschluss und bei Evidence sowie Wiederanlauf; gespeicherte unvollständige Läufe bleiben sperrend bis zu einem gültigen neuen Abschluss."
+      ],
+      "depends_on": [
+        "RF-010"
+      ],
+      "verification_files": [
+        "internal/persistence/gates_test.go",
+        "internal/gateexec/runner_integration_test.go",
+        "internal/api/gates_test.go",
+        "internal/pipeline/admission_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/persistence ./internal/gateexec ./internal/api ./internal/pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein Restart-Test (DB neu öffnen, unvollständiger Lauf sperrt weiter)",
+          "Kein API-Test für Persistenzfehler"
+        ]
+      }
+    },
+    {
+      "id": "RF-013",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Fehlgeschlagene phasenbegrenzte Läufe ohne Einzelergebnis korrekt berücksichtigen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 75,
+      "description": "relevantRun ignoriert jeden phasenbegrenzten Lauf ohne Ergebnis für das gesuchte Gate, sofern kein Tamper vorliegt. Budget- oder Setup-Fehler entstehen in Run jedoch vor dem ersten Ergebnis; dadurch kann trotz neuerem Fehlschlag ein früherer PASS ausgewählt werden.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "today",
+      "components": [
+        "internal/pipeline",
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 246,
+          "anchor": "func relevantRun"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 129,
+          "anchor": "if b := r.checkBudget"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 97,
+          "anchor": "Phases:          phases,"
+        }
+      ],
+      "acceptance_criteria": [
+        "Regression startet mit frischem PASS und erzeugt anschließend einen after_run/post_run-Lauf mit Budget- oder Setup-Fehler vor dem ersten Gate; der Folge-Agent darf nicht auf den alten PASS zurückfallen.",
+        "Gespeicherte Laufmetadaten unterscheiden beabsichtigte Gate-/Phasenauswahl, tatsächlich ausgeführte Ergebnisse und globale Setup-/Policy-Fehler eindeutig.",
+        "Ein erfolgreicher oder regulär übersprungener Lauf ausschließlich einer anderen Phase verdeckt weiterhin nicht den letzten relevanten Gate-Befund.",
+        "Unbekannte Gate-ID, entfernte Gates, Tamper und Fehler vor der Konfigurationsauflösung besitzen eine ausdrücklich dokumentierte fail-closed-Relevanz.",
+        "Tests decken diese Matrix mit identischem Workspace-Fingerprint ab, damit die Frischeprüfung den eigentlichen Auswahlfehler nicht zufällig verdeckt."
+      ],
+      "depends_on": [
+        "RF-012"
+      ],
+      "verification_files": [
+        "internal/pipeline/admission_test.go",
+        "internal/gateexec/runner_integration_test.go",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/pipeline ./internal/gateexec",
+        "go test -tags integration ./tests/integration -run TestPipelineEndToEnd"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Nur synthetische Runs, kein Runner-Test",
+          "Keine vollständige Matrix",
+          "Relevanzregeln nicht dokumentiert"
+        ]
+      }
+    },
+    {
+      "id": "RF-014",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Layout- und semantische No-op-Saves dürfen PASS-Fingerprints nicht entwerten",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 30,
+      "description": "Jeder Graph-Save synchronisiert die Gate-Dateien. writeConfig erzeugt immer ein neues GeneratedAt und einen neuen Sidecar-Inhalt; beide Dateien gehen in den Fingerprint ein. Ein reines Verschieben im Graphen kann dadurch einen zuvor gültigen PASS als stale markieren.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/webui",
+        "internal/gatesync",
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/webui/graph.go",
+          "line": 145,
+          "anchor": "results, warnings := gatesync.SyncAll"
+        },
+        {
+          "file": "internal/gatesync/gatesync.go",
+          "line": 536,
+          "anchor": "cfg.GeneratedAt = time.Now().UTC().Format(time.RFC3339)"
+        },
+        {
+          "file": "internal/gateexec/fingerprint.go",
+          "line": 43,
+          "anchor": "func Fingerprint"
+        }
+      ],
+      "acceptance_criteria": [
+        "Bei unveränderter effektiver Gate-Konfiguration bleiben gates.json und der Drift-Sidecar bytegleich; GeneratedAt wird nicht bei jedem Layout-Save erneuert.",
+        "Ein layout-only Save nach einem PASS lässt den Workspace-Fingerprint und die Freigabe unverändert.",
+        "Änderungen an Kommando, Expression, Budget, Phasen oder Schutzregeln ändern weiterhin die geprüfte Konfiguration und machen alte Ergebnisse ungültig.",
+        "Externe Manipulation einer generierten Datei wird weiterhin erkannt; eine No-op-Optimierung darf Drift nicht pauschal übergehen.",
+        "Multi-Workspace- und Entfernungssynchronisierung bleiben korrekt; Tests prüfen unverändert, geändert und manipuliert getrennt ohne zeitabhängige Sleeps."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/gatesync/gatesync_test.go",
+        "internal/webui/graph_test.go",
+        "internal/gateexec/fingerprint_test.go",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gatesync ./internal/webui ./internal/gateexec"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Nicht im Detail geprüft; Test 'Layout-only-Save lässt Fingerprint/Admission unverändert' fehlt"
+        ]
+      }
+    },
+    {
+      "id": "RF-015",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Neuesten relevanten Gate-Lauf ohne Verlust durch ein starres Suchfenster bestimmen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 80,
+      "description": "Die Admission betrachtet standardmäßig 200 Workspace-Läufe; RecentGateRuns holt höchstens 500 vor der fachlichen Auswahl. Viele irrelevante Phasenläufe können den letzten weiterhin gültigen relevanten Run aus diesem Fenster verdrängen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/pipeline",
+        "internal/persistence"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 156,
+          "anchor": "func (e *Evaluator) runScan"
+        },
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 246,
+          "anchor": "func relevantRun"
+        },
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 160,
+          "anchor": "func (s *Store) RecentGateRuns"
+        }
+      ],
+      "acceptance_criteria": [
+        "Mehr als 200 irrelevante Phasenläufe verdecken nicht den letzten noch aufbewahrten relevanten Gate-Lauf.",
+        "Die Auswahl berücksichtigt Gate-Ergebnis, global relevante Fehler, Tamper und vollständige Läufe mit entferntem Gate gemäß RF-013.",
+        "Die Suche bleibt durch passende querybare Metadaten/Indizes oder eine nachweislich begrenzte Strategie effizient; ein unbeschränkter Vollscan im Request ist keine Abnahme.",
+        "Wurde der benötigte Run tatsächlich durch Retention gelöscht, wird der fehlende Nachweis explizit angezeigt; Tests unterscheiden Retention von bloßer Suchfenster-Trunkierung.",
+        "Tests prüfen mehr als 500 gemischte Läufe und eine neuere relevante Fehlentscheidung nach älterem PASS."
+      ],
+      "depends_on": [
+        "RF-013",
+        "RF-016"
+      ],
+      "verification_files": [
+        "internal/persistence/pipelines_test.go",
+        "internal/pipeline/admission_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/persistence ./internal/pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Retention-Verlust wird als AdmitNoRun gemeldet, nicht unterscheidbar von 'nie gelaufen'"
+        ]
+      }
+    },
+    {
+      "id": "RF-016",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Gate-Historie und Retention vor LIMIT chronologisch korrekt sortieren",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 80,
+      "description": "started_at ist variabel formatiertes RFC3339Nano-TEXT. ListGateRuns und PruneGateRuns sortieren lexikalisch; die nachgelagerte Go-Sortierung in RecentGateRuns kann bereits durch LIMIT ausgeschlossene Zeilen nicht zurückholen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/persistence"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/persistence/gates.go",
+          "line": 73,
+          "anchor": "FROM gate_runs WHERE workspace=? ORDER BY started_at DESC LIMIT ?"
+        },
+        {
+          "file": "internal/persistence/gates.go",
+          "line": 274,
+          "anchor": "ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC, id DESC) AS rn"
+        },
+        {
+          "file": "internal/persistence/persistence.go",
+          "line": 421,
+          "anchor": "const tsLayout = time.RFC3339Nano"
+        }
+      ],
+      "acceptance_criteria": [
+        "Chronologische Ordnung gilt vor SQL-LIMIT und ROW_NUMBER auch für ganze Sekunden und unterschiedlich lange Nachkommastellen.",
+        "Listen, Admission-Auswahl und Pruning verwenden dieselbe deterministische Zeitordnung samt Tie-Breaker.",
+        "Regression mit .1s, .12s, .9s und ganzzahliger Sekunde sowie mehr als 500 Datensätzen bestätigt die tatsächlich neuesten Einträge.",
+        "keep_per_workspace behält die neuesten N über alle Läufe des Workspace; die Altersgrenze entfernt weder neuere noch geschützte N Einträge.",
+        "Eine etwaige Schema-/Zeitformatänderung migriert bestehende Daten versioniert und erhält parsebare historische Zeitstempel."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/persistence/gates_test.go",
+        "internal/persistence/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/persistence"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Ordnungstest mit >500 Zeilen gemischter Bruchteil-Zeitstempel fehlt"
+        ]
+      }
+    },
+    {
+      "id": "RF-017",
+      "milestone": "M2",
+      "type": "bug",
+      "title": "Zeitgrenzen und numerische API-Parameter vor Duration-Konvertierung validieren",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 65,
+      "description": "max_age_sec erhält nur eine Untergrenze; ttl_sec und prune days werden vor vollständiger Bereichsprüfung in time.Duration multipliziert. Überläufe sowie fehlende oder zukünftige finished_at-Werte sind nicht durch eine einheitliche Zeitsemantik abgesichert.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/api",
+        "internal/pipeline"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 181,
+          "anchor": "if e.MaxAgeSec < 0"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 323,
+          "anchor": "ttl := time.Duration(body.TTLSec) * time.Second"
+        },
+        {
+          "file": "internal/api/gates.go",
+          "line": 227,
+          "anchor": "n, err := s.Store.PruneGateRuns"
+        },
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 219,
+          "anchor": "if edge.MaxAgeSec > 0"
+        }
+      ],
+      "acceptance_criteria": [
+        "max_age_sec, ttl_sec, timeout_sec und Retention-Tage werden in ihren ursprünglichen Einheiten auf dokumentierte Grenzen geprüft, bevor multipliziert wird.",
+        "Sehr große Integer erzeugen HTTP 400 statt Overflow, unerwartetem Default oder falscher Löschgrenze.",
+        "Bestehende dokumentierte 0-Semantik bleibt explizit: unbegrenzte Frische versus Default-TTL/Retention werden nicht vermischt.",
+        "Fehlende, invertierte und unplausibel zukünftige Abschlusszeiten werden als ungültiger Frischenachweis behandelt; erlaubte Uhrabweichung ist begrenzt und dokumentiert.",
+        "Deterministische Fake-Clock-Tests prüfen unmittelbar vor, auf und nach Ablauf sowie Integer-Grenzen und negative Eingaben."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/api/pipelines_test.go",
+        "internal/api/gates_test.go",
+        "internal/pipeline/admission_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/api ./internal/pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "API-Tests für riesige/negative timeout_sec, days, max_age_sec fehlen",
+          "days/keep nicht in OpenAPI"
+        ]
+      }
+    },
+    {
+      "id": "RF-018",
+      "milestone": "M3",
+      "type": "bug",
+      "title": "Gleiche Pipeline-Revision nur für identische Wiederholung akzeptieren",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 85,
+      "description": "ReplacePipelineEdges weist nur ältere Revisionen zurück. Eine andere Kantenliste mit derselben Revision löscht und ersetzt den bestehenden Zustand, obwohl der Kommentar diese Wiederholung als idempotent beschreibt.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/persistence",
+        "internal/api"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 27,
+          "anchor": "func (s *Store) ReplacePipelineEdges"
+        },
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 41,
+          "anchor": "if !reset && rev < current"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 112,
+          "anchor": "errors.Is(err, persistence.ErrStaleRevision)"
+        }
+      ],
+      "acceptance_criteria": [
+        "Eine normalisiert identische Wiederholung derselben Revision ist erfolgreich und ändert keine fachlichen Daten oder fachlich relevanten Zeitstempel.",
+        "Eine abweichende Kantenliste derselben bereits belegten Revision erhält einen strukturierten Konflikt; der bisherige Zustand bleibt unverändert.",
+        "Höhere Revisionen und ausdrücklich autorisiertes reset behalten ihre dokumentierte Funktion; Erstinitialisierung ist klar von Wiederholung unterschieden.",
+        "Zwei gleichzeitige unterschiedliche Payloads für dieselbe neue Revision haben genau einen Gewinner.",
+        "API/SDK und Gateway-Recovery unterscheiden veraltete Revision, divergierende Wiederholung und idempotenten Erfolg."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/persistence/pipelines_test.go",
+        "internal/api/pipelines_test.go",
+        "pkg/sdk/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/persistence ./internal/api ./pkg/sdk"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein API-Test für revision_conflict",
+          "Gateway-Recovery unterscheidet stale/divergent/idempotent nicht",
+          "Kein Test, dass idempotente Wiederholung Zeitstempel/Events unverändert lässt"
+        ]
+      }
+    },
+    {
+      "id": "RF-019",
+      "milestone": "M3",
+      "type": "bug",
+      "title": "Pipeline-Revision und Kanten aus einem konsistenten Datenbank-Snapshot lesen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 80,
+      "description": "ListPipelineEdges liest erst die Meta-Revision und danach die Kanten. Ein paralleler Replace kann alte Revision mit neuer Kantenmenge kombinieren.",
+      "evidence_level": "investigation_required",
+      "scope_origin": "today",
+      "components": [
+        "internal/persistence"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 99,
+          "anchor": "func (s *Store) ListPipelineEdges"
+        },
+        {
+          "file": "internal/persistence/pipelines.go",
+          "line": 27,
+          "anchor": "func (s *Store) ReplacePipelineEdges"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein koordinierter Reader/Writer-Test prüft das Interleaving zwischen Revisions- und Kantenabfrage, ohne sich auf zufälliges Timing zu verlassen.",
+        "Jede ausgegebene Revision gehört zu derselben Momentaufnahme wie alle gelieferten Edge.SourceRevision-Werte.",
+        "Auch leere Kantenmengen werden mit ihrer korrekten Snapshot-Revision zurückgegeben.",
+        "List-, Downstream- und Admission-Pfade verwenden die konsistente Lesesemantik; read-only Operationen verändern keine Revision.",
+        "Paralleltests bestehen unter -race und belassen keine offenen Rows oder Transaktionen."
+      ],
+      "depends_on": [
+        "RF-018"
+      ],
+      "verification_files": [
+        "internal/persistence/pipelines_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/persistence ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Snapshot-Test umgeht ListPipelineEdges (ruft readPipelineEdges direkt)",
+          "Keine Leak-Prüfung (db.Stats)"
+        ]
+      }
+    },
+    {
+      "id": "RF-020",
+      "milestone": "M3",
+      "type": "security",
+      "title": "Sicherheitsrelevante Pipeline-Mutationen und Audit-Ereignisse konsistent speichern",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 85,
+      "description": "Pipeline-Update, Override-Erstellung und Override-Nutzung speichern ihren Zustand getrennt von AppendEvent; die Event-Fehler werden ignoriert. Damit sind als auditiert zugesagte Freigaben ohne entsprechenden Ereignisnachweis möglich.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/api",
+        "docs/adr"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 349,
+          "anchor": "_ = s.Store.AppendEvent"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 389,
+          "anchor": "func (s *Server) admitPipelineWork"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 465,
+          "anchor": "func (s *Server) auditBlocked"
+        },
+        {
+          "file": "docs/adr/0002-pipeline-enforcement.md",
+          "line": 42,
+          "anchor": "Admin override"
+        }
+      ],
+      "acceptance_criteria": [
+        "Override-Erstellung und -Verbrauch sowie fachliche Pipeline-Updates besitzen einen dauerhaften, dem Zustand eindeutig zuordenbaren Audit-Nachweis.",
+        "Zustandsänderung und notwendiger Audit-Eintrag werden in der Persistenzschicht atomar oder durch eine gleichwertige dauerhaft wiederaufnehmbare Strategie gekoppelt.",
+        "Fault-Injection auf Event-Schreiben führt nicht zu still erfolgreich ausgegebenen, unprotokollierten Sicherheitsausnahmen.",
+        "Ein mehrfach verwendeter Wildcard-Override innerhalb desselben Auftrags wird nicht fälschlich als mehrere unabhängige Verbräuche protokolliert.",
+        "Sperr-Events bleiben rate-limitiert; ein fehlgeschlagenes Event-Schreiben wird nicht als erfolgreiche Meldung für die ganze Rate-Limit-Periode behandelt."
+      ],
+      "depends_on": [
+        "RF-003",
+        "RF-018"
+      ],
+      "verification_files": [
+        "internal/persistence/pipelines_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/persistence ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Test für Rate-Limit-Reset nach fehlgeschlagenem Event-Write fehlt",
+          "ADR nicht aktualisiert"
+        ]
+      }
+    },
+    {
+      "id": "RF-021",
+      "milestone": "M3",
+      "type": "performance",
+      "title": "Sammel-Admission ohne wiederholtes Hashing desselben Workspace auswerten",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 75,
+      "description": "pipelineAdmission ruft für jeden Agenten separat Admission auf. Fingerprint- und Run-Caches existieren nur innerhalb eines einzelnen evaluate-Aufrufs; die alle 15 Sekunden gepollte Gesamtübersicht hasht gemeinsame Workspaces deshalb mehrfach.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/api",
+        "internal/pipeline",
+        "ui/web/src"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 285,
+          "anchor": "ev := s.pipelineEvaluator()"
+        },
+        {
+          "file": "internal/pipeline/admission.go",
+          "line": 102,
+          "anchor": "fps := map[string]string{}"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1314,
+          "anchor": "this.pipelinePoll = setInterval"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein Sammelstatus berechnet jeden unterschiedlichen Workspace-Fingerprint innerhalb derselben Anfrage höchstens einmal und lädt gemeinsame relevante Historie nicht pro Agent erneut.",
+        "Ein Test mit mehreren Agenten und gemeinsamen/getrennten Workspaces prüft tatsächliche Aufrufzahlen sowie unveränderte Freigabeentscheidungen.",
+        "Caches gelten nur für einen klar abgegrenzten Auswertungssnapshot; ein früherer Status-Request darf die verbindliche Prompt-Admission nicht mit veralteter Frische versorgen.",
+        "Abgebrochene Requests stoppen unnötige Folgearbeit; parallele Statusanfragen erzeugen keine unkontrollierte Hintergrundarbeit.",
+        "Ein reproduzierbarer Benchmark protokolliert Aufwand vor/nach der Änderung; die Optimierung darf keine Sicherheitsprüfung auslassen."
+      ],
+      "depends_on": [
+        "RF-008",
+        "RF-009",
+        "RF-019"
+      ],
+      "verification_files": [
+        "internal/pipeline/admission_test.go",
+        "internal/api/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/pipeline ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Abbruch mitten im Batch ungetestet",
+          "Benchmark-Ergebnis nicht dokumentiert"
+        ]
+      }
+    },
+    {
+      "id": "RF-022",
+      "milestone": "M3",
+      "type": "docs",
+      "title": "OpenAPI-Vertrag für Einzel- und Sammel-Admission sowie Fehlerantworten vervollständigen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 45,
+      "description": "Die Beschreibung nennt die Sammelantwort ohne agent, die deklarierte 200-Schema-Referenz zeigt jedoch nur auf Admission. Handgeschriebener SDK und Implementierung liefern bereits zwei unterschiedliche Formen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "docs/api",
+        "internal/api",
+        "pkg/sdk"
+      ],
+      "source_refs": [
+        {
+          "file": "docs/api/openapi.yaml",
+          "line": 301,
+          "anchor": "/api/v1/pipelines/admission:"
+        },
+        {
+          "file": "internal/api/pipelines.go",
+          "line": 294,
+          "anchor": "map[string]any{\"revision\": state.Revision, \"admissions\": out}"
+        },
+        {
+          "file": "pkg/sdk/pipelines.go",
+          "line": 43,
+          "anchor": "func (c *Client) PipelineAdmissions"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein benanntes Collection-Schema enthält required revision und admissions mit Admission-Elementen; der Endpoint beschreibt beide tatsächlichen Antwortformen maschinenlesbar.",
+        "Die optionale agent-Query, fehlende Agenten und leere Sammelliste sind eindeutig beschrieben.",
+        "Die im Pipeline-Kontext tatsächlich verwendeten 400/403/404/409-Antworten, einschließlich pipeline_blocked und Revisionskonflikten, sind mit passenden Strukturen dokumentiert.",
+        "Antwort-Fixtures aus den echten API-Handlern validieren gegen die veröffentlichten Schemata; reine doppelte Hand-Fixtures gelten nicht als vollständiger Vertragsnachweis.",
+        "SDK-Methoden behalten ihre öffentliche Semantik; Änderungen am Vertrag und den EN/DE-Nutzerbeispielen stimmen überein."
+      ],
+      "depends_on": [
+        "RF-018"
+      ],
+      "verification_files": [
+        "internal/api/pipelines_test.go",
+        "pkg/sdk/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/api ./pkg/sdk"
+      ],
+      "implementation_notes": [
+        "Einen im Projekt reproduzierbaren OpenAPI-Validierungsaufruf mitliefern; keinen erfolgreichen Schema-Check behaupten, bevor das Werkzeug tatsächlich ausgeführt wurde."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Keine Validierung echter Handler-Antworten gegen das Schema, kein reproduzierbarer Befehl",
+          "400/403/409 ohne strukturierte Error-Schemas",
+          "Leere admissions-Liste nicht dokumentiert"
+        ]
+      }
+    },
+    {
+      "id": "RF-023",
+      "milestone": "M4",
+      "type": "frontend",
+      "title": "Graph-Autosave serialisieren und ungespeicherte Änderungen wiederherstellbar halten",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 60,
+      "description": "Ein 400-ms-Debounce verhindert keine überlappenden PUTs. Ein verzögerter initialer GET kann neuere lokale Änderungen überschreiben; Nicht-409-Speicherfehler werden ignoriert und ngOnDestroy verwirft einen noch ausstehenden Save-Timer.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "interaction",
+      "components": [
+        "ui/web/src"
+      ],
+      "source_refs": [
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1279,
+          "anchor": "this.graphService.load().subscribe"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1365,
+          "anchor": "ngOnDestroy(): void"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1475,
+          "anchor": "private scheduleGraphSave(): void"
+        }
+      ],
+      "acceptance_criteria": [
+        "Pro Graph ist höchstens ein Save in flight; weitere Änderungen werden als neuester ausstehender Stand mit der bestätigten Revision nachgeführt.",
+        "Ein verspäteter initialer GET oder eine ältere PUT-Antwort kann weder Inhalt noch Revision rückwärts setzen.",
+        "Die UI zeigt pending, saved, failed und conflicted unterscheidbar; Netzwerk-/500-Fehler bieten einen sicheren Wiederholungsweg.",
+        "Navigation unmittelbar nach einer Änderung verliert diese nicht still: ein dokumentierter Flush-, Warn- oder Wiederherstellungsmechanismus ist im Browser geprüft.",
+        "Tests verzögern GET/PUT gezielt, ändern während des Requests mehrfach und prüfen den endgültig gespeicherten Inhalt sowie Revision.",
+        "RF-002 bleibt wirksam: eine Save-Warteschlange darf einen fremden Revisionskonflikt nicht automatisch mit altem Inhalt überschreiben."
+      ],
+      "depends_on": [
+        "RF-002"
+      ],
+      "verification_files": [
+        "ui/web/e2e/pipeline.spec.ts",
+        "ui/web/src/app/core/services/graph.service.ts"
+      ],
+      "verification_commands": [
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Kein Reload-/Navigationstest",
+          "Entwurf nur exportierbar, nicht wiederherstellbar",
+          "Kein 500-/Netzwerk-Retry-Test",
+          "pending/error/conflict teilen das Label 'ungespeicherte Änderungen'",
+          "4 von 5 neuen e2e-Tests scheitern aktuell"
+        ]
+      }
+    },
+    {
+      "id": "RF-024",
+      "milestone": "M4",
+      "type": "frontend",
+      "title": "Nicht verfügbaren, veralteten und nicht synchronisierten Pipeline-Status unterscheiden",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 50,
+      "description": "Bei Admission-Fehlern leert loadPipelineStatus die Daten. Badges verschwinden und proceedState deutet fehlende Daten als 'nicht übertragen'. Poll-Antworten sind nicht gegen Überholen geschützt; Drift-/Paperclip-Status werden nicht im gleichen Poll aktualisiert.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "ui/web/src"
+      ],
+      "source_refs": [
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1371,
+          "anchor": "loadPipelineStatus(): void"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1397,
+          "anchor": "private proceedState"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1314,
+          "anchor": "this.pipelinePoll = setInterval"
+        }
+      ],
+      "acceptance_criteria": [
+        "Offline/unavailable, noch nie synchronisiert, ungated, gesperrt und freigegeben sind visuell und textuell unterscheidbar.",
+        "Nach Ausfall wird ein letzter bekannter Status nur ausdrücklich als veraltet gezeigt; ein gesperrter Agent erscheint nicht durch verschwundene Daten als freigegeben.",
+        "Alte Poll-Antworten überschreiben keine neuere Revision oder neuere checked_at-Auswertung.",
+        "Driftstatus und relevante Review-Zusammenfassungen aktualisieren sich ohne notwendigen Graph-Save; Intervalle und Fehleranzeigen sind nachvollziehbar.",
+        "Polling und laufende Subscriptions werden bei Komponentenabbau beendet; Tests prüfen Ausfall, Wiederherstellung, überholende Antworten und Tastatur-/Screenreader-Textalternativen."
+      ],
+      "depends_on": [
+        "RF-019"
+      ],
+      "verification_files": [
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Revisionsdrift wird als 'Status unbekannt' angezeigt",
+          "Überholende Antworten nur per Request-Zähler, ungetestet",
+          "Recovery nach Ausfall ungetestet"
+        ]
+      }
+    },
+    {
+      "id": "RF-025",
+      "milestone": "M4",
+      "type": "bug",
+      "title": "Graph-Status über eindeutige Connector-/Workspace-Identität zuordnen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 50,
+      "description": "proceedState sucht die Admission-Kante nur nach gate_id. Backend-Ableitung suffixiert doppelte IDs und unterscheidet Kanten über Workspace/Gate/Downstream; die UI kann deshalb Status des falschen Gates anzeigen oder eine vorhandene Kante als unsynchronisiert einstufen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "ui/web/src",
+        "internal/gatesync"
+      ],
+      "source_refs": [
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1398,
+          "anchor": "const gid = this.existingGateId(c.contract) || slug(c.name);"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1402,
+          "anchor": "adm?.edges.find(e => e.gate_id === gid)"
+        },
+        {
+          "file": "internal/gatesync/gatesync.go",
+          "line": 273,
+          "anchor": "for n := 2; seen[ws+\"|\"+id]; n++"
+        },
+        {
+          "file": "internal/gatesync/pipeline.go",
+          "line": 101,
+          "anchor": "func edgeID"
+        }
+      ],
+      "acceptance_criteria": [
+        "Zwei Workspaces mit gleichnamigem Gate und demselben Ziel-Agenten zeigen jeweils ihren eigenen, auch unterschiedlichen Admission-Status.",
+        "Doppelte lokale Gate-IDs und daraus abgeleitete Suffixe werden zwischen UI, gates.json und Pipeline-Kanten konsistent zugeordnet.",
+        "Die Oberfläche nutzt eine eindeutige vom Backend nachvollziehbare Identität statt eine zweite abweichende Ableitungslogik zu erfinden.",
+        "Canonical-Workspace-Aliasse, Connector-Umbenennung und Reihenfolgeänderung weisen keine bestehenden Ergebnisse dem falschen Connector zu.",
+        "Browser- und Ableitungstests kombinieren gleichnamige Gates mit einem PASS und einem FAIL, damit ein falsches Matching sichtbar wird."
+      ],
+      "depends_on": [
+        "RF-001"
+      ],
+      "verification_files": [
+        "internal/gatesync/pipeline_test.go",
+        "internal/gatesync/gatesync_test.go",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "go test ./internal/gatesync",
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Duplikat-Suffix hängt von Connector-Reihenfolge ab (Vertauschen tauscht Gate-IDs/Historie)",
+          "Kein Test mit zwei Workspaces bzw. gleichnamigen Gates mit PASS und FAIL"
+        ]
+      }
+    },
+    {
+      "id": "RF-026",
+      "milestone": "M4",
+      "type": "frontend",
+      "title": "Gespeicherten Graphen und tatsächlich erzwungene Pipeline sichtbar abgleichen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 65,
+      "description": "Graph-Datei, Gate-Dateien und Daemon-Kanten werden nacheinander best-effort synchronisiert. Ein fehlgeschlagener Push bleibt aktuell in der Save-Antwort; ein expliziter revisionssicherer Retry und dauerhaft erkennbarer Soll-/Ist-Abstand fehlen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "internal/webui",
+        "ui/web/src"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/webui/graph.go",
+          "line": 145,
+          "anchor": "results, warnings := gatesync.SyncAll"
+        },
+        {
+          "file": "internal/webui/graph.go",
+          "line": 189,
+          "anchor": "func (s *Server) syncPipeline"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1499,
+          "anchor": "this.pipelineSync.set(res.pipeline_sync ?? null);"
+        },
+        {
+          "file": "ui/web/src/app/core/services/graph.service.ts",
+          "line": 40,
+          "anchor": "pipeline_sync?"
+        }
+      ],
+      "acceptance_criteria": [
+        "Die UI unterscheidet 'Graph gespeichert', 'Gate-Dateien synchronisiert' und 'Pipeline im Daemon wirksam' einschließlich jeweiliger Fehler und Warnungen.",
+        "Nach fehlgeschlagenem Push ist ein gezielter Retry ohne künstliche fachliche Änderung möglich; er sendet den aktuell gültigen Graphstand.",
+        "Ältere Retries können weder eine neuere Revision überschreiben noch reset als stillen Ausweg aus einem Konflikt verwenden.",
+        "Nach Neuladen wird ein fortbestehender Soll-/Ist-Abstand erkannt; vorhandene Daemon-Regeln bleiben bis zu einer erfolgreichen autorisierten Aktualisierung erhalten.",
+        "Tests decken Daemon-Ausfall, 403, Revisionskonflikt, teilweise Gate-Dateisynchronisierung und anschließende Wiederherstellung ab."
+      ],
+      "depends_on": [
+        "RF-001",
+        "RF-014",
+        "RF-018",
+        "RF-023",
+        "RF-024"
+      ],
+      "verification_files": [
+        "internal/webui/graph_test.go",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "go test ./internal/webui",
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Neu angelegter Graph: Retry nach fehlgeschlagenem Erst-Push (reset=true nötig) läuft in stale_revision ohne Ausweg",
+          "Daemon-403/stale_revision/revision_conflict in Go ungetestet",
+          "Retry-Button ohne e2e-Test"
+        ]
+      }
+    },
+    {
+      "id": "RF-027",
+      "milestone": "M5",
+      "type": "bug",
+      "title": "Auch für Rework ausschließlich verifizierbare Upstream-Zuordnungen verwenden",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 75,
+      "description": "cmd_route verwendet beim fehlenden Upstream-Mapping ersatzweise PAPERCLIP_AGENT_ID. Das widerspricht dem dokumentierten expliziten Mapping und kann bei abweichender aufrufender Identität das falsche Teammitglied zuweisen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "deployments/paperclip"
+      ],
+      "source_refs": [
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 316,
+          "anchor": "pc_up = paperclip_id(mapping, up_id, upstream) or os.environ.get(\"PAPERCLIP_AGENT_ID\", \"\")"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 27,
+          "anchor": "The Paperclip <-> DockWeave agent mapping is explicit"
+        }
+      ],
+      "acceptance_criteria": [
+        "Fehlendes Upstream-Mapping erzeugt UNMAPPED und keine Rework-Erstellung oder Wake-Aktion für eine nur vermutete Identität.",
+        "Mapping nach stabiler DockWeave-ID und nach ausdrücklich konfiguriertem Namen funktioniert weiterhin.",
+        "Ein Test setzt PAPERCLIP_AGENT_ID absichtlich auf einen anderen Agenten als den Upstream und beweist, dass keine Fehlzuweisung erfolgt.",
+        "Falls eine Environment-Zuordnung weiterhin angeboten wird, muss ihre Beziehung zum Upstream unabhängig bestätigt und die Semantik dokumentiert werden.",
+        "Fehlerhafte/unlesbare Mapping-Dateien und fehlende Company werden sichtbar gemeldet; Secrets oder vollständige vertrauliche Payloads gelangen nicht ins Log."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Test sollte Mapping ohne nur den Upstream-Eintrag nutzen statt Datei zu löschen",
+          "WARN/ERR-Ausgaben ungetestet"
+        ]
+      }
+    },
+    {
+      "id": "RF-028",
+      "milestone": "M5",
+      "type": "bug",
+      "title": "Wake- und Routing-Aktionen wiederholbar und Fehler für den Wrapper sichtbar machen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 60,
+      "description": "cmd_route weckt bei jedem Aufruf erneut, meldet nach ERR/UNMAPPED dennoch Exit 0 und ignoriert einen fehlgeschlagenen Wake nach Rework-Erstellung. dockweave-run.sh unterdrückt zusätzlich Routing-Fehler.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "deployments/paperclip"
+      ],
+      "source_refs": [
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 259,
+          "anchor": "wake(pc_upstream, company, \"Rework nach Gate %s\" % gate)"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 309,
+          "anchor": "ok = wake(pc_target, company"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 322,
+          "anchor": "return 0"
+        },
+        {
+          "file": "deployments/paperclip/dockweave-run.sh",
+          "line": 360,
+          "anchor": "pipeline.py"
+        }
+      ],
+      "acceptance_criteria": [
+        "Erfolgreicher Wake ist für dieselbe maßgebliche Run-/Ziel-/Aktionskombination wiederholungsfest; ein neuer Lauf kann erneut wecken.",
+        "Ein fehlgeschlagener Wake bleibt wiederholbar, auch wenn das Rework-Ticket bereits erfolgreich erstellt wurde.",
+        "Routing liefert unterscheidbare Gesamt- und Teilergebnisse; ERR oder nicht erfüllte notwendige Zuordnung erscheinen nicht als vollständiger Erfolg.",
+        "Der Wrapper bewahrt eine handlungsfähige Fehlermeldung und einen definierten Wiederholungsweg, ohne fälschlich den Gate-PASS oder bereits erstellte Tickets zu verwerfen.",
+        "Tests prüfen doppelte DONE-Verarbeitung, Wake-Ausfall, partiellen Erfolg bei mehreren Zielen und Wiederanlauf; es werden keine realen Paperclip-Aktionen ausgeführt."
+      ],
+      "depends_on": [
+        "RF-005",
+        "RF-027"
+      ],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl",
+          "Kein Test mit mehreren Zielen",
+          "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)",
+          "Zweite Hälfte 'neuer Lauf weckt erneut' ungetestet"
+        ]
+      }
+    },
+    {
+      "id": "RF-029",
+      "milestone": "M5",
+      "type": "security",
+      "title": "Admission- und Routing-Antworten im Wrapper strukturell fail-closed prüfen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 75,
+      "description": "admission akzeptiert ein Dict mit bool allowed und beliebigem vorhandenen edges-Feld. Nachgelagerte Funktionen erwarten Listen von Objekten; fehlerhafte Antworten können als Freigabe erscheinen oder bei Zugriff auf .get abstürzen.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "deployments/paperclip"
+      ],
+      "source_refs": [
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 74,
+          "anchor": "def admission(agent):"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 90,
+          "anchor": "def blocking(adm):"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 164,
+          "anchor": "def cmd_handle_409(argv):"
+        },
+        {
+          "file": "deployments/paperclip/pipeline.py",
+          "line": 263,
+          "anchor": "def cmd_route(argv):"
+        }
+      ],
+      "acceptance_criteria": [
+        "Admission wird an genau einer Eingangsgrenze auf Objektform, bool allowed, passende Agentenreferenz und Liste strukturierter Edge-Objekte geprüft.",
+        "edges=null, String, Objekt, Liste mit null sowie widersprüchliche allowed/satisfied-Werte können keine Freigabe erzeugen und verursachen keinen unkontrollierten Traceback.",
+        "Malformed oder unerwartete 409-Antworten und Pipeline-Listen liefern einen klaren Fehler-/Sperrstatus; gültige leere Listen für ungated Agenten bleiben zulässig.",
+        "Tests unterscheiden Daemon nicht erreichbar, HTTP-/CLI-Fehler, syntaktisch kaputtes JSON und strukturell falsches, aber gültiges JSON.",
+        "Der verbindliche Daemon-Check am Ausführungsendpunkt bleibt bestehen; Wrapper-Validierung ersetzt ihn nicht."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Behoben 2026-11-21: Kanten ohne upstream_agent_id wurden als ungültig abgelehnt (test_route_accepts_edges_without_upstream, test_route_rejects_malformed_edges)",
+          "edges=null/Objekt/Liste mit null in Admission ungetestet"
+        ]
+      }
+    },
+    {
+      "id": "RF-030",
+      "milestone": "M5",
+      "type": "test",
+      "title": "Wrapper-Phasen und bewusst bestehende Legacy-Ausnahmen eindeutig absichern",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "pre_run wird bei orchestrate und dockweave-<cid> übersprungen; der Legacy-docker-exec-Pfad umgeht die neue Admission. Diese Ausnahmen sind teils archiviert, stehen aber neben breiten Aussagen über jeden programmgesteuerten Auftrag.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "interaction",
+      "components": [
+        "deployments/paperclip",
+        "todo/archive"
+      ],
+      "source_refs": [
+        {
+          "file": "deployments/paperclip/dockweave-run.sh",
+          "line": 125,
+          "anchor": "dockweave-*) ;;"
+        },
+        {
+          "file": "deployments/paperclip/dockweave-run.sh",
+          "line": 136,
+          "anchor": "if [ \"$MODE\" != \"orchestrate\" ] && [ -n \"$HOST_WORKSPACE\" ]; then"
+        },
+        {
+          "file": "todo/archive/gate-pipeline.json",
+          "line": 1072,
+          "anchor": "Legacy-Ziele dockweave-<cid> umgehen die Pipeline"
+        }
+      ],
+      "acceptance_criteria": [
+        "Eine dokumentierte Modusmatrix nennt Admission, pre_run, after_run und post_run für normale Agenten, orchestrate und Legacy-Containerziele.",
+        "Für jede Matrixzeile prüfen Tests tatsächlich ausgeführte beziehungsweise bewusst ausgelassene Schritte sowie die Reaktion auf Fehler.",
+        "Legacy-Ausführung wird deutlich als nicht pipeline-geschützt angezeigt; Dokumentation behauptet für diesen Pfad keine Daemon-Durchsetzung.",
+        "Ein konkret dokumentierter Migrationsweg führt Legacy-Ziele auf stabile DockWeave-Agenten-IDs; eine Abschaltung oder Opt-in-Änderung wird als bewusste Kompatibilitätsentscheidung behandelt.",
+        "Ein fehlender HOST_WORKSPACE oder fehlgeschlagener Gate-Aufruf hat einen definierten, getesteten Zustand und wird nicht versehentlich als vollständig geprüft ausgewiesen."
+      ],
+      "depends_on": [
+        "RF-029"
+      ],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "todo",
+        "remaining_gaps": [
+          "Nicht begonnen"
+        ]
+      }
+    },
+    {
+      "id": "RF-031",
+      "milestone": "M6",
+      "type": "test",
+      "title": "Neue Pipeline- und Gate-CLI-Befehle über reale Prozessaufrufe testen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 30,
+      "description": "Pipeline-CLI, blockierter Exit-Code 3 und neue Gate-Flags sind vorhanden, direkte Tests im CLI-Paket fehlen. Die SDK-Happy-Path-Tests beweisen weder Prozess-Exit noch stdout/stderr-Verhalten.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "today",
+      "components": [
+        "cmd/dockweave"
+      ],
+      "source_refs": [
+        {
+          "file": "cmd/dockweave/pipeline.go",
+          "line": 18,
+          "anchor": "func pipelineCmd"
+        },
+        {
+          "file": "cmd/dockweave/pipeline.go",
+          "line": 77,
+          "anchor": "os.Exit(3)"
+        },
+        {
+          "file": "cmd/dockweave/gate.go",
+          "line": 1,
+          "anchor": "package main"
+        },
+        {
+          "file": "cmd/dockweave/run_test.go",
+          "line": 1,
+          "anchor": "package main"
+        }
+      ],
+      "acceptance_criteria": [
+        "Subprocess-Tests prüfen erlaubten Status mit Exit 0, blockierten Einzelagenten mit Exit 3 und einen unterscheidbaren technischen Fehler.",
+        "--json liefert ohne störende Prosa parsebare Einzel-/Sammelantworten; stdout und stderr besitzen stabile Aufgaben.",
+        "status/admission-Alias, list-Filter und Sonderzeichen in Agentennamen erreichen die erwarteten API-Pfade.",
+        "Override ohne Grund/Gate sendet keine Mutation; Default-Single-Use, Wiederverwendung und TTL werden korrekt übertragen.",
+        "gate --phase, --upstream-agent, review --assignee und prune-Parameter werden einschließlich ungültiger Werte und Fehlerantworten geprüft."
+      ],
+      "depends_on": [
+        "RF-017",
+        "RF-022"
+      ],
+      "verification_files": [
+        "cmd/dockweave/run_test.go",
+        "pkg/sdk/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test ./cmd/dockweave ./pkg/sdk"
+      ],
+      "implementation_notes": [
+        "Neue CLI-Tests im bestehenden cmd/dockweave-Paket ergänzen; os.Exit-Pfade in Kindprozessen testen, nicht durch zufälligen Abbruch des Testprozesses."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "stdout/stderr nicht getrennt geprüft",
+          "status/admission-Alias, Filter, Sonderzeichen fehlen",
+          "Override-Validierung, single-use/TTL, ungültige Werte, review --assignee, prune fehlen"
+        ]
+      }
+    },
+    {
+      "id": "RF-032",
+      "milestone": "M6",
+      "type": "test",
+      "title": "SDK-Pipeline-Vertrag um Fehler-, Abbruch- und Serialisierungsfälle ergänzen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 35,
+      "description": "pipelines_test.go deckt erfolgreiche Antworten der neuen Methoden ab, aber keine Statusfehler, ungültigen Antworten oder Kontextabbrüche.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "today",
+      "components": [
+        "pkg/sdk"
+      ],
+      "source_refs": [
+        {
+          "file": "pkg/sdk/pipelines.go",
+          "line": 1,
+          "anchor": "package sdk"
+        },
+        {
+          "file": "pkg/sdk/pipelines_test.go",
+          "line": 14,
+          "anchor": "func Test"
+        }
+      ],
+      "acceptance_criteria": [
+        "403, 404 und beide relevanten 409-Konfliktfälle werden als auswertbare Fehler mit erhaltenem Serverkontext zurückgegeben.",
+        "Fehlerhaftes JSON bei HTTP 200 ergibt einen Decode-Fehler statt eines leeren scheinbar erfolgreichen Ergebnisses.",
+        "Abgebrochene Kontexte beenden laufende Requests und liefern einen nachvollziehbaren Abbruchfehler.",
+        "Explizites single_use=false, reset, revision und TTL werden im gesendeten JSON geprüft; fehlende optionale Werte bleiben von false/0 unterscheidbar, soweit der API-Vertrag es verlangt.",
+        "Query-Parameter mit Leerzeichen, & und anderen reservierten Zeichen werden korrekt kodiert; Einzel- und Collection-Antworten entsprechen RF-022."
+      ],
+      "depends_on": [
+        "RF-022"
+      ],
+      "verification_files": [
+        "pkg/sdk/pipelines_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./pkg/sdk"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Zwei 409-Fälle nicht unterschieden",
+          "Abbruch nur vor Request-Start",
+          "reset/revision/TTL fehlen",
+          "Einzel-/Sammelantwort fehlen"
+        ]
+      }
+    },
+    {
+      "id": "RF-033",
+      "milestone": "M6",
+      "type": "test",
+      "title": "Pipeline-Enforcement an allen zugesagten Ausführungsendpunkten und Rollen prüfen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Vorhandene API-Tests prüfen OpenAI-Enforcement, aber die vollständige Kombination aus herdr, Streaming, Rollenpolicy und konkurrierender Override-Nutzung ist nicht nachgewiesen.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "today",
+      "components": [
+        "internal/api"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/api/openai.go",
+          "line": 9,
+          "anchor": "package api"
+        },
+        {
+          "file": "internal/api/herdr.go",
+          "line": 1,
+          "anchor": "package api"
+        },
+        {
+          "file": "internal/api/pipelines_test.go",
+          "line": 182,
+          "anchor": "func Test"
+        },
+        {
+          "file": "internal/api/auth.go",
+          "line": 1,
+          "anchor": "package api"
+        }
+      ],
+      "acceptance_criteria": [
+        "Blockierte Requests erreichen weder Sessions.Prompt noch Native.Prompt über nicht-streamendes OpenAI, streamendes OpenAI oder herdr-Prompt.",
+        "Streaming-Sperren liefern vor Beginn eines SSE-Erfolgsstreams eine strukturierte 409-Antwort mit Gate, Aktion und Gründen.",
+        "Tests über die echte Auth-Middleware prüfen unbekannte UID, Monitor und Admin; Monitor bleibt bei Override/Update/Review/Prune schreibgesperrt.",
+        "Gleichzeitige Prompts mit demselben Single-Use-Override erzeugen höchstens eine tatsächliche Agentenausführung; Tamper wird nie übersteuert.",
+        "Agenten ohne eingehende Kanten bleiben ausführbar; dokumentierte interaktive Terminal- und Start/Stop-Ausnahmen werden nicht unbeabsichtigt gesperrt."
+      ],
+      "depends_on": [
+        "RF-003",
+        "RF-004",
+        "RF-013",
+        "RF-020"
+      ],
+      "verification_files": [
+        "internal/api/pipelines_test.go",
+        "internal/api/openai_test.go",
+        "internal/api/auth_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/api"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "todo",
+        "remaining_gaps": [
+          "Nicht begonnen: herdr, Native.Prompt, Auth-Middleware mit Rollen, Endpoint-Nebenläufigkeit, Tamper/Ausnahmen"
+        ]
+      }
+    },
+    {
+      "id": "RF-034",
+      "milestone": "M6",
+      "type": "test",
+      "title": "Integrationstest-Umgebung mit echtem Docker-Client und gemeinsamen Sandbox-Pfaden herstellen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 40,
+      "description": "Make und CI starten ein golang-Image mit Host-Socket, stellen aber Docker-CLI/Runner-Image nicht ausdrücklich bereit. Die neuen Tests skippen ohne diese Voraussetzungen und erzeugen Sandbox-Verzeichnisse im äußeren Container, deren Bind-Quellen der Host-Daemon nicht automatisch sehen kann.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "interaction",
+      "components": [
+        "Makefile",
+        ".github/workflows",
+        "tests/integration",
+        "internal/gateexec"
+      ],
+      "source_refs": [
+        {
+          "file": "Makefile",
+          "line": 44,
+          "anchor": "test-integration:"
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "line": 41,
+          "anchor": "- name: Integration tests (privileged)"
+        },
+        {
+          "file": "tests/integration/gate_pipeline_helpers_test.go",
+          "line": 25,
+          "anchor": "func gateRunner"
+        },
+        {
+          "file": "internal/gateexec/runner.go",
+          "line": 326,
+          "anchor": "Binds: []mount.Mount{{"
+        }
+      ],
+      "acceptance_criteria": [
+        "Der dokumentierte Testlauncher stellt kompatiblen Docker-Client und deklarierte Runner-Images reproduzierbar bereit.",
+        "Temporäre Workspace-/Snapshot-Pfade sind für Testprozess und angesprochenen Docker-Daemon unter identischen absoluten Pfaden sichtbar oder werden durch eine gleichwertige getestete isolierte Engine-Strategie bereitgestellt.",
+        "In CI schlagen erforderliche fehlende Voraussetzungen fehl; lokales optionales Skip bleibt klar unterscheidbar.",
+        "Ergebnisartefakte belegen TestGateExpressionPathInSandbox und TestPipelineEndToEnd als PASS, nicht nur Paket-Erfolg mit SKIP.",
+        "Make und CI verwenden dieselbe gepflegte Launcher-Logik; Gate-Container bleiben ohne privileged, CAP_SYS_ADMIN und Docker-Socket.",
+        "Privilegierte Mount-Tests bleiben auf den wegwerfbaren Harness beschränkt; Abbruch-Cleanup entfernt nur testeigene Ressourcen."
+      ],
+      "depends_on": [
+        "RF-040"
+      ],
+      "verification_files": [
+        "tests/integration/gate_pipeline_helpers_test.go",
+        "tests/integration/gate_expression_test.go",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "make test-integration"
+      ],
+      "verification_constraints": [
+        "Nur in der von AGENTS.md erlaubten wegwerfbaren privilegierten Umgebung ausführen; nicht direkt auf einem geteilten Host."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Images nicht per Digest gepinnt",
+          "egress/ssh-Tests skippen still",
+          "Kein PASS-Nachweis der zwei Tests",
+          "Gate-Container werden bei Abbruch nicht aufgeräumt"
+        ]
+      }
+    },
+    {
+      "id": "RF-035",
+      "milestone": "M6",
+      "type": "test",
+      "title": "Vollständigen DONE-Wrapper-Ablauf über Gate-Runner bis Folge-Agent nachweisen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "TestPipelineEndToEnd verwendet den realen Runner, Store und Endpoint, startet den Gate-Lauf aber direkt. Das archivierte GP-028-Kriterium 'A meldet DONE' und der Übergang durch dockweave-run.sh sind damit nicht abgedeckt.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "today",
+      "components": [
+        "tests/integration",
+        "deployments/paperclip",
+        "todo/archive"
+      ],
+      "source_refs": [
+        {
+          "file": "tests/integration/pipeline_e2e_test.go",
+          "line": 81,
+          "anchor": "gate := func() *model.GateRun"
+        },
+        {
+          "file": "deployments/paperclip/dockweave-run.sh",
+          "line": 1,
+          "anchor": "#!/"
+        },
+        {
+          "file": "todo/archive/gate-pipeline.json",
+          "line": 785,
+          "anchor": "DONE"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein Test führt den tatsächlichen Wrapper mit kontrollierter Agent-A-Antwort aus und lässt DONE die nachgelagerten Gate-Phasen auslösen.",
+        "CLI/API, Store, Admission und Gate-Runner sind auf diesem Pfad echte Komponenten; externe Modell- und Paperclip-Dienste werden nur an ihren Systemgrenzen isoliert ersetzt.",
+        "PASS speichert die richtige Upstream-Zuordnung, löst die konfigurierte Weiterleitung aus und erlaubt den Folge-Agenten am echten Endpoint.",
+        "FAIL, Budget-Ausfall, stale und Tamper verhindern die Ausführung von B; konfigurierte Nacharbeit wird korrekt veranlasst.",
+        "Wiederholtes DONE erzeugt keine doppelten bestätigten Seiteneffekte; eine Nicht-DONE-Antwort startet keine Abschluss-Routingfolge.",
+        "Testname, Grenzen der Simulation und ausführbarer Nachweis ersetzen keine bestehenden Runner-/API-Tests, sondern ergänzen deren bisherige Abdeckung."
+      ],
+      "depends_on": [
+        "RF-004",
+        "RF-005",
+        "RF-013",
+        "RF-027",
+        "RF-028",
+        "RF-029",
+        "RF-030",
+        "RF-034"
+      ],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py",
+        "tests/integration/pipeline_e2e_test.go"
+      ],
+      "verification_commands": [
+        "make test-wrapper",
+        "make test-integration"
+      ],
+      "related_archive_tasks": [
+        "gate-pipeline:GP-028"
+      ],
+      "verification_constraints": [
+        "Integration nur im isolierten Harness; keine realen Modellkosten oder externen Issue-/Wake-Aktionen."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "todo",
+        "remaining_gaps": [
+          "Nicht begonnen"
+        ]
+      }
+    },
+    {
+      "id": "RF-036",
+      "milestone": "M6",
+      "type": "ci",
+      "title": "Wrapper- und Web-Pipeline-Prüfungen zu verbindlichen CI-Jobs machen",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 55,
+      "description": "ci.yml führt Go-Build, vet, Unit-Tests und Race-Tests aus, aber weder die neuen Python-Wrapper-Tests noch Web-Build und Pipeline-Browser-Tests. make test enthält Wrapper-Tests, wird von CI jedoch nicht benutzt.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "interaction",
+      "components": [
+        ".github/workflows",
+        "Makefile",
+        "ui/web/package.json",
+        "ui/web/playwright.pipeline.config.ts"
+      ],
+      "source_refs": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "line": 11,
+          "anchor": "test:"
+        },
+        {
+          "file": "Makefile",
+          "line": 33,
+          "anchor": "test: test-wrapper"
+        },
+        {
+          "file": "ui/web/package.json",
+          "line": 11,
+          "anchor": "e2e:pipeline"
+        },
+        {
+          "file": "ui/web/playwright.pipeline.config.ts",
+          "line": 6,
+          "anchor": "export default defineConfig"
+        }
+      ],
+      "acceptance_criteria": [
+        "PR-CI führt die Wrapper-Suite sowie npm ci, Web-Build und die vorhandenen Pipeline-Browser-Tests aus.",
+        "Node-, Python- und Browser-Voraussetzungen sind reproduzierbar festgelegt und nicht von einem Entwicklerrechner abhängig.",
+        "Ein Fehler in einer dieser Prüfungen führt zu einem fehlgeschlagenen erforderlichen Job; kein continue-on-error für diese neuen Korrektheitsprüfungen.",
+        "Browserfehler liefern hilfreiche begrenzte Trace-/Screenshot-Artefakte ohne Tokens oder private Nutzdaten.",
+        "Testserver-Ports und temporäre Zustände kollidieren weder zwischen Jobs noch bei parallelen lokalen Läufen.",
+        "Release-Jobs hängen von den für die ausgelieferten Komponenten nötigen erfolgreichen Prüfungen ab."
+      ],
+      "depends_on": [
+        "RF-034"
+      ],
+      "verification_files": [
+        "ui/web/e2e/pipeline.spec.ts",
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper",
+        "cd ui/web && npm ci && npm run build && npm run e2e:pipeline"
+      ],
+      "implementation_notes": [
+        "CI-Änderung durch einen tatsächlichen späteren Workflow-Lauf verifizieren; lokale Befehle allein sind kein CI-Nachweis."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Trace/Screenshot nicht aktiviert",
+          "Port 8797 fest",
+          "Kein Nachweis aus echtem CI-Lauf"
+        ]
+      }
+    },
+    {
+      "id": "RF-037",
+      "milestone": "M6",
+      "type": "ci",
+      "title": "staticcheck-Fehler in make lint erhalten und bestehende Befunde transparent behandeln",
+      "status": "partial",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 40,
+      "description": "Die Shell-Kette command -v staticcheck && staticcheck ./... || echo ... wandelt auch einen tatsächlichen Analyzer-Fehler in einen erfolgreichen echo-Exit um und meldet fälschlich 'not installed'.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "pre_existing",
+      "components": [
+        "Makefile"
+      ],
+      "source_refs": [
+        {
+          "file": "Makefile",
+          "line": 55,
+          "anchor": "lint: vet"
+        },
+        {
+          "file": "Makefile",
+          "line": 56,
+          "anchor": "staticcheck not installed; skipped"
+        },
+        {
+          "file": "Makefile",
+          "line": 64,
+          "anchor": "STATICCHECK_VERSION"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein installiertes staticcheck mit Exit != 0 lässt make lint fehlschlagen und wird nicht als fehlendes Programm ausgegeben.",
+        "Fehlendes staticcheck wird gesondert und gemäß dokumentierter lokaler/CI-Policy behandelt; CI installiert die gepinnte Version.",
+        "Ein kleiner Subprocess-Test oder nachvollziehbarer Shell-Nachweis injiziert einen Analyzer mit Fehler-Exit und belegt den unveränderten Exit-Status.",
+        "Bekannte Altbefunde werden separat erfasst und behoben oder eng begründet behandelt; keine pauschale Unterdrückung aller Analyzer-Ergebnisse.",
+        "Die CI-Prüfung ist verbindlich; der im bisherigen Review fehlende staticcheck-Nachweis wird durch ein tatsächliches Ergebnis ersetzt."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "Makefile",
+        ".github/workflows/ci.yml"
+      ],
+      "verification_commands": [
+        "make lint"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "11 vorbestehende staticcheck-Befunde offen -> make lint und CI-Job 'test' rot",
+          "Kein Test mit injiziertem Analyzer-Fehler",
+          "Behoben 2026-11-21: ST1005 im neuen manifests.go"
+        ]
+      }
+    },
+    {
+      "id": "RF-038",
+      "milestone": "M6",
+      "type": "build",
+      "title": "Eingebettetes Web-Bundle gegen den geprüften Frontend-Quellstand absichern",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 25,
+      "description": "Go bindet internal/webui/dist ein; make web kopiert separat gebaute Angular-Artefakte. Ein erfolgreicher Go-Build prüft nicht, ob die ausgelieferte Oberfläche dem aktuellen TypeScript-Stand entspricht. Der bereits ausgeführte Web-Build meldete außerdem eine Überschreitung des Komponenten-CSS-Warnbudgets.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "interaction",
+      "components": [
+        "Makefile",
+        "internal/webui",
+        "ui/web/angular.json",
+        ".github/workflows"
+      ],
+      "source_refs": [
+        {
+          "file": "Makefile",
+          "line": 19,
+          "anchor": "web:"
+        },
+        {
+          "file": "internal/webui/dist/index.html",
+          "line": 2,
+          "anchor": "<html"
+        },
+        {
+          "file": "ui/web/angular.json",
+          "line": 48,
+          "anchor": "\"type\": \"anyComponentStyle\""
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "line": 50,
+          "anchor": "release:"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein definierter Clean-Build erzeugt das Frontend aus Lockfile und Quellstand und übernimmt genau diese Artefakte in das ausgelieferte Go-Binary.",
+        "CI erkennt ein gegenüber dem Quellstand veraltetes eingebettetes Bundle oder baut es als verbindlichen Release-Schritt neu.",
+        "Ein Smoke-Test nutzt die vom Go-Webserver tatsächlich ausgelieferten Assets und bestätigt Pipeline-Status sowie Expression-Editor auf diesem Bundle.",
+        "Alte unreferenzierte Hauptbundles werden beim Erzeugen entfernt; Asset-Referenzen in index.html existieren vollständig.",
+        "Nichtdeterministische Build-Metadaten werden bei einem eventuellen Vergleich ausdrücklich berücksichtigt; ein bloßer Hashunterschied wird nicht ohne Analyse als Funktionsfehler ausgegeben.",
+        "Die Komponenten-CSS-Budgetwarnung ist durch nachvollziehbare Reduktion oder eine anhand der tatsächlichen Auslieferungsgröße begründete Budgetentscheidung behoben; ein bloßes Abschalten der Warnung genügt nicht. Bei CSS-Änderungen belegen Browser-Screenshots unveränderte Lesbarkeit und Bedienbarkeit der betroffenen Ansichten."
+      ],
+      "depends_on": [
+        "RF-036",
+        "RF-040"
+      ],
+      "verification_files": [
+        "internal/webui/server_test.go",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "make web",
+        "go test ./internal/webui",
+        "go build ./..."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Eingebettetes Bundle internal/webui/dist ist veraltet",
+          "Keine CI-Prüfung auf veraltetes Bundle",
+          "Kein Smoke-Test gegen Go-Server",
+          "Nicht-deterministische Build-Metadaten unbehandelt"
+        ]
+      }
+    },
+    {
+      "id": "RF-039",
+      "milestone": "M6",
+      "type": "chore",
+      "title": "Generierten Python-Bytecode aus Git entfernen und künftig ignorieren",
+      "status": "partial",
+      "priority": "P3",
+      "risk": "low",
+      "progress_percent": 90,
+      "description": "Mit den Wrapper-Tests wurde test_wrapper.cpython-312.pyc eingecheckt. Die Projekt-.gitignore enthält keine Regeln für __pycache__ oder Python-Bytecode.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        ".gitignore",
+        "deployments/paperclip"
+      ],
+      "source_refs": [
+        {
+          "file": ".gitignore",
+          "line": 1,
+          "anchor": "/bin/"
+        },
+        {
+          "file": "deployments/paperclip/tests/__pycache__/test_wrapper.cpython-312.pyc"
+        }
+      ],
+      "acceptance_criteria": [
+        "Die getrackte .pyc-Datei wird entfernt; Python-Quelltests bleiben erhalten.",
+        "__pycache__/ und übliche Python-Bytecode-Endungen sind im passenden Ignore-Scope abgedeckt.",
+        "git ls-files zeigt keine .pyc/.pyo-Dateien mehr.",
+        "Ein normaler Wrapper-Testlauf funktioniert und erzeugt keine ungewollten Git-Änderungen.",
+        "Vorhandene Archive und andere generierte Produktartefakte werden nicht pauschal mit entfernt."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "deployments/paperclip/tests/test_wrapper.py"
+      ],
+      "verification_commands": [
+        "make test-wrapper",
+        "git ls-files '*.pyc' '*.pyo'",
+        "git status --short --untracked-files=all"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Behoben 2026-11-21: .pyc per git rm --cached entfernt; Abschluss mit Commit-SHA nachtragen"
+        ]
+      }
+    },
+    {
+      "id": "RF-040",
+      "milestone": "M6",
+      "type": "build",
+      "title": "Go-Toolchain in Modul, Container, CI und Dokumentation konsistent deklarieren",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 75,
+      "description": "go.mod verlangt Go 1.27.3, der Daemon-Dockerfile baut mit golang:1.24 und AGENTS.md nennt >=1.24; READMEs und CI nennen 1.27. Automatischer Toolchain-Download kann den Widerspruch verdecken.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "pre_existing",
+      "components": [
+        "go.mod",
+        "deployments/Dockerfile",
+        "AGENTS.md",
+        ".github/workflows"
+      ],
+      "source_refs": [
+        {
+          "file": "go.mod",
+          "line": 3,
+          "anchor": "go 1.27.3"
+        },
+        {
+          "file": "deployments/Dockerfile",
+          "line": 6,
+          "anchor": "FROM golang:1.24 AS build"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 53,
+          "anchor": "Voraussetzungen: Go"
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "line": 17,
+          "anchor": "go-version:"
+        }
+      ],
+      "acceptance_criteria": [
+        "Eine dokumentierte minimale bzw. gepinnte Toolchain erfüllt die Modulvorgabe ohne impliziten Versionssprung.",
+        "Daemon-Builder, Integrationstest-Image, CI und Install-/Build-Hinweise folgen derselben erklärten Versionspolitik.",
+        "AGENTS.md sowie README.md und README.de.md nennen miteinander vereinbare Voraussetzungen.",
+        "Ein Build mit GOTOOLCHAIN=local auf der deklarierten Toolchain besteht; ein zu alter Compiler ergibt eine verständliche Diagnose.",
+        "Container-Build wird tatsächlich geprüft; Netzwerkzugriff für Toolchain-Upgrades wird nicht still als Voraussetzung vorausgesetzt."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "deployments/Dockerfile",
+        "Makefile",
+        ".github/workflows/ci.yml"
+      ],
+      "verification_commands": [
+        "GOTOOLCHAIN=local go build ./...",
+        "docker build -f deployments/Dockerfile -t dockweave-review-toolchain ."
+      ],
+      "verification_constraints": [
+        "Nur Build prüfen; dadurch kein Image veröffentlichen oder produktiven Container ersetzen."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "HANDOFF.md nennt noch 'Go ≥ 1.27'",
+          "CI-Job test ohne GOTOOLCHAIN=local",
+          "Container-Build nicht verifiziert"
+        ]
+      }
+    },
+    {
+      "id": "RF-041",
+      "milestone": "M7",
+      "type": "docs",
+      "title": "Pipeline-Dokumentation und historische Abschlussaussagen mit tatsächlichen Nachweisen abgleichen",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "Archivierte Tracks nennen vollständige Umsetzung, enthalten aber weiter veraltete summary_notes und stärkere E2E-Aussagen als der vorhandene Test nachweist. Neue Fehler dürfen nicht durch alte done-Markierungen unsichtbar werden.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "todo/archive",
+        "docs/adr",
+        "docs/paperclip-delegation.md"
+      ],
+      "source_refs": [
+        {
+          "file": "todo/archive/gate-pipeline.json",
+          "line": 773,
+          "anchor": "GP-028"
+        },
+        {
+          "file": "todo/archive/gate-pipeline.json",
+          "line": 1053,
+          "anchor": "summary_notes"
+        },
+        {
+          "file": "docs/adr/0002-pipeline-enforcement.md",
+          "line": 1,
+          "anchor": "# ADR 0002"
+        },
+        {
+          "file": "docs/paperclip-delegation.md",
+          "line": 1,
+          "anchor": "#"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein nachvollziehbarer Nachtrag verlinkt die Folgeaufgaben auf betroffene historische GP-/CR-/GD-Kriterien, ohne frühere Testerfolge oder deren Zeitbezug zu verfälschen.",
+        "Behauptungen über E2E, jede Ausführung, genau-einmalige Rework-Erstellung und auditierte Overrides werden an die tatsächlich implementierte und getestete Semantik angepasst.",
+        "Veraltete offene-Entscheidungs-/akuter-Bug-Texte im bereits abgeschlossenen Track werden historisch eingeordnet statt als aktueller Zustand dargestellt.",
+        "EN/DE-Dokumentation beschreibt nach Umsetzung dieselben Routing-, Frische-, Konflikt-, Retry- und Legacy-Regeln.",
+        "Abschlussnachweise nennen Befehl, Commit-SHA, geprüfte Oberfläche und ausgelassene Voraussetzungen; lokale Tests werden nicht als ausgeführte CI-/Deploy-Prüfung ausgegeben."
+      ],
+      "depends_on": [
+        "RF-004",
+        "RF-022",
+        "RF-026",
+        "RF-028",
+        "RF-030",
+        "RF-035"
+      ],
+      "verification_files": [
+        "todo/archive/gate-pipeline.json",
+        "docs/gate-model.md",
+        "docs/gate-model.de.md",
+        "docs/paperclip-delegation.md",
+        "docs/paperclip-delegation.de.md"
+      ],
+      "verification_commands": [
+        "git diff --check"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "todo",
+        "remaining_gaps": [
+          "Nicht begonnen"
+        ]
+      }
+    },
+    {
+      "id": "RF-042",
+      "milestone": "M7",
+      "type": "test",
+      "title": "TODO-Tracks auf Schema, Referenzen und konsistente Zusammenfassungen validieren",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "low",
+      "progress_percent": 85,
+      "description": "Das vorhandene Track-Schema erlaubt viele freie Zusatzfelder und prüft allein weder gültige depends_on-IDs noch Zyklen, Statussummen oder die eindeutige Zuordnung von Tasks zu Meilensteinen.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "today",
+      "components": [
+        "todo/todo.track.schema.json",
+        "AGENTS.md"
+      ],
+      "source_refs": [
+        {
+          "file": "todo/todo.track.schema.json",
+          "line": 6,
+          "anchor": "additionalProperties"
+        },
+        {
+          "file": "AGENTS.md",
+          "line": 127,
+          "anchor": "todo.track.schema.json"
+        }
+      ],
+      "acceptance_criteria": [
+        "Ein reproduzierbarer Validator prüft aktive todo.*.json gegen Draft 2020-12 sowie die in status_scale/priority_scale/risk_scale definierten Werte.",
+        "Task-IDs sind eindeutig; Abhängigkeiten existieren, enthalten keine Selbstreferenzen und bilden einen azyklischen Graphen.",
+        "Jeder Task ist genau dem angegebenen Meilenstein zugeordnet; Meilenstein- und critical_path-Referenzen existieren.",
+        "Status-, Typ-, Prioritäts-, Risiko- und Fortschrittssummen entsprechen den Tasks; done und progress_percent=100 sind konsistent.",
+        "Negativfixtures mit falscher Summary, fehlender Dependency und Zyklus werden zurückgewiesen; Legacy-Archive werden anhand ihres eigenen Formats geprüft statt zwangsweise umgeschrieben.",
+        "CI führt die Validierung bei Tracker-Änderungen aus; die Validierung eines Backlogs behauptet keine Erledigung seiner Implementierungsaufgaben."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "todo/todo.track.schema.json",
+        "todo/todo.schema.json"
+      ],
+      "verification_commands": [],
+      "implementation_notes": [
+        "Validator und Aufruf erst im Task implementieren; für die vorliegende Datei wird bereits eine einmalige Schema- und Konsistenzprüfung ausgeführt."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "CI ruft Validator ohne --archives auf"
+        ]
+      }
+    },
+    {
+      "id": "RF-043",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Manifest-Scope und Parserfehler der Dependency-Policy explizit behandeln",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 80,
+      "description": "newDependenciesAcrossManifests liest fünf feste Dateien an der Workspace-Wurzel und ignoriert Lesefehler. Die handgeschriebenen Parser erfassen nur Teile der gültigen TOML-/Requirements-Syntax; ein Monorepo-Unterprojekt wie ui/web liegt außerhalb dieses Scopes.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "interaction",
+      "components": [
+        "internal/gateexec",
+        "ui/web/package.json"
+      ],
+      "source_refs": [
+        {
+          "file": "internal/gateexec/policy.go",
+          "line": 210,
+          "anchor": "var manifestFiles"
+        },
+        {
+          "file": "internal/gateexec/policy.go",
+          "line": 221,
+          "anchor": "func newDependenciesAcrossManifests"
+        },
+        {
+          "file": "internal/gateexec/policy.go",
+          "line": 333,
+          "anchor": "func pyprojectNames"
+        },
+        {
+          "file": "internal/gateexec/policy.go",
+          "line": 388,
+          "anchor": "func cargoNames"
+        },
+        {
+          "file": "ui/web/package.json",
+          "line": 1,
+          "anchor": "{"
+        }
+      ],
+      "acceptance_criteria": [
+        "Die Policy unterscheidet nicht vorhandene Manifeste von unlesbaren oder syntaktisch fehlerhaften konfigurierten Manifesten; letztere führen nicht zu stiller Freigabe.",
+        "Der tatsächlich geprüfte Manifest-Scope wird im Ergebnis und in EN/DE-Doku genannt; root-only wird nicht als vollständige Monorepo-Prüfung dargestellt.",
+        "Zusätzliche deklarierte relative Manifest-Pfade sind sicher unter dem Workspace begrenzt und können relevante Unterprojekte erfassen; Traversal und externe Symlinks werden abgewiesen.",
+        "Die unterstützten Syntaxformen werden durch Fixtures belegt, einschließlich optionaler Python-Abhängigkeiten, Cargo-Workspace-Tabellen und Kommentaren; nicht unterstützte konfigurierte Formen erzeugen einen eindeutigen Fehler oder Warn-/Sperrvertrag.",
+        "Version-Bumps und normalisierte identische Paketnamen bleiben zulässig; tatsächlich neue Pakete im deklarierten Scope werden erkannt.",
+        "Policy-Parsing nutzt die stabile Vorher-/Nachher-Basis aus RF-011 und erzeugt keine Secret-Werte im Befundtext."
+      ],
+      "depends_on": [
+        "RF-007",
+        "RF-011"
+      ],
+      "verification_files": [
+        "internal/gateexec/policy_test.go",
+        "internal/gateexec/runner_integration_test.go"
+      ],
+      "verification_commands": [
+        "go test ./internal/gateexec"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Geprüfter Scope nicht in EN/DE-Doku",
+          "Cargo package-Renames nicht behandelt"
+        ]
+      }
+    },
+    {
+      "id": "RF-044",
+      "milestone": "M4",
+      "type": "bug",
+      "title": "Expression-Validierung an den tatsächlich gespeicherten Ausdruck binden und begrenzen",
+      "status": "partial",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 70,
+      "description": "checkExpression und ensureValidExpression übernehmen Antworten ohne Aktualitätsprüfung; ensureValidExpression führt bei jedem HTTP-Fehler trotzdem den Save-Callback aus. Validate/Evaluate besitzen zudem keinen gemeinsamen Größen-/Verschachtelungsgrenzwert für Konfigurationen außerhalb des 16-KiB-Editor-Endpunkts.",
+      "evidence_level": "code_confirmed",
+      "scope_origin": "today",
+      "components": [
+        "ui/web/src",
+        "internal/gateexec",
+        "internal/webui"
+      ],
+      "source_refs": [
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1427,
+          "anchor": "checkExpression(which:"
+        },
+        {
+          "file": "ui/web/src/app/components/graph.component.ts",
+          "line": 1440,
+          "anchor": "private ensureValidExpression"
+        },
+        {
+          "file": "internal/gateexec/expression.go",
+          "line": 41,
+          "anchor": "func Evaluate"
+        },
+        {
+          "file": "internal/gateexec/expression.go",
+          "line": 56,
+          "anchor": "func Validate"
+        },
+        {
+          "file": "internal/webui/graph.go",
+          "line": 217,
+          "anchor": "func (s *Server) validateExpression"
+        }
+      ],
+      "acceptance_criteria": [
+        "Eine verspätete Validierungsantwort kann weder den Fehlerstatus eines neueren Ausdrucks ersetzen noch einen inzwischen geänderten Formularstand ungeprüft speichern.",
+        "Der Save-Callback verwendet genau den validierten Formularsnapshot oder validiert vor Speicherung erneut; Add- und Edit-Dialog sind abgedeckt.",
+        "Kompatibilität mit einem alten Gateway wird nur für explizit definierte fehlende-Endpunkt-Antworten angeboten; Netzwerk-/500-/403-Fehler erscheinen als unverifizierter Zustand statt stiller Validierungserfolg.",
+        "Validate und Evaluate teilen dokumentierte Längen-/Token-/Tiefegrenzen und liefern bei Überschreitung einen kontrollierten Fehler ohne Panic.",
+        "Tests/Fuzzing decken tiefe Klammern, lange Negationsketten, ungültige Tokens, boolesche Literale, unary minus und nicht verfügbares budget ab.",
+        "Die bestehende fail-closed Budget-Semantik und der Vertrag 'leere Expression = Exit-Code' bleiben unverändert."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/gateexec/expression_test.go",
+        "internal/webui/graph_test.go",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "go test ./internal/gateexec ./internal/webui",
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ],
+      "audit_2026_11_21": {
+        "verdict": "partial",
+        "remaining_gaps": [
+          "Add-Dialog und späte Inline-Prüfung ungetestet",
+          "Limits undokumentiert",
+          "Kein Fuzz-Test"
+        ]
+      }
+    },
+    {
+      "id": "RF-045",
+      "milestone": "M7",
+      "type": "verification",
+      "title": "Korrigierten Gesamtstand anhand der kritischen Szenarien erneut abnehmen",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Die ursprünglichen grünen Tests beziehen sich auf den fehlerhaften reviewed_head. Ein Folgeabschluss benötigt neue Nachweise auf dem tatsächlichen Endstand, insbesondere für Sicherheitsgrenzen und zusammengesetzte Fehlerpfade.",
+      "evidence_level": "coverage_gap",
+      "scope_origin": "followup",
+      "components": [
+        "AGENTS.md",
+        "tests/integration",
+        "ui/web/e2e"
+      ],
+      "source_refs": [
+        {
+          "file": "AGENTS.md",
+          "line": 51,
+          "anchor": "## Build & Test"
+        },
+        {
+          "file": "tests/integration/pipeline_e2e_test.go",
+          "line": 48,
+          "anchor": "func TestPipelineEndToEnd"
+        },
+        {
+          "file": "ui/web/e2e/pipeline.spec.ts",
+          "line": 1,
+          "anchor": "import { test, expect"
+        }
+      ],
+      "acceptance_criteria": [
+        "Die sechs ursprünglichen Befunde besitzen dauerhafte Regressionstests; dieselben Szenarien zeigen am korrigierten Endstand das erwartete Verhalten.",
+        "Sicherheitskritische Untersuchungsaufträge besitzen reproduzierte Belege oder nachvollziehbare Gegenbelege; keine unbewiesene Annahme wird als PASS verbucht.",
+        "Build, Unit-/Race-Tests, vet, staticcheck, Wrapper, Web-Build, Browserfälle und die erforderlichen isolierten Integrationsläufe sind auf dem finalen Commit geprüft.",
+        "Ein manueller Szenariodurchlauf belegt Graph-Konflikt, fehlerhaften Vertrag, PASS/FAIL/stale/tamper, mehrere Overrides und Recovery nach Paperclip-/Daemon-Ausfall auf den realen betroffenen Oberflächen.",
+        "Verbleibende P2/P3-Arbeit bleibt mit ehrlichem Status offen; dieser Track wird erst archiviert, wenn sämtliche enthaltenen Aufgaben nach den Projektregeln abgeschlossen sind.",
+        "Der Abnahmebericht nennt genauen Commit, Befehle, Artefakte und Grenzen; keine automatische Veröffentlichung oder Produktivmigration wird durchgeführt."
+      ],
+      "depends_on": [
+        "RF-001",
+        "RF-002",
+        "RF-003",
+        "RF-004",
+        "RF-005",
+        "RF-006",
+        "RF-007",
+        "RF-008",
+        "RF-009",
+        "RF-010",
+        "RF-011",
+        "RF-012",
+        "RF-013",
+        "RF-018",
+        "RF-020",
+        "RF-023",
+        "RF-026",
+        "RF-033",
+        "RF-035",
+        "RF-036",
+        "RF-037",
+        "RF-038",
+        "RF-041",
+        "RF-042",
+        "RF-044"
+      ],
+      "verification_files": [
+        "internal/gatesync/pipeline_test.go",
+        "internal/pipeline/admission_test.go",
+        "internal/webui/graph_test.go",
+        "deployments/paperclip/tests/test_wrapper.py",
+        "tests/integration/pipeline_e2e_test.go",
+        "ui/web/e2e/pipeline.spec.ts"
+      ],
+      "verification_commands": [
+        "go build ./...",
+        "go test ./...",
+        "go test -race ./...",
+        "go vet ./...",
+        "make lint",
+        "make test-wrapper",
+        "cd ui/web && npm run build && npm run e2e:pipeline",
+        "make test-integration",
+        "git diff --check"
+      ],
+      "verification_constraints": [
+        "Privilegierte Integration nur im isolierten Harness. Ausgelassene Prüfungen ausdrücklich kennzeichnen; kein fehlender Nachweis als Erfolg."
+      ],
+      "audit_2026_11_21": {
+        "verdict": "todo",
+        "remaining_gaps": [
+          "Erst nach Abschluss der Abhängigkeiten"
+        ]
+      }
+    }
+  ],
+  "scope_origin_definitions": {
+    "today": "Durch die heutigen Änderungen eingeführt oder unmittelbar im neu hinzugefügten Ablauf sichtbar.",
+    "interaction": "Heutige Änderungen und vorbestehende Pfade wirken bei diesem Befund zusammen.",
+    "pre_existing": "Vorbestehender Code, der für die heute geänderten Abläufe relevant ist.",
+    "followup": "Aus der Review abgeleitete Folgeprüfung; keine Behauptung über eine neu eingeführte Regression."
+  },
+  "recommended_execution_order": [
+    "RF-007",
+    "RF-001",
+    "RF-002",
+    "RF-003",
+    "RF-008",
+    "RF-009",
+    "RF-010",
+    "RF-011",
+    "RF-012",
+    "RF-013",
+    "RF-018",
+    "RF-020",
+    "RF-023",
+    "RF-037",
+    "RF-005",
+    "RF-006",
+    "RF-014",
+    "RF-016",
+    "RF-015",
+    "RF-017",
+    "RF-019",
+    "RF-021",
+    "RF-022",
+    "RF-024",
+    "RF-025",
+    "RF-026",
+    "RF-027",
+    "RF-004",
+    "RF-033",
+    "RF-028",
+    "RF-029",
+    "RF-030",
+    "RF-031",
+    "RF-032",
+    "RF-040",
+    "RF-034",
+    "RF-035",
+    "RF-036",
+    "RF-038",
+    "RF-041",
+    "RF-042",
+    "RF-043",
+    "RF-044",
+    "RF-045",
+    "RF-039"
+  ],
+  "critical_path_tasks": [
+    "RF-007",
+    "RF-008",
+    "RF-010",
+    "RF-011",
+    "RF-012",
+    "RF-013",
+    "RF-001",
+    "RF-002",
+    "RF-003",
+    "RF-005",
+    "RF-027",
+    "RF-004",
+    "RF-018",
+    "RF-020",
+    "RF-023",
+    "RF-040",
+    "RF-034",
+    "RF-033",
+    "RF-035",
+    "RF-036",
+    "RF-037",
+    "RF-038",
+    "RF-045"
+  ],
+  "critical_path_note": "Priorisierte Freigabepunkte, keine einzelne lineare Kette; für die ausführbare Reihenfolge gelten depends_on und recommended_execution_order. RF-045 setzt weitere fachliche Abnahmen voraus.",
+  "tasks_status_summary": {
+    "total": 45,
+    "by_status": {
+      "todo": 5,
+      "in_progress": 0,
+      "partial": 40,
+      "blocked": 0,
+      "done": 0
+    },
+    "progress_percent_done": 0.0,
+    "by_priority": {
+      "P0": 1,
+      "P1": 18,
+      "P2": 25,
+      "P3": 1
+    },
+    "by_risk": {
+      "low": 2,
+      "medium": 20,
+      "high": 22,
+      "critical": 1
+    },
+    "critical_path": {
+      "total": 23,
+      "done": 0,
+      "remaining": 23
+    },
+    "milestones": {
+      "total": 7,
+      "todo": 0,
+      "in_progress": 7,
+      "blocked": 0,
+      "done": 0
+    }
+  },
+  "tasks_type_summary": {
+    "total": 45,
+    "by_type": {
+      "bug": 18,
+      "security": 8,
+      "performance": 1,
+      "docs": 2,
+      "frontend": 3,
+      "test": 7,
+      "ci": 2,
+      "build": 2,
+      "chore": 1,
+      "verification": 1
+    }
+  },
+  "progress_summary": {
+    "state": "in_progress",
+    "todo_remaining": 5,
+    "in_progress": 0,
+    "partial": 40,
+    "blocked": 0,
+    "done": 0
+  },
+  "evidence_summary": {
+    "by_level": {
+      "runtime_reproduced": 4,
+      "code_confirmed": 26,
+      "investigation_required": 6,
+      "coverage_gap": 9
+    },
+    "by_origin": {
+      "today": 29,
+      "interaction": 11,
+      "pre_existing": 4,
+      "followup": 1
+    },
+    "acceptance_criteria_total": 235
+  },
+  "summary_notes": [
+    "Alle Aufgaben sind offen. Die Review-Vorarbeit und Validierung dieser Datei zählen nicht als Implementierungsfortschritt.",
+    "P0 bezeichnet die zuerst zu klärende vorbestehende Dateisystem-Sicherheitsgrenze in RF-007. Unsichere Host-Dateioperationen sind im Code belegt; ein Angriff gegen fremde Dateien wurde nicht ausgeführt.",
+    "runtime_reproduced gilt nur für die jeweils beschriebene Kernregression. Ergänzende Race-, Crash- und Negativfälle in Akzeptanzkriterien sind noch zu implementierende Prüfungen.",
+    "Bei investigation_required muss die Annahme zunächst kontrolliert reproduziert oder widerlegt werden; die Priorität beschreibt den möglichen Schaden und die nötige Prüfdringlichkeit.",
+    "Archiv-Referenzen benennen historische Aufgaben, keine offenen Abhängigkeiten dieses Tracks. Dokumentation darf frühere Testerfolge nicht nachträglich als Nachweis fehlender Szenarien umdeuten.",
+    "verification_files benennt vorhandene oder geplante Prüf- und Konfigurationsdateien. verification_commands beschreibt künftige Task-Prüfungen, keine bereits für die Fixes erzielten Ergebnisse.",
+    "source_refs gilt für reviewed_head; Anker und Zeilen sind navigierbare Belege für den Ausgangszustand, keine Garantie unveränderter Zeilennummern nach Umsetzung.",
+    "Kein Commit und keine Implementierungsänderung gehören zur Erstellung dieses Backlogs."
+  ]
+}
