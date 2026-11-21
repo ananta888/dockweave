@@ -154,8 +154,8 @@
     {
       "id": "M5",
       "title": "Paperclip-Wrapper und zuverlässiges Routing",
-      "status": "in_progress",
-      "progress_percent": 90.0,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-027",
         "RF-028",
@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 93.5,
+      "progress_percent": 94.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -1829,10 +1829,10 @@
       "milestone": "M5",
       "type": "bug",
       "title": "Wake- und Routing-Aktionen wiederholbar und Fehler für den Wrapper sichtbar machen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "cmd_route weckt bei jedem Aufruf erneut, meldet nach ERR/UNMAPPED dennoch Exit 0 und ignoriert einen fehlgeschlagenen Wake nach Rework-Erstellung. dockweave-run.sh unterdrückt zusätzlich Routing-Fehler.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1879,14 +1879,13 @@
         "make test-wrapper"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: Wake-Wiederholung nach unbekanntem Ausgang über Abgleichfenster (test_pending_wake_recovers_after_reconcile_window)",
           "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl",
-          "2026-11-21: test_partial_routing_over_several_targets_is_not_success (ein Ziel geweckt, eines UNMAPPED -> Exit != 0; Wiederholung weckt nur das fehlende)"
+          "2026-11-21: test_partial_routing_over_several_targets_is_not_success (ein Ziel geweckt, eines UNMAPPED -> Exit != 0; Wiederholung weckt nur das fehlende)",
+          "Erledigt 2026-11-21: Routing-Fehler nach PASS lässt Issue done und schreibt Fehler + Wiederholbefehl ins Issue (tests/integration/wrapper_e2e_test.go: TestWrapperDoneWithoutHostWorkspaceStaysOpen, TestWrapperRoutingFailureKeepsDoneAndNamesRetry, TestWrapperTamperBlocksDownstream (lokal über scripts/test-integration.sh PASS)); Wiederholung/mehrere Ziele/Wake-Ausfall/Neustart in Wrapper-Unit-Tests."
         ]
       }
     },
@@ -1956,10 +1955,10 @@
       "milestone": "M5",
       "type": "test",
       "title": "Wrapper-Phasen und bewusst bestehende Legacy-Ausnahmen eindeutig absichern",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "pre_run wird bei orchestrate und dockweave-<cid> übersprungen; der Legacy-docker-exec-Pfad umgeht die neue Admission. Diese Ausnahmen sind teils archiviert, stehen aber neben breiten Aussagen über jeden programmgesteuerten Auftrag.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2001,12 +2000,11 @@
         "make test-wrapper"
       ],
       "audit_2026_11_21": {
-        "verdict": "todo",
-        "remaining_gaps": [
-          "Fehlender HOST_WORKSPACE im DONE-Pfad ohne Wrapper-Test"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: Modusmatrix EN/DE in docs/paperclip-delegation*.md; Legacy-Pfad warnt bei jedem Lauf ('NOT pipeline-protected') mit Migrationshinweis dockweave-<id> -> <id>; Kompatibilität bewusst beibehalten; Tests deployments/paperclip/tests/test_wrapper_modes.py (Worker, orchestrate frei/gesperrt, Legacy)"
+          "2026-11-21: Modusmatrix EN/DE in docs/paperclip-delegation*.md; Legacy-Pfad warnt bei jedem Lauf ('NOT pipeline-protected') mit Migrationshinweis dockweave-<id> -> <id>; Kompatibilität bewusst beibehalten; Tests deployments/paperclip/tests/test_wrapper_modes.py (Worker, orchestrate frei/gesperrt, Legacy)",
+          "Erledigt 2026-11-21: Modusmatrix EN/DE, Legacy-Warnung, Modus-Tests; fehlender HOST_WORKSPACE bei DONE -> Issue bleibt offen mit Erklärung, keine Gates/kein Routing (tests/integration/wrapper_e2e_test.go: TestWrapperDoneWithoutHostWorkspaceStaysOpen, TestWrapperRoutingFailureKeepsDoneAndNamesRetry, TestWrapperTamperBlocksDownstream (lokal über scripts/test-integration.sh PASS))."
         ]
       }
     },
@@ -2276,7 +2274,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 95,
       "description": "TestPipelineEndToEnd verwendet den realen Runner, Store und Endpoint, startet den Gate-Lauf aber direkt. Das archivierte GP-028-Kriterium 'A meldet DONE' und der Übergang durch dockweave-run.sh sind damit nicht abgedeckt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2337,12 +2335,12 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Budget-Ausfall und Tamper nicht über den Wrapper-Pfad, nur über TestPipelineEndToEnd/TestGateExpressionPathInSandbox (direkter Runner) abgedeckt",
-          "Fehlender HOST_WORKSPACE im DONE-Pfad nicht im Wrapper-E2E"
+          "Budget-Ausfall nicht über den Wrapper-Pfad (benötigt Broker-Fake im Integrationstest); abgedeckt über TestGateExpressionPathInSandbox/budget_without_configuration_fails_closed und TestEvaluateBudgetUnavailableFailsClosed"
         ],
         "resolved": [
           "2026-11-21: tests/integration/wrapper_e2e_test.go TestWrapperDoneDrivesGateAndReleasesDownstream: echter dockweave-run.sh, gebaute CLI, Daemon-API auf Unix-Socket, Store, Admission, Sandbox-Gate-Runner; simuliert nur Modellantwort (scriptedSessions) und Paperclip (Inbox-HTTP, paperclipai-Skript). Deckt: Nicht-DONE ohne Abschlusslauf/Routing; DONE->PASS mit Upstream ag_a und Issue, Status done, Wake pc-b, B am echten Endpoint ausgeführt; Routing-Wiederholung ohne zweiten Wake; stale blockiert B; FAIL -> in_progress, genau ein Rework an pc-a, Wiederholung ohne Duplikat, B blockiert. Lokal über scripts/test-integration.sh PASS, volle Suite PASS. Daemon löst upstream_agent_id beim Gate-Lauf auf die stabile ID auf (TestGateRunRejectsUnknownUpstreamAgent).",
-          "2026-11-21: CI-Lauf 44936900644 (8b04a37): TestWrapperDoneDrivesGateAndReleasesDownstream PASS im privilegierten Integrationsjob"
+          "2026-11-21: CI-Lauf 44936900644 (8b04a37): TestWrapperDoneDrivesGateAndReleasesDownstream PASS im privilegierten Integrationsjob",
+          "2026-11-21: tests/integration/wrapper_e2e_test.go: TestWrapperDoneWithoutHostWorkspaceStaysOpen, TestWrapperRoutingFailureKeepsDoneAndNamesRetry, TestWrapperTamperBlocksDownstream (lokal über scripts/test-integration.sh PASS)"
         ]
       }
     },
@@ -3118,11 +3116,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 24,
+      "partial": 22,
       "blocked": 0,
-      "done": 20
+      "done": 22
     },
-    "progress_percent_done": 44.44,
+    "progress_percent_done": 48.89,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3143,9 +3141,9 @@
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 7,
+      "in_progress": 6,
       "blocked": 0,
-      "done": 0
+      "done": 1
     }
   },
   "tasks_type_summary": {
@@ -3167,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 24,
+    "partial": 22,
     "blocked": 0,
-    "done": 20
+    "done": 22
   },
   "evidence_summary": {
     "by_level": {

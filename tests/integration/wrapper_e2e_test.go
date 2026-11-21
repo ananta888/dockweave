@@ -76,10 +76,10 @@ type wrapperHarness struct {
 	ws       string
 }
 
-func (h *wrapperHarness) runWrapper(agent string) string {
+func (h *wrapperHarness) runWrapper(agent string, extraEnv ...string) string {
 	h.t.Helper()
 	cmd := exec.Command("sh", filepath.Join(h.repo, "deployments/paperclip/dockweave-run.sh"), agent)
-	cmd.Env = h.env
+	cmd.Env = append(append([]string{}, h.env...), extraEnv...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		h.t.Fatalf("wrapper %s: %v\n%s", agent, err, out)
@@ -146,7 +146,25 @@ func (h *wrapperHarness) gateRuns() []model.GateRun {
 	return done
 }
 
+func (h *wrapperHarness) lastComment() string {
+	updates := h.paperclipCalls("issue", "update")
+	if len(updates) == 0 {
+		return ""
+	}
+	last := updates[len(updates)-1]
+	for i := range last {
+		if last[i] == "--comment" && i+1 < len(last) {
+			return last[i+1]
+		}
+	}
+	return ""
+}
+
 func newWrapperHarness(t *testing.T) *wrapperHarness {
+	return newWrapperHarnessWithGate(t, `grep -qx ok ok.txt`)
+}
+
+func newWrapperHarnessWithGate(t *testing.T, gateCommand string) *wrapperHarness {
 	t.Helper()
 	for _, bin := range []string{"python3", "curl", "go"} {
 		if _, err := exec.LookPath(bin); err != nil {
@@ -164,7 +182,7 @@ func newWrapperHarness(t *testing.T) *wrapperHarness {
 		}
 	}
 	ws := workspaceWithGates(t, root, map[string]any{"version": 1, "gates": []any{map[string]any{
-		"id": "tests", "when": "after_run", "command": `grep -qx ok ok.txt`, "cwd": ".", "timeout_sec": 60,
+		"id": "tests", "when": "after_run", "command": gateCommand, "cwd": ".", "timeout_sec": 60,
 	}}}, map[string]string{"ok.txt": "ok\n"})
 
 	sessions := &scriptedSessions{answers: map[string]string{}, prompts: map[string]int{}}
@@ -323,5 +341,63 @@ func TestWrapperDoneDrivesGateAndReleasesDownstream(t *testing.T) {
 	h.runWrapper("beta")
 	if h.sessions.count("ag_b") != 1 {
 		t.Fatal("B was driven after a failed gate")
+	}
+}
+
+// RF-030/RF-035: without DOCKWEAVE_HOST_WORKSPACE a DONE cannot be checked;
+// the issue stays open and nothing is routed.
+func TestWrapperDoneWithoutHostWorkspaceStaysOpen(t *testing.T) {
+	h := newWrapperHarness(t)
+	h.sessions.answer("ag_a", "fertig\nSTATUS: DONE")
+	out := h.runWrapper("alpha", "DOCKWEAVE_HOST_WORKSPACE=")
+	if got := h.lastStatusUpdate(); got != "in_progress" {
+		t.Fatalf("status without workspace = %q\n%s", got, out)
+	}
+	if !strings.Contains(h.lastComment(), "DOCKWEAVE_HOST_WORKSPACE") {
+		t.Fatalf("missing explanation in issue comment: %q", h.lastComment())
+	}
+	if len(h.gateRuns()) != 0 || len(h.paperclipCalls("agent", "wake")) != 0 {
+		t.Fatal("DONE without workspace ran gates or routed")
+	}
+}
+
+// RF-028: a routing failure after a PASS keeps the verdict (issue done) and
+// tells how to retry; the downstream agent is not woken.
+func TestWrapperRoutingFailureKeepsDoneAndNamesRetry(t *testing.T) {
+	h := newWrapperHarness(t)
+	h.sessions.answer("ag_a", "fertig\nSTATUS: DONE")
+	unmapped := filepath.Join(t.TempDir(), "map.json")
+	if err := os.WriteFile(unmapped, []byte(`{"ag_a":"pc-a"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := h.runWrapper("alpha", "DOCKWEAVE_PAPERCLIP_AGENT_MAP="+unmapped)
+	if got := h.lastStatusUpdate(); got != "done" {
+		t.Fatalf("routing failure discarded the PASS: status %q\n%s", got, out)
+	}
+	if c := h.lastComment(); !strings.Contains(c, "UNMAPPED") || !strings.Contains(c, "pipeline.py route --upstream alpha") {
+		t.Fatalf("issue comment lacks failure and retry command: %q", c)
+	}
+	if len(h.paperclipCalls("agent", "wake")) != 0 {
+		t.Fatal("unmapped downstream was woken")
+	}
+}
+
+// RF-035: a gate that tampers with its own configuration is never a PASS,
+// even through the wrapper; the follow-up agent stays blocked.
+func TestWrapperTamperBlocksDownstream(t *testing.T) {
+	h := newWrapperHarnessWithGate(t, `echo '{}' > .paperclip/gates.json`)
+	h.sessions.answer("ag_a", "fertig\nSTATUS: DONE")
+	out := h.runWrapper("alpha")
+	runs := h.gateRuns()
+	if len(runs) != 1 || !runs[0].Tamper || runs[0].Status == model.GatePassed {
+		t.Fatalf("tamper run: %+v\n%s", runs, out)
+	}
+	if got := h.lastStatusUpdate(); got != "in_progress" {
+		t.Fatalf("issue status after tamper = %q", got)
+	}
+	h.sessions.answer("ag_b", "B\nSTATUS: IN_PROGRESS")
+	h.runWrapper("beta")
+	if h.sessions.count("ag_b") != 0 || len(h.paperclipCalls("agent", "wake")) != 0 {
+		t.Fatal("tamper released the downstream agent")
 	}
 }
