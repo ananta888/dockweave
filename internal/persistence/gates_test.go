@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -146,21 +147,61 @@ func TestPruneGateRuns(t *testing.T) {
 	save("old-b2", "/ws-b", base.Add(-10*time.Hour))
 	save("new-b", "/ws-b", base.Add(24*time.Hour))
 
-	// Delete runs older than base, keeping the newest 1 per workspace. /ws-a
-	// has 3 old runs, /ws-b has 2, so 2+1 = 3 old runs are removed.
+	// Delete runs older than base, keeping the newest 1 run per workspace.
+	// The newest run of each workspace is the recent one, so every old run
+	// (3 in /ws-a, 2 in /ws-b) is removed.
 	n, err := store.PruneGateRuns(ctx, base, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 3 {
-		t.Fatalf("pruned = %d, want 3", n)
+	if n != 5 {
+		t.Fatalf("pruned = %d, want 5", n)
 	}
 	runs, err := store.ListGateRuns(ctx, "", 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Remaining: 1 kept old + 1 new per workspace = 4.
-	if len(runs) != 4 {
-		t.Fatalf("remaining runs = %d, want 4", len(runs))
+	if len(runs) != 2 {
+		t.Fatalf("remaining runs = %d, want 2", len(runs))
+	}
+
+	// A workspace with only old runs keeps its newest N even past the cutoff.
+	save("only-old-1", "/ws-c", base.Add(-30*time.Hour))
+	save("only-old-2", "/ws-c", base.Add(-20*time.Hour))
+	if n, err := store.PruneGateRuns(ctx, base, 1); err != nil || n != 1 {
+		t.Fatalf("pruned only-old = %d, %v; want 1", n, err)
+	}
+	runs, _ = store.ListGateRuns(ctx, "/ws-c", 10)
+	if len(runs) != 1 || runs[0].ID != "only-old-2" {
+		t.Fatalf("ws-c remaining = %+v", runs)
+	}
+}
+
+func TestPruneGateRunsKeepsNewestOverall(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	cutoff := time.Now().UTC().Add(-24 * time.Hour)
+	for i := 0; i < 25; i++ {
+		at := cutoff.Add(time.Duration(i+1) * time.Minute)
+		if err := store.SaveGateRun(ctx, &model.GateRun{ID: fmt.Sprintf("new-%02d", i), Workspace: "/ws", Status: model.GatePassed, StartedAt: at, FinishedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 10; i++ {
+		at := cutoff.Add(-time.Duration(i+1) * time.Hour)
+		if err := store.SaveGateRun(ctx, &model.GateRun{ID: fmt.Sprintf("old-%02d", i), Workspace: "/ws", Status: model.GatePassed, StartedAt: at, FinishedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := store.PruneGateRuns(ctx, cutoff, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 10 {
+		t.Fatalf("pruned = %d, want all 10 old runs", n)
 	}
 }

@@ -250,7 +250,8 @@ func (s *Store) GetGateApproval(ctx context.Context, issueID string) (*model.Gat
 }
 
 // PruneGateRuns deletes gate runs older than olderThan while always keeping the
-// newest keepPerWorkspace runs per workspace. It returns the number of deleted
+// newest keepPerWorkspace runs per workspace (ranked over all runs of the
+// workspace, not only the old ones). It returns the number of deleted
 // rows. This bounds the growth of the gate_runs table (retention policy).
 func (s *Store) PruneGateRuns(ctx context.Context, olderThan time.Time, keepPerWorkspace int) (int64, error) {
 	if keepPerWorkspace <= 0 {
@@ -260,12 +261,11 @@ func (s *Store) PruneGateRuns(ctx context.Context, olderThan time.Time, keepPerW
 		DELETE FROM gate_runs
 		WHERE id IN (
 			SELECT id FROM (
-				SELECT id,
-					ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC) AS rn
+				SELECT id, started_at,
+					ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC, id DESC) AS rn
 				FROM gate_runs
-				WHERE started_at < ?
-			) WHERE rn > ?
-		)`, ts(olderThan), keepPerWorkspace)
+			) WHERE rn > ? AND started_at < ?
+		)`, keepPerWorkspace, ts(olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("prune gate runs: %w", err)
 	}
