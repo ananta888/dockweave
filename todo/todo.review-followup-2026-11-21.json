@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 85.83,
+      "progress_percent": 91.67,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -141,8 +141,8 @@
     {
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
-      "status": "in_progress",
-      "progress_percent": 87.0,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -263,10 +263,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "409-Konflikte ohne Überschreiben fremder Graph-Änderungen auflösen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 100,
       "description": "pushGraph übernimmt nach HTTP 409 nur die nachgeladene Revision. Das weiterhin veraltete lokale Gesamtdokument kann beim nächsten Autosave mit dieser gültigen Revision fremde Änderungen überschreiben.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -301,14 +301,12 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein Zwei-Client-Browsertest, kein Reload-und-Speichern-Test",
-          "Tests prüfen keine gespeicherten Connectoren/Positionen/Kanten"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: Konflikt-e2e-Test grün nach Selektor-Korrektur",
-          "2026-11-21: Konflikt-Entwurf wird bei 'Serverstand laden' eingefroren (dockweave.graphConflictDraft) und von späteren Änderungen nicht überschrieben; explizite Auflösung 'Entwurf übernehmen' (speichert auf bestätigter Server-Revision) / 'Entwurf verwerfen'; e2e 'a conflict draft survives later edits and can be restored onto the server revision'"
+          "2026-11-21: Konflikt-Entwurf wird bei 'Serverstand laden' eingefroren (dockweave.graphConflictDraft) und von späteren Änderungen nicht überschrieben; explizite Auflösung 'Entwurf übernehmen' (speichert auf bestätigter Server-Revision) / 'Entwurf verwerfen'; e2e 'a conflict draft survives later edits and can be restored onto the server revision'",
+          "Erledigt 2026-11-21: e2e 'two clients…' gegen revisionsprüfenden Mock-Server (A speichert, B erhält 409, B friert ein und überschreibt nichts, Serverstand laden, Entwurf bewusst übernehmen auf neuer Revision; Connectoren und Positionen bleiben im gespeicherten Dokument erhalten); Konflikt-Entwurf eingefroren; Konfliktlabel."
         ]
       }
     },
@@ -1581,10 +1579,10 @@
       "milestone": "M4",
       "type": "frontend",
       "title": "Nicht verfügbaren, veralteten und nicht synchronisierten Pipeline-Status unterscheiden",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "Bei Admission-Fehlern leert loadPipelineStatus die Daten. Badges verschwinden und proceedState deutet fehlende Daten als 'nicht übertragen'. Poll-Antworten sind nicht gegen Überholen geschützt; Drift-/Paperclip-Status werden nicht im gleichen Poll aktualisiert.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1625,13 +1623,12 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Überholende Antworten nur per Request-Zähler, ungetestet"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: Drift (Daemon-Revision != gespeicherte) getrennt von Ausfall: Badge 'Nicht synchronisiert' mit Revisionen, Kante 'veralteter Stand', eigener Hinweis; e2e 'revision drift is shown as unsynchronized, not as an outage'",
-          "2026-11-21: e2e 'pipeline status recovers after an admission outage' (503 -> Status unbekannt -> nächster Poll zeigt blockiert/failed)"
+          "2026-11-21: e2e 'pipeline status recovers after an admission outage' (503 -> Status unbekannt -> nächster Poll zeigt blockiert/failed)",
+          "Erledigt 2026-11-21: e2e 'an overtaken admission response cannot replace a newer status' (verspätete alte Antwort ignoriert), Drift vs. Ausfall getrennt, Erholung nach Ausfall, Teardown beendet Polling, Badge mit aria-label."
         ]
       }
     },
@@ -1640,10 +1637,10 @@
       "milestone": "M4",
       "type": "bug",
       "title": "Graph-Status über eindeutige Connector-/Workspace-Identität zuordnen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "proceedState sucht die Admission-Kante nur nach gate_id. Backend-Ableitung suffixiert doppelte IDs und unterscheidet Kanten über Workspace/Gate/Downstream; die UI kann deshalb Status des falschen Gates anzeigen oder eine vorhandene Kante als unsynchronisiert einstufen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1693,12 +1690,11 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Browser-Test mit gleichnamigen Gates (ein PASS, ein FAIL) fehlt"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: Duplikat-Suffixe nach stabiler Connector-ID vergeben (assignGateIDs); TestDuplicateGateIDsDoNotDependOnConnectorOrder (scheiterte vorher), TestSameGateNameInTwoWorkspacesKeepsSeparateIdentity. Hinweis: bestehende Duplikate, deren Array-Reihenfolge nicht der ID-Reihenfolge entsprach, erhalten einmalig getauschte IDs."
+          "2026-11-21: Duplikat-Suffixe nach stabiler Connector-ID vergeben (assignGateIDs); TestDuplicateGateIDsDoNotDependOnConnectorOrder (scheiterte vorher), TestSameGateNameInTwoWorkspacesKeepsSeparateIdentity. Hinweis: bestehende Duplikate, deren Array-Reihenfolge nicht der ID-Reihenfolge entsprach, erhalten einmalig getauschte IDs.",
+          "Erledigt 2026-11-21: e2e 'same-named gates in two workspaces show their own status' (PASS und FAIL über edge_id getrennt); Go: ID-Vergabe unabhängig von der Reihenfolge, zwei Workspaces, Alias-Workspace."
         ]
       }
     },
@@ -1707,10 +1703,10 @@
       "milestone": "M4",
       "type": "frontend",
       "title": "Gespeicherten Graphen und tatsächlich erzwungene Pipeline sichtbar abgleichen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "Graph-Datei, Gate-Dateien und Daemon-Kanten werden nacheinander best-effort synchronisiert. Ein fehlgeschlagener Push bleibt aktuell in der Save-Antwort; ein expliziter revisionssicherer Retry und dauerhaft erkennbarer Soll-/Ist-Abstand fehlen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1763,13 +1759,11 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Daemon-403/stale_revision/revision_conflict in Go ungetestet",
-          "Retry-Button ohne e2e-Test"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: unbestätigter Reset-Push wird als pending_reset im Sync-Sidecar der Revision gespeichert; Retry übernimmt ihn nur von dort (nie vom Aufrufer), nach Bestätigung kein erneuter Reset. Der bisherige Test hatte das Fehlverhalten (Retry ohne Reset) festgeschrieben und wurde korrigiert."
+          "2026-11-21: unbestätigter Reset-Push wird als pending_reset im Sync-Sidecar der Revision gespeichert; Retry übernimmt ihn nur von dort (nie vom Aufrufer), nach Bestätigung kein erneuter Reset. Der bisherige Test hatte das Fehlverhalten (Retry ohne Reset) festgeschrieben und wurde korrigiert.",
+          "Erledigt 2026-11-21: e2e 'a failed pipeline transfer can be retried for the current revision' (409 -> Hinweis, Retry -> übertragen, beide Retries mit aktueller Revision); Go: pending_reset, Daemon-Codes stale_revision/revision_conflict/forbidden/unavailable (TestPipelineSyncKeepsDaemonErrorCode), Fehler überlebt Reload."
         ]
       }
     },
@@ -3115,11 +3109,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 13,
+      "partial": 9,
       "blocked": 0,
-      "done": 31
+      "done": 35
     },
-    "progress_percent_done": 68.89,
+    "progress_percent_done": 77.78,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3134,15 +3128,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 13,
-      "remaining": 10
+      "done": 14,
+      "remaining": 9
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 5,
+      "in_progress": 4,
       "blocked": 0,
-      "done": 2
+      "done": 3
     }
   },
   "tasks_type_summary": {
@@ -3164,9 +3158,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 13,
+    "partial": 9,
     "blocked": 0,
-    "done": 31
+    "done": 35
   },
   "evidence_summary": {
     "by_level": {

@@ -442,3 +442,128 @@ test('the add dialog cannot save a form changed during a delayed validation', as
   await expect(page.locator('.notice.error').filter({ hasText: 'Formular inzwischen geändert' })).toBeVisible();
   expect(m.puts.some((d: any) => (d.connectors || []).some((c: any) => c.name === 'Lint'))).toBe(false);
 });
+
+test('a failed pipeline transfer can be retried for the current revision', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  const retries: unknown[] = [];
+  let retryOk = false;
+  await page.route('**/graph', route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body: graphDoc, revision: 1,
+      pipeline_bindings: { 'conn-1': 'pe-1' }, pipeline_sync: { pushed: false, edges: 1, error: 'daemon unavailable', code: 'unavailable' } }) });
+  });
+  await page.route('**/graph/sync', route => {
+    retries.push(route.request().postDataJSON());
+    return retryOk
+      ? route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body: graphDoc, revision: 1, pipeline_bindings: { 'conn-1': 'pe-1' }, pipeline_sync: { pushed: true, edges: 1 } }) })
+      : route.fulfill({ status: 409, contentType: 'application/json', body: '{"error":"graph changed"}' });
+  });
+  await openGraph(page);
+  await expect(page.locator('.pipeline-sync-error')).toContainText('daemon unavailable');
+  const retry = page.getByRole('button', { name: 'Synchronisierung erneut versuchen' });
+  await retry.click();
+  await expect(page.locator('.pipeline-sync-error')).toContainText('Serverstand laden');
+  retryOk = true;
+  await retry.click();
+  await expect(page.locator('.pipeline-sync-error')).toHaveCount(0);
+  expect(retries).toEqual([{ revision: 1 }, { revision: 1 }]);
+});
+
+test('same-named gates in two workspaces show their own status', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  const doc = structuredClone(graphDoc) as any;
+  doc.connectors = [
+    { ...doc.connectors[0], id: 'conn-a', name: 'Tests A', contract: JSON.stringify({ gate_id: 'tests', command: 'npm test' }) },
+    { ...doc.connectors[0], id: 'conn-b', name: 'Tests B', contract: JSON.stringify({ gate_id: 'tests', command: 'npm test', workspace: '/ws2' }) },
+  ];
+  await page.route('**/graph', route => route.request().method() !== 'GET' ? route.fallback()
+    : route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body: doc, revision: 1, pipeline_bindings: { 'conn-a': 'pe-a', 'conn-b': 'pe-b' } }) }));
+  await page.route('**/api/v1/pipelines/admission', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    revision: 1, admissions: [{ agent_id: 'ag_b', agent: 'beta', allowed: false, action: 'deny', revision: 1, checked_at: now, edges: [
+      { edge_id: 'pe-a', gate_id: 'tests', upstream_agent_id: 'ag_a', workspace: '/ws', satisfied: true, code: 'ok', run_id: 'run-a', action: 'allow' },
+      { edge_id: 'pe-b', gate_id: 'tests', upstream_agent_id: 'ag_a', workspace: '/ws2', satisfied: false, code: 'failed', run_id: 'run-b', action: 'deny' },
+    ] }] }) }));
+  await openGraph(page);
+  const labels = page.locator('.edge-label.edge-proceed');
+  await expect(labels).toHaveCount(2);
+  await expect(labels.filter({ hasText: '✓ ok' })).toHaveAttribute('title', /Lauf: run-a/);
+  await expect(labels.filter({ hasText: '✕ failed' })).toHaveAttribute('title', /Lauf: run-b/);
+});
+
+test('an overtaken admission response cannot replace a newer status', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  let calls = 0;
+  let releaseFirst: (() => void) | undefined;
+  await page.route('**/api/v1/pipelines/admission', async route => {
+    calls++;
+    if (calls === 1) {
+      await new Promise<void>(resolve => { releaseFirst = resolve; });
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(admissions(true)) }); // old: blocked
+    }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...admissions(false), revision: 2 }) }); // newer: free, saved revision
+  });
+  await openGraph(page);
+  const input = await workspaceInput(page);
+  await input.fill('/ws-next'); // a save triggers a fresh admission request
+  await expect.poll(() => calls).toBeGreaterThan(1);
+  const badge = page.locator('[data-node-id="agent-ag_b"] .pipeline-badge');
+  await expect(badge).toContainText('Pipeline frei');
+  releaseFirst?.();
+  await page.waitForTimeout(500);
+  await expect(badge).toContainText('Pipeline frei');
+  await expect(badge).not.toHaveClass(/blocked/);
+});
+
+test('two clients: the second gets a conflict, never overwrites, and can apply its draft knowingly', async ({ browser }) => {
+  const server = { rev: 1, doc: structuredClone({ ...graphDoc, positions: { 'agent-ag_a': { x: 11, y: 22 } } }) as any, puts: [] as any[] };
+  const open = async () => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await mockBackend(page, { blocked: false, puts: [], pipelineError: '' });
+    await page.route('**/graph', async route => {
+      const req = route.request();
+      if (req.method() === 'GET') {
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body: server.doc, revision: server.rev, pipeline_bindings: { 'conn-1': 'pe-1' } }) });
+      }
+      if (req.method() !== 'PUT') return route.fallback();
+      const body = req.postDataJSON();
+      server.puts.push(body);
+      if (body.revision !== server.rev) return route.fulfill({ status: 409, contentType: 'application/json', body: '{"error":"revision conflict"}' });
+      server.rev++;
+      server.doc = { ...body, revision: server.rev };
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body: server.doc, revision: server.rev }) });
+    });
+    await openGraph(page);
+    return page;
+  };
+  const a = await open();
+  const b = await open();
+
+  let input = await workspaceInput(a);
+  await input.fill('/from-a');
+  await expect.poll(() => server.rev).toBe(2);
+  // Stored document keeps connectors and positions next to the edit.
+  expect(server.doc.paperclip.workspace).toBe('/from-a');
+  expect(server.doc.connectors.map((c: any) => c.id)).toEqual(['conn-1']);
+  expect(server.doc.positions['agent-ag_a']).toEqual({ x: 11, y: 22 });
+
+  input = await workspaceInput(b);
+  await input.fill('/from-b');
+  await expect(b.locator('.graph-save-status')).toContainText('Konflikt mit dem Serverstand');
+  const putsAfterConflict = server.puts.length;
+  await input.fill('/from-b-again');
+  await b.waitForTimeout(800);
+  expect(server.puts.length).toBe(putsAfterConflict); // frozen: nothing overwrites A
+  expect(server.doc.paperclip.workspace).toBe('/from-a');
+
+  await b.locator('.popover-wide header button').click();
+  await b.getByRole('button', { name: 'Serverstand laden', exact: true }).click();
+  await expect(b.locator('.graph-save-status')).toContainText('gespeichert');
+  await b.getByRole('button', { name: 'Entwurf übernehmen', exact: true }).click();
+  await expect.poll(() => server.doc.paperclip.workspace).toBe('/from-b-again');
+  expect(server.rev).toBe(3);
+  expect(server.doc.connectors.map((c: any) => c.id)).toEqual(['conn-1']);
+});
