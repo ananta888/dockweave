@@ -634,14 +634,7 @@ func (m *modelTUI) cycleSetupFocus(dir int) {
 	if n == 0 {
 		return
 	}
-	idx := f.focusIdx
-	for i := 0; i < n; i++ {
-		idx = (idx + dir + n) % n
-		if idx < 0 {
-			idx = n - 1
-		}
-		break
-	}
+	idx := ((f.focusIdx+dir)%n + n) % n
 	m.applyFocusTo(idx)
 }
 

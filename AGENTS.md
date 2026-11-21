@@ -57,7 +57,13 @@ go build ./...                      # Build
 go test ./...                       # Unit-Tests (unprivilegiert)
 go test -race ./...                 # Race Detector
 go vet ./... && staticcheck ./...   # Statische Analyse
+make install-tools && make lint     # wie CI: gepinntes staticcheck, Befunde lassen lint scheitern
 ```
+
+`make lint` scheitert, wenn staticcheck Befunde meldet **oder** nicht
+installiert ist (lokal wie in CI; `make install-tools` installiert die
+gepinnte Version). Befunde werden behoben, nicht pauschal unterdrückt;
+eine einzelne Ausnahme braucht ein `//lint:ignore <Check> <Begründung>`.
 
 Privilegierte Integrationstests (echte `mount(2)`-Aufrufe) laufen in einer
 wegwerfbaren, privilegierten Umgebung (Container/CI):

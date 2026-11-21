@@ -681,14 +681,6 @@ func (m *modelTUI) windowContent(content string) string {
 	return strings.Join(lines[m.scrollY:end], "\n")
 }
 
-// scrollHint describes the scroll state when the content overflows.
-func (m *modelTUI) scrollHint() string {
-	if m.scrollY == 0 {
-		return "PgUp/PgDn/scroll wheel: scroll"
-	}
-	return fmt.Sprintf("scroll %d+ • PgUp/PgDn/scroll wheel", m.scrollY)
-}
-
 // ensureRowVisible scrolls the content window so a row is visible.
 func (m *modelTUI) ensureRowVisible(row int) {
 	lines := m.height - m.contentTop - 2

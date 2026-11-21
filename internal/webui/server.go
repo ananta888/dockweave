@@ -250,9 +250,11 @@ func newUnixProxy(socket string) *httputil.ReverseProxy {
 		IdleConnTimeout: 60 * time.Second,
 	}
 	return &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = "http"
-			req.URL.Host = "dockweaved"
+		// Rewrite (unlike the deprecated Director) drops inbound
+		// X-Forwarded-* headers; the daemon authenticates via SO_PEERCRED.
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.Out.URL.Scheme = "http"
+			pr.Out.URL.Host = "dockweaved"
 		},
 		Transport: transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

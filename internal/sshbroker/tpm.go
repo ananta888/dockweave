@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpm2/transport"
+	"github.com/google/go-tpm/tpm2/transport/linuxtpm"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -51,9 +52,14 @@ func NewTPMSigner() (*TPMSigner, error) {
 		err error
 	)
 	if path != "" {
-		t, err = transport.OpenTPM(path)
+		t, err = linuxtpm.Open(path)
 	} else {
-		t, err = transport.OpenTPM()
+		// Same defaults as the former transport.OpenTPM: resource manager
+		// first, raw device as fallback.
+		t, err = linuxtpm.Open("/dev/tpmrm0")
+		if errors.Is(err, os.ErrNotExist) {
+			t, err = linuxtpm.Open("/dev/tpm0")
+		}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("sshbroker: open TPM: %w", err)
@@ -149,11 +155,22 @@ func eccPublicKey(p *tpm2.TPMTPublic) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sshbroker: read ECC point: %w", err)
 	}
-	return &ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     new(big.Int).SetBytes(point.X.Buffer),
-		Y:     new(big.Int).SetBytes(point.Y.Buffer),
-	}, nil
+	// Uncompressed SEC 1 point 0x04||X||Y with left-padded 32-byte
+	// coordinates (TPMs may return minimal-length buffers). Parsing also
+	// verifies that the point is on the curve.
+	const size = 32
+	if len(point.X.Buffer) > size || len(point.Y.Buffer) > size {
+		return nil, fmt.Errorf("sshbroker: TPM ECC coordinate longer than %d bytes", size)
+	}
+	raw := make([]byte, 1+2*size)
+	raw[0] = 4
+	copy(raw[1+size-len(point.X.Buffer):1+size], point.X.Buffer)
+	copy(raw[1+2*size-len(point.Y.Buffer):], point.Y.Buffer)
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), raw)
+	if err != nil {
+		return nil, fmt.Errorf("sshbroker: invalid TPM ECC point: %w", err)
+	}
+	return pub, nil
 }
 
 // PublicKey returns the CA public key (Signer interface).

@@ -76,7 +76,7 @@ func ContainerName(agentID string) string { return "dockweave-" + agentID }
 
 // EnsureImage pulls the image if not present locally.
 func (c *Client) EnsureImage(ctx context.Context, ref string, out io.Writer) error {
-	_, _, err := c.cli.ImageInspectWithRaw(ctx, ref)
+	_, err := c.cli.ImageInspect(ctx, ref)
 	if err == nil {
 		return nil
 	}

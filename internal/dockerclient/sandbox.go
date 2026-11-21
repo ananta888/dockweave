@@ -110,7 +110,7 @@ func (c *Client) WaitExit(ctx context.Context, containerID string) (int64, error
 // ImageDigest returns the pinned digest of an image (RepoDigest preferred,
 // image ID as a fallback for locally built images).
 func (c *Client) ImageDigest(ctx context.Context, ref string) (string, error) {
-	info, _, err := c.cli.ImageInspectWithRaw(ctx, ref)
+	info, err := c.cli.ImageInspect(ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("inspect image %q: %w", ref, err)
 	}

@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 46.0,
+      "progress_percent": 51.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2399,7 +2399,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 40,
+      "progress_percent": 95,
       "description": "Die Shell-Kette command -v staticcheck && staticcheck ./... || echo ... wandelt auch einen tatsächlichen Analyzer-Fehler in einen erfolgreichen echo-Exit um und meldet fälschlich 'not installed'.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -2441,9 +2441,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "11 vorbestehende staticcheck-Befunde offen -> make lint und CI-Job 'test' rot",
-          "Kein Test mit injiziertem Analyzer-Fehler",
-          "Behoben 2026-11-21: ST1005 im neuen manifests.go"
+          "Behoben 2026-11-21: ST1005 im neuen manifests.go",
+          "Nachweis aus echtem CI-Lauf nach Push steht aus"
+        ],
+        "resolved": [
+          "2026-11-21: alle 11 Altbefunde behoben statt unterdrückt (strings.Title, ImageInspectWithRaw->ImageInspect, ReverseProxy Director->Rewrite, go-tpm OpenTPM->linuxtpm.Open, ecdsa X/Y->ParseUncompressedPublicKey mit Kurvenprüfung + TestECCPublicKeyConversion, TUI-Schleife SA4004/SA4008, ungenutztes scrollHint); make lint lokal Exit 0 mit staticcheck 2026.2.2 (v0.8.2); scripts/tests/test_make_lint.py injiziert Analyzer-Fehler und fehlendes staticcheck; Policy in AGENTS.md"
         ]
       }
     },

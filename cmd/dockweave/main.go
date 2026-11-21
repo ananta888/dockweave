@@ -134,7 +134,7 @@ func agentCmd() *cobra.Command {
 
 	action := func(use, act string) *cobra.Command {
 		return &cobra.Command{
-			Use: use + " NAME|ID", Short: strings.Title(use) + " an agent", Args: cobra.ExactArgs(1),
+			Use: use + " NAME|ID", Short: strings.ToUpper(use[:1]) + use[1:] + " an agent", Args: cobra.ExactArgs(1),
 			Run: func(cmd *cobra.Command, args []string) {
 				a, err := client().AgentAction(ctx(), args[0], act)
 				if err != nil {
