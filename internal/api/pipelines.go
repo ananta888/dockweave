@@ -98,6 +98,12 @@ func (s *Server) putPipelines(w http.ResponseWriter, r *http.Request) {
 	for i := range body.Edges {
 		e := body.Edges[i]
 		if err := s.validateEdge(r.Context(), &e); err != nil {
+			var infra *infraError
+			if errors.As(err, &infra) {
+				// The store failed: not the caller's fault, never a 400.
+				s.fail(w, infra.err)
+				return
+			}
 			problems = append(problems, fmt.Sprintf("edge %d (%s -> %s): %v", i, e.GateID, e.DownstreamAgentID, err))
 			continue
 		}
@@ -131,6 +137,22 @@ func (s *Server) putPipelines(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, state)
 }
 
+// infraError marks a validation step that failed for infrastructure reasons
+// (e.g. the store), as opposed to invalid input.
+type infraError struct{ err error }
+
+func (e *infraError) Error() string { return e.err.Error() }
+func (e *infraError) Unwrap() error { return e.err }
+
+// lookupErr keeps "agent does not exist" a validation error and turns every
+// other lookup failure into an infrastructure error.
+func lookupErr(err error) error {
+	if errors.Is(err, persistence.ErrNotFound) {
+		return err
+	}
+	return &infraError{err}
+}
+
 // validateEdge normalises and checks one edge: gate id shape, existing
 // agents (stored by id), canonical workspace below the allowed roots
 // (AGENTS.md rule 4) and valid routing actions.
@@ -145,13 +167,13 @@ func (s *Server) validateEdge(ctx context.Context, e *model.PipelineEdge) error 
 	}
 	a, err := s.Agents.Get(ctx, down)
 	if err != nil {
-		return fmt.Errorf("downstream agent %q: %w", down, err)
+		return lookupErr(fmt.Errorf("downstream agent %q: %w", down, err))
 	}
 	e.DownstreamAgentID = a.ID
 	if up := strings.TrimSpace(e.UpstreamAgentID); up != "" {
 		ua, err := s.Agents.Get(ctx, up)
 		if err != nil {
-			return fmt.Errorf("upstream agent %q: %w", up, err)
+			return lookupErr(fmt.Errorf("upstream agent %q: %w", up, err))
 		}
 		e.UpstreamAgentID = ua.ID
 		if ua.ID == a.ID {

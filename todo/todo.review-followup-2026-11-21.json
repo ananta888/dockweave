@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 97.5,
+      "progress_percent": 98.33,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -856,10 +856,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Gate-Läufe und verifizierte Evidenz dauerhaft konsistent erfassen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "record loggt SaveGateRun-Fehler höchstens, ignoriert AddEvidence-Fehler und lässt Run erfolgreich zurückkehren. Mit neuer Admission kann ein nicht gespeicherter fehlgeschlagener Lauf einen älteren PASS als einzigen sichtbaren Stand zurücklassen.",
       "evidence_level": "investigation_required",
       "scope_origin": "interaction",
@@ -904,12 +904,11 @@
         "go test -race ./internal/persistence ./internal/gateexec ./internal/api ./internal/pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein API-Test für Persistenzfehler"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: TestIncompleteRunKeepsBlockingAfterRestart (Startmarker wie im Runner, DB geschlossen und neu geöffnet, älterer PASS vorhanden -> Admission blockiert mit error)"
+          "2026-11-21: TestIncompleteRunKeepsBlockingAfterRestart (Startmarker wie im Runner, DB geschlossen und neu geöffnet, älterer PASS vorhanden -> Admission blockiert mit error)",
+          "Erledigt 2026-11-21: TestPersistenceFailuresAreVisibleAndFailClosed (geschlossener Store: PUT pipelines/override/list -> strukturierte 5xx, Chat blockiert, Agent nie erreicht). Dabei behoben: ein Store-Fehler bei der Agentenprüfung in PUT /api/v1/pipelines wurde als 400 invalid gemeldet; jetzt 5xx, unbekannte Agenten bleiben 400. Startmarker/Restart (TestIncompleteRunKeepsBlockingAfterRestart), atomare Fertigstellung, Request-unabhängiger Abschluss-Kontext."
         ]
       }
     },
@@ -3107,11 +3106,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 8,
+      "partial": 7,
       "blocked": 0,
-      "done": 36
+      "done": 37
     },
-    "progress_percent_done": 80.0,
+    "progress_percent_done": 82.22,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3126,8 +3125,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 15,
-      "remaining": 8
+      "done": 16,
+      "remaining": 7
     },
     "milestones": {
       "total": 7,
@@ -3156,9 +3155,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 8,
+    "partial": 7,
     "blocked": 0,
-    "done": 36
+    "done": 37
   },
   "evidence_summary": {
     "by_level": {

@@ -334,3 +334,34 @@ func TestOverrideNeverReleasesDeliberateDenyAfterPass(t *testing.T) {
 		t.Fatalf("failed run not overridable: %s", rec.Body)
 	}
 }
+
+// RF-012: persistence failures surface as structured errors; admission and
+// execution stay blocked instead of failing open.
+func TestPersistenceFailuresAreVisibleAndFailClosed(t *testing.T) {
+	f := newPipelineFixture(t)
+	var calls atomic.Int32
+	f.srv.Native = nativeProbe(&calls)
+	if rec := f.pushEdges(t, 1); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body)
+	}
+	f.saveRun(t, "pass", model.GatePassed, "sha256:one")
+	if err := f.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range [][3]string{
+		{http.MethodPut, "/api/v1/pipelines", fmt.Sprintf(`{"revision":2,"edges":[{"id":"e","gate_id":"tests","downstream_agent_id":"beta","workspace":%q}]}`, f.ws)},
+		{http.MethodPost, "/api/v1/pipelines/override", `{"agent":"beta","gate_id":"tests","reason":"hotfix"}`},
+		{http.MethodGet, "/api/v1/pipelines", ""},
+	} {
+		rec := f.do(t, RoleAdmin, req[0], req[1], req[2])
+		var e struct {
+			Error struct{ Code, Message string } `json:"error"`
+		}
+		if rec.Code < 500 || json.Unmarshal(rec.Body.Bytes(), &e) != nil || e.Error.Message == "" {
+			t.Fatalf("%s %s: want structured 5xx, got %d %s", req[0], req[1], rec.Code, rec.Body)
+		}
+	}
+	if rec := f.do(t, RoleAdmin, http.MethodPost, "/v1/chat/completions", chatBody("beta")); rec.Code == http.StatusOK || calls.Load() != 0 {
+		t.Fatalf("store failure let work through: %d %s", rec.Code, rec.Body)
+	}
+}
