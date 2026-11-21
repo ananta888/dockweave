@@ -386,12 +386,21 @@ func finalize(adm *model.Admission) {
 			adm.Allowed = false
 		}
 	}
+	adm.Reason = ""
 	if adm.Allowed {
 		adm.Action = gatesync.ActionAllow
 		for _, e := range adm.Edges {
 			if strings.HasPrefix(e.Action, gatesync.ActionWake+":") {
-				adm.Action = e.Action
+				adm.Action, adm.Reason = e.Action, e.Reason
 				break
+			}
+		}
+		if adm.Reason == "" {
+			for _, e := range adm.Edges {
+				if e.Reason != "" {
+					adm.Reason = e.Reason
+					break
+				}
 			}
 		}
 		return
@@ -399,8 +408,16 @@ func finalize(adm *model.Admission) {
 	adm.Action = gatesync.ActionDeny
 	for _, e := range adm.Edges {
 		if !e.Satisfied && e.Action == gatesync.ActionRework {
-			adm.Action = gatesync.ActionRework
+			adm.Action, adm.Reason = gatesync.ActionRework, e.Reason
 			break
+		}
+	}
+	if adm.Reason == "" {
+		for _, e := range adm.Edges {
+			if !e.Satisfied && e.Reason != "" {
+				adm.Reason = e.Reason
+				break
+			}
 		}
 	}
 }

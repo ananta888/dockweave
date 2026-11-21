@@ -194,6 +194,13 @@ func (s *Server) validateEdge(ctx context.Context, e *model.PipelineEdge) error 
 			return fmt.Errorf("invalid action %q (want allow|deny|wake:<agent>|rework)", raw)
 		}
 	}
+	// A wake target must be a known agent. The value stays as written (id or
+	// name), because the wrapper's Paperclip mapping may be keyed by either.
+	if a, ok := gatesync.ParseAction(e.OnTrue); ok && a.Kind == gatesync.ActionWake {
+		if _, err := s.Agents.Get(ctx, a.Agent); err != nil {
+			return lookupErr(fmt.Errorf("wake target %q: %w", a.Agent, err))
+		}
+	}
 	if a, ok := gatesync.ParseAction(e.OnFalse); ok && a.Allows() {
 		return fmt.Errorf("on_false %q cannot release work after a failed gate (want deny|rework)", e.OnFalse)
 	}

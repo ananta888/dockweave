@@ -71,10 +71,13 @@ type AdmissionEdge struct {
 
 // Admission answers "may this agent take pipeline work right now?".
 type Admission struct {
-	AgentID   string          `json:"agent_id"`
-	Agent     string          `json:"agent,omitempty"`
-	Allowed   bool            `json:"allowed"`
-	Action    string          `json:"action"`
+	AgentID string `json:"agent_id"`
+	Agent   string `json:"agent,omitempty"`
+	Allowed bool   `json:"allowed"`
+	Action  string `json:"action"`
+	// Reason is the verdict reason of the edge that determined Action
+	// (reason_true/reason_false of that edge), empty when none is set.
+	Reason    string          `json:"reason,omitempty"`
 	Edges     []AdmissionEdge `json:"edges"`
 	Revision  int             `json:"revision"`
 	CheckedAt time.Time       `json:"checked_at"`

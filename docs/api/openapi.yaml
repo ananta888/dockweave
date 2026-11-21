@@ -641,6 +641,7 @@ components:
         agent: { type: string }
         allowed: { type: boolean }
         action: { type: string, description: "allow | wake:<agent> when allowed; deny | rework when blocked" }
+        reason: { type: string, description: "verdict reason (reason_true/reason_false) of the edge that determined the action" }
         edges: { type: array, items: { $ref: "#/components/schemas/AdmissionEdge" } }
         revision: { type: integer }
         checked_at: { type: string, format: date-time }

@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 95.83,
+      "progress_percent": 98.33,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -366,10 +366,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "Routing-Aktion und Begründung in beiden Gate-Zweigen bis zum Wrapper erhalten",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "description": "evalEdge gibt bei on_true=rework oder deny vor dem Setzen von Action/Reason zurück. Zusätzlich verarbeitet cmd_route rework nur bei code='failed'; die reine Backend-Korrektur würde den erfolgreichen rework-Zweig noch nicht ausführbar machen.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "today",
@@ -418,13 +418,11 @@
         "cd ui/web && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein aggregiertes Reason-Feld in model.Admission",
-          "wake:-Ziel wird unverändert (Name oder ID) gespeichert und nicht auf Existenz geprüft; der Wrapper akzeptiert beides"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: on_false nur deny|rework (API 400, Graph-Sync -> deny mit Warnung; TestOnFalseCannotRelease, TestPutPipelinesRejectsReleasingFailBranch); Matrix TestRoutingMatrixKeepsActionAndReason (PASS allow/wake/deny/rework, FAIL deny/rework mit Aktion+Begründung); ADR 0002 D-2 EN/DE und OpenAPI (on_false enum) aktualisiert"
+          "2026-11-21: on_false nur deny|rework (API 400, Graph-Sync -> deny mit Warnung; TestOnFalseCannotRelease, TestPutPipelinesRejectsReleasingFailBranch); Matrix TestRoutingMatrixKeepsActionAndReason (PASS allow/wake/deny/rework, FAIL deny/rework mit Aktion+Begründung); ADR 0002 D-2 EN/DE und OpenAPI (on_false enum) aktualisiert",
+          "Erledigt 2026-11-21: Admission.reason aggregiert die Begründung der maßgeblichen Kante (OpenAPI), Matrix prüft Kanten- und Gesamtaktion/-begründung (TestRoutingMatrixKeepsActionAndReason); wake:-Ziel muss existierender Agent sein (TestWakeTargetMustBeAKnownAgent), Schreibweise bleibt erhalten; on_false nur deny|rework; ADR D-2 EN/DE."
         ]
       }
     },
@@ -3106,11 +3104,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 7,
+      "partial": 6,
       "blocked": 0,
-      "done": 37
+      "done": 38
     },
-    "progress_percent_done": 82.22,
+    "progress_percent_done": 84.44,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3125,8 +3123,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 16,
-      "remaining": 7
+      "done": 17,
+      "remaining": 6
     },
     "milestones": {
       "total": 7,
@@ -3155,9 +3153,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 7,
+    "partial": 6,
     "blocked": 0,
-    "done": 37
+    "done": 38
   },
   "evidence_summary": {
     "by_level": {

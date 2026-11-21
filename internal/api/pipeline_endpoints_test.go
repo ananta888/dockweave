@@ -269,7 +269,7 @@ func TestRoutingMatrixKeepsActionAndReason(t *testing.T) {
 				t.Fatalf("admission: %v %s", err, rec.Body)
 			}
 			ed := adm.Edges[0]
-			if adm.Allowed != tc.allowed || ed.Code != tc.code || ed.Action != tc.action || ed.Reason != tc.reason || adm.Action != tc.action {
+			if adm.Allowed != tc.allowed || ed.Code != tc.code || ed.Action != tc.action || ed.Reason != tc.reason || adm.Action != tc.action || adm.Reason != tc.reason {
 				t.Fatalf("got allowed=%v code=%s action=%s/%s reason=%q", adm.Allowed, ed.Code, ed.Action, adm.Action, ed.Reason)
 			}
 		})
@@ -363,5 +363,21 @@ func TestPersistenceFailuresAreVisibleAndFailClosed(t *testing.T) {
 	}
 	if rec := f.do(t, RoleAdmin, http.MethodPost, "/v1/chat/completions", chatBody("beta")); rec.Code == http.StatusOK || calls.Load() != 0 {
 		t.Fatalf("store failure let work through: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// RF-004: wake targets must exist; their spelling (id or name) is kept.
+func TestWakeTargetMustBeAKnownAgent(t *testing.T) {
+	f := newPipelineFixture(t)
+	put := func(target string) *httptest.ResponseRecorder {
+		return f.do(t, RoleAdmin, http.MethodPut, "/api/v1/pipelines", fmt.Sprintf(
+			`{"revision":1,"edges":[{"id":"e","gate_id":"tests","upstream_agent_id":"alpha","downstream_agent_id":"beta","workspace":%q,"on_true":"wake:%s"}]}`, f.ws, target))
+	}
+	if rec := put("ghost"); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "ghost") {
+		t.Fatalf("unknown wake target: %d %s", rec.Code, rec.Body)
+	}
+	rec := put("alpha")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"on_true":"wake:alpha"`) {
+		t.Fatalf("known wake target by name: %d %s", rec.Code, rec.Body)
 	}
 }
