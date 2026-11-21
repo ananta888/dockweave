@@ -37,6 +37,16 @@ func (s *Server) runGate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", errors.New("timeout_sec must be between 0 and 86400"))
 		return
 	}
+	// Record the stable agent ID, never a name or a guess: routing and rework
+	// attribution rely on it (RF-027/RF-035). Unknown agents are rejected.
+	if up := strings.TrimSpace(body.UpstreamAgentID); up != "" {
+		a, err := s.Agents.Get(r.Context(), up)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("upstream agent %q: %w", up, err))
+			return
+		}
+		body.UpstreamAgentID = a.ID
+	}
 	timeout := time.Duration(body.TimeoutSec) * time.Second
 	run, err := s.Gates.Run(r.Context(), gateexec.Request{
 		Workspace: body.Workspace,

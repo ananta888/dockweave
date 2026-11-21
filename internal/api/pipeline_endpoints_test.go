@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/nativeagent"
 )
@@ -193,5 +194,15 @@ func TestOverrideNeverReleasesTamper(t *testing.T) {
 	if rec := f.do(t, RoleAdmin, http.MethodPost, "/v1/chat/completions", chatBody("beta")); rec.Code != http.StatusConflict ||
 		!strings.Contains(rec.Body.String(), "tamper") || calls.Load() != 0 {
 		t.Fatalf("tamper released: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestGateRunRejectsUnknownUpstreamAgent(t *testing.T) {
+	f := newPipelineFixture(t)
+	f.srv.Gates = &gateexec.Runner{}
+	rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/gates/run",
+		fmt.Sprintf(`{"workspace":%q,"upstream_agent_id":"ghost"}`, f.ws))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "ghost") {
+		t.Fatalf("unknown upstream: %d %s", rec.Code, rec.Body)
 	}
 }

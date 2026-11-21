@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 65.0,
+      "progress_percent": 73.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -1817,6 +1817,9 @@
         "remaining_gaps": [
           "Test sollte Mapping ohne nur den Upstream-Eintrag nutzen statt Datei zu löschen",
           "WARN/ERR-Ausgaben ungetestet"
+        ],
+        "resolved": [
+          "2026-11-21: Gate-Läufe speichern die aufgelöste stabile Agenten-ID statt des übergebenen Namens; unbekannter Upstream -> 400"
         ]
       }
     },
@@ -1999,7 +2002,7 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Fehlender HOST_WORKSPACE und fehlgeschlagener Gate-Aufruf im DONE-Pfad (mit Paperclip-Issue) noch ohne Wrapper-Test (-> RF-035)"
+          "Fehlender HOST_WORKSPACE im DONE-Pfad ohne Wrapper-Test"
         ],
         "resolved": [
           "2026-11-21: Modusmatrix EN/DE in docs/paperclip-delegation*.md; Legacy-Pfad warnt bei jedem Lauf ('NOT pipeline-protected') mit Migrationshinweis dockweave-<id> -> <id>; Kompatibilität bewusst beibehalten; Tests deployments/paperclip/tests/test_wrapper_modes.py (Worker, orchestrate frei/gesperrt, Legacy)"
@@ -2273,10 +2276,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Vollständigen DONE-Wrapper-Ablauf über Gate-Runner bis Folge-Agent nachweisen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 85,
       "description": "TestPipelineEndToEnd verwendet den realen Runner, Store und Endpoint, startet den Gate-Lauf aber direkt. Das archivierte GP-028-Kriterium 'A meldet DONE' und der Übergang durch dockweave-run.sh sind damit nicht abgedeckt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2337,7 +2340,11 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Nicht begonnen"
+          "Budget-Ausfall und Tamper nicht über den Wrapper-Pfad, nur über TestPipelineEndToEnd/TestGateExpressionPathInSandbox (direkter Runner) abgedeckt",
+          "Fehlender HOST_WORKSPACE im DONE-Pfad nicht im Wrapper-E2E"
+        ],
+        "resolved": [
+          "2026-11-21: tests/integration/wrapper_e2e_test.go TestWrapperDoneDrivesGateAndReleasesDownstream: echter dockweave-run.sh, gebaute CLI, Daemon-API auf Unix-Socket, Store, Admission, Sandbox-Gate-Runner; simuliert nur Modellantwort (scriptedSessions) und Paperclip (Inbox-HTTP, paperclipai-Skript). Deckt: Nicht-DONE ohne Abschlusslauf/Routing; DONE->PASS mit Upstream ag_a und Issue, Status done, Wake pc-b, B am echten Endpoint ausgeführt; Routing-Wiederholung ohne zweiten Wake; stale blockiert B; FAIL -> in_progress, genau ein Rework an pc-a, Wiederholung ohne Duplikat, B blockiert. Lokal über scripts/test-integration.sh PASS, volle Suite PASS. Daemon löst upstream_agent_id beim Gate-Lauf auf die stabile ID auf (TestGateRunRejectsUnknownUpstreamAgent)."
         ]
       }
     },
@@ -3110,9 +3117,9 @@
   "tasks_status_summary": {
     "total": 45,
     "by_status": {
-      "todo": 3,
+      "todo": 2,
       "in_progress": 0,
-      "partial": 38,
+      "partial": 39,
       "blocked": 0,
       "done": 4
     },
@@ -3159,9 +3166,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 3,
+    "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 38,
+    "partial": 39,
     "blocked": 0,
     "done": 4
   },
