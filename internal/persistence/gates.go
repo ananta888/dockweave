@@ -14,6 +14,8 @@ import (
 
 const gateReviewPrefix = "gate-review:"
 
+func gateTS(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000000000Z") }
+
 type gateRunDetail struct {
 	Reason   string             `json:"reason,omitempty"`
 	Results  []model.GateResult `json:"results,omitempty"`
@@ -24,6 +26,21 @@ type gateRunDetail struct {
 
 // SaveGateRun inserts or replaces a gate run (idempotent by id).
 func (s *Store) SaveGateRun(ctx context.Context, r *model.GateRun) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("gate run begin: %w", err)
+	}
+	defer tx.Rollback()
+	if err := saveGateRunTx(ctx, tx, r); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("gate run commit: %w", err)
+	}
+	return nil
+}
+
+func saveGateRunTx(ctx context.Context, tx *sql.Tx, r *model.GateRun) error {
 	detail, err := json.Marshal(gateRunDetail{
 		Reason: r.Reason, Results: r.Results, Diff: r.Diff, Budget: r.Budget, Warnings: r.Warnings,
 	})
@@ -34,20 +51,36 @@ func (s *Store) SaveGateRun(ctx context.Context, r *model.GateRun) error {
 	if r.Tamper {
 		tamper = 1
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO gate_runs(
+	_, err = tx.ExecContext(ctx, `INSERT INTO gate_runs(
 		id,workspace,issue_id,image,image_digest,status,gates,passed,duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
 		workspace_fingerprint,upstream_agent_id,phases)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
+			image=excluded.image, image_digest=excluded.image_digest,
 			status=excluded.status, gates=excluded.gates, passed=excluded.passed,
 			duration_ms=excluded.duration_ms, gates_hash=excluded.gates_hash,
 			tamper=excluded.tamper, detail=excluded.detail, finished_at=excluded.finished_at,
 			workspace_fingerprint=excluded.workspace_fingerprint`,
 		r.ID, r.Workspace, r.IssueID, r.Image, r.ImageDigest, string(r.Status), r.Gates, r.Passed,
-		r.DurationMS, r.GatesHash, tamper, r.Actor, string(detail), ts(r.StartedAt), ts(r.FinishedAt),
+		r.DurationMS, r.GatesHash, tamper, r.Actor, string(detail), gateTS(r.StartedAt), gateTS(r.FinishedAt),
 		r.WorkspaceFingerprint, r.UpstreamAgentID, strings.Join(r.Phases, ","))
 	if err != nil {
 		return fmt.Errorf("save gate run: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM gate_run_relevance WHERE run_id=?`, r.ID); err != nil {
+		return fmt.Errorf("clear gate relevance: %w", err)
+	}
+	ids := map[string]bool{}
+	for _, res := range r.Results {
+		ids[res.ID] = true
+	}
+	if r.Tamper || len(r.Phases) == 0 || r.FinishedAt.IsZero() || (len(r.Results) == 0 && (r.Status == model.GateFailed || r.Status == model.GateError)) {
+		ids[""] = true
+	}
+	for id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO gate_run_relevance(run_id,workspace,gate_id,started_at) VALUES(?,?,?,?)`, r.ID, r.Workspace, id, gateTS(r.StartedAt)); err != nil {
+			return fmt.Errorf("save gate relevance: %w", err)
+		}
 	}
 	return nil
 }
@@ -65,12 +98,12 @@ func (s *Store) ListGateRuns(ctx context.Context, workspace string, limit int) (
 		rows, err = s.db.QueryContext(ctx, `SELECT id,workspace,issue_id,image,image_digest,status,gates,passed,
 			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
 			workspace_fingerprint,upstream_agent_id,phases
-			FROM gate_runs ORDER BY started_at DESC LIMIT ?`, limit)
+			FROM gate_runs ORDER BY started_at DESC, id DESC LIMIT ?`, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `SELECT id,workspace,issue_id,image,image_digest,status,gates,passed,
 			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
 			workspace_fingerprint,upstream_agent_id,phases
-			FROM gate_runs WHERE workspace=? ORDER BY started_at DESC LIMIT ?`, workspace, limit)
+			FROM gate_runs WHERE workspace=? ORDER BY started_at DESC, id DESC LIMIT ?`, workspace, limit)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list gate runs: %w", err)
@@ -274,7 +307,7 @@ func (s *Store) PruneGateRuns(ctx context.Context, olderThan time.Time, keepPerW
 					ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC, id DESC) AS rn
 				FROM gate_runs
 			) WHERE rn > ? AND started_at < ?
-		)`, keepPerWorkspace, ts(olderThan))
+	)`, keepPerWorkspace, gateTS(olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("prune gate runs: %w", err)
 	}

@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 18
+const schemaVersion = 19
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -360,6 +360,28 @@ var migrations = []string{
 		used_at TEXT
 	);
 	CREATE INDEX IF NOT EXISTS idx_pipeline_overrides_agent ON pipeline_overrides(agent_id, gate_id);`,
+	// 19: fixed-width UTC timestamps and indexed per-gate relevance. Legacy
+	// timestamps were written by ts(), always in UTC with optional fractions.
+	`UPDATE gate_runs SET
+	 started_at=substr(started_at,1,19)||'.'||substr(CASE WHEN substr(started_at,20,1)='.' THEN substr(started_at,21,length(started_at)-21) ELSE '' END||'000000000',1,9)||'Z',
+	 finished_at=substr(finished_at,1,19)||'.'||substr(CASE WHEN substr(finished_at,20,1)='.' THEN substr(finished_at,21,length(finished_at)-21) ELSE '' END||'000000000',1,9)||'Z';
+	CREATE TABLE gate_run_relevance (
+	 run_id TEXT NOT NULL REFERENCES gate_runs(id) ON DELETE CASCADE,
+	 workspace TEXT NOT NULL,
+	 gate_id TEXT NOT NULL,
+	 started_at TEXT NOT NULL,
+	 PRIMARY KEY(run_id,gate_id)
+	);
+	INSERT OR IGNORE INTO gate_run_relevance
+	 SELECT r.id,r.workspace,json_extract(j.value,'$.id'),r.started_at
+	 FROM gate_runs r, json_each(r.detail,'$.results') j
+	 WHERE json_extract(j.value,'$.id') IS NOT NULL;
+	INSERT OR IGNORE INTO gate_run_relevance
+	 SELECT id,workspace,'',started_at FROM gate_runs
+	 WHERE tamper=1 OR phases='' OR finished_at='0001-01-01T00:00:00.000000000Z'
+	 OR (status IN ('failed','error') AND coalesce(json_array_length(detail,'$.results'),0)=0);
+	CREATE INDEX idx_gate_relevance_latest ON gate_run_relevance(workspace,gate_id,started_at DESC,run_id DESC);
+	CREATE INDEX idx_gate_runs_chronological ON gate_runs(started_at DESC,id DESC);`,
 }
 
 // Store is the DockWeave registry.
@@ -1038,13 +1060,31 @@ func (s *Store) DeleteMount(ctx context.Context, agentID, targetPath string) err
 
 // AppendEvent appends an event to the audit log with hash chaining.
 func (s *Store) AppendEvent(ctx context.Context, e *model.Event) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("audit begin: %w", err)
+	}
+	defer tx.Rollback()
+	if err := appendEventTx(ctx, tx, e); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("audit commit: %w", err)
+	}
+	return nil
+}
+
+func appendEventTx(ctx context.Context, tx *sql.Tx, e *model.Event) error {
 	var prev string
-	_ = s.db.QueryRowContext(ctx, `SELECT hash FROM events ORDER BY seq DESC LIMIT 1`).Scan(&prev)
+	err := tx.QueryRowContext(ctx, `SELECT hash FROM events ORDER BY seq DESC LIMIT 1`).Scan(&prev)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("read audit head: %w", err)
+	}
 	e.PrevHash = prev
 	h := sha256.New()
 	fmt.Fprintf(h, "%s|%s|%s|%s|%s|%s|%s|%s", e.ID, e.Type, e.Actor, e.AgentID, e.WorkspaceID, e.Message, ts(e.Timestamp), prev)
 	e.Hash = hex.EncodeToString(h.Sum(nil))
-	_, err := s.db.ExecContext(ctx, `INSERT INTO events(id,type,actor,agent_id,workspace_id,message,ts,prev_hash,hash)
+	_, err = tx.ExecContext(ctx, `INSERT INTO events(id,type,actor,agent_id,workspace_id,message,ts,prev_hash,hash)
 		VALUES(?,?,?,?,?,?,?,?,?)`,
 		e.ID, string(e.Type), e.Actor, e.AgentID, e.WorkspaceID, e.Message, ts(e.Timestamp), e.PrevHash, e.Hash)
 	if err != nil {

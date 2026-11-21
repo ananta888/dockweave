@@ -2,6 +2,10 @@ package model
 
 import "time"
 
+// MaxPipelineAgeSec is the supported freshness horizon (ten years). Zero
+// remains unlimited; the bound is checked before duration multiplication.
+const MaxPipelineAgeSec = 10 * 365 * 24 * 60 * 60
+
 // PipelineEdge is one gate -> agent precondition derived from the 2D graph:
 // the downstream agent may only take pipeline work while the gate's latest
 // relevant run passed on the current workspace content (ADR 0002).
