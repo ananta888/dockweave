@@ -24,6 +24,7 @@ import (
 	"github.com/ananta888/dockweave/internal/mounts"
 	"github.com/ananta888/dockweave/internal/nativeagent"
 	"github.com/ananta888/dockweave/internal/persistence"
+	"github.com/ananta888/dockweave/internal/pipeline"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
@@ -104,7 +105,12 @@ type Server struct {
 	// Skills is the managed skill catalog (optional).
 	Skills *skillcatalog.Catalog
 
-	mux *http.ServeMux
+	// Pipeline evaluates gate -> agent admission (optional; nil uses the
+	// store and the gate fingerprint, see pipelineEvaluator).
+	Pipeline *pipeline.Evaluator
+
+	blocked blockedAudit
+	mux     *http.ServeMux
 }
 
 // NewServer builds the HTTP handler tree.
@@ -185,6 +191,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/gates/reviews", s.listGateReviews)
 	s.mux.HandleFunc("GET /api/v1/gates/reviews/{issue}", s.getGateReview)
 	s.mux.HandleFunc("POST /api/v1/gates/prune", s.pruneGateRuns)
+	s.mux.HandleFunc("PUT /api/v1/pipelines", s.putPipelines)
+	s.mux.HandleFunc("GET /api/v1/pipelines", s.listPipelines)
+	s.mux.HandleFunc("GET /api/v1/pipelines/admission", s.pipelineAdmission)
+	s.mux.HandleFunc("GET /api/v1/agents/{id}/pipeline", s.pipelineAdmission)
+	s.mux.HandleFunc("POST /api/v1/pipelines/override", s.createPipelineOverride)
+	s.mux.HandleFunc("GET /api/v1/pipelines/overrides", s.listPipelineOverrides)
 	s.mux.HandleFunc("GET /api/v1/objectives", s.listObjectives)
 	s.mux.HandleFunc("POST /api/v1/objectives", s.createObjective)
 	s.mux.HandleFunc("PATCH /api/v1/objectives/{id}", s.updateObjective)

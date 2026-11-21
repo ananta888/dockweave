@@ -84,6 +84,13 @@ func (s *Server) openAIChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pipeline enforcement (ADR 0002): a downstream agent only takes work
+	// while every incoming gate passed on the current workspace content.
+	// This runs before the first byte reaches the agent (fail-closed).
+	if !s.admitPipelineWork(w, r, agent) {
+		return
+	}
+
 	id := "chatcmpl-" + time.Now().UTC().Format("20060102150405.000000000")
 	created := time.Now().Unix()
 

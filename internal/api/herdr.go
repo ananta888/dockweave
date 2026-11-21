@@ -94,6 +94,9 @@ func (s *Server) herdrPrompt(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", errNoPrompt)
 		return
 	}
+	if !s.admitPipelineWork(w, r, a) {
+		return
+	}
 	content, err := s.Native.Prompt(r.Context(), a.Type, string(a.Runtime), a.ID, req.Prompt)
 	if err != nil {
 		s.openAIFail(w, err)

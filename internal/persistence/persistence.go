@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 16
+const schemaVersion = 18
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -325,6 +325,41 @@ var migrations = []string{
 	// 16: link a gate run to the Paperclip issue that triggered it.
 	`ALTER TABLE gate_runs ADD COLUMN issue_id TEXT NOT NULL DEFAULT '';
 	CREATE INDEX IF NOT EXISTS idx_gate_runs_issue ON gate_runs(issue_id);`,
+	// 17: pipeline freshness: workspace fingerprint, upstream agent and the
+	// phases of a gate run. Older runs have no fingerprint and therefore
+	// never count as fresh for the pipeline admission.
+	`ALTER TABLE gate_runs ADD COLUMN workspace_fingerprint TEXT NOT NULL DEFAULT '';
+	ALTER TABLE gate_runs ADD COLUMN upstream_agent_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE gate_runs ADD COLUMN phases TEXT NOT NULL DEFAULT '';`,
+	// 18: gate -> agent pipeline edges (ADR 0002) and audited overrides.
+	`CREATE TABLE IF NOT EXISTS pipeline_edges (
+		id TEXT PRIMARY KEY,
+		gate_id TEXT NOT NULL,
+		upstream_agent_id TEXT NOT NULL DEFAULT '',
+		downstream_agent_id TEXT NOT NULL,
+		workspace TEXT NOT NULL,
+		on_true TEXT NOT NULL DEFAULT 'allow',
+		on_false TEXT NOT NULL DEFAULT 'deny',
+		reason_true TEXT NOT NULL DEFAULT '',
+		reason_false TEXT NOT NULL DEFAULT '',
+		max_age_sec INTEGER NOT NULL DEFAULT 0,
+		source_revision INTEGER NOT NULL,
+		updated_at TEXT NOT NULL,
+		UNIQUE(gate_id, downstream_agent_id, workspace)
+	);
+	CREATE INDEX IF NOT EXISTS idx_pipeline_edges_downstream ON pipeline_edges(downstream_agent_id);
+	CREATE TABLE IF NOT EXISTS pipeline_overrides (
+		id TEXT PRIMARY KEY,
+		agent_id TEXT NOT NULL,
+		gate_id TEXT NOT NULL,
+		reason TEXT NOT NULL,
+		actor TEXT NOT NULL,
+		single_use INTEGER NOT NULL DEFAULT 1,
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL,
+		used_at TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_pipeline_overrides_agent ON pipeline_overrides(agent_id, gate_id);`,
 }
 
 // Store is the DockWeave registry.

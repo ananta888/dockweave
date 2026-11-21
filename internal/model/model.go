@@ -291,9 +291,15 @@ const (
 	EventGateRun        EventType = "gate.run"
 	EventGateApproval   EventType = "gate.approval"
 	EventGateReview     EventType = "gate.review"
-	EventSecurityDeny   EventType = "security.denied"
-	EventConflict       EventType = "monitor.conflict"
-	EventAuthOIDC       EventType = "auth.oidc"
+
+	EventPipelineUpdate       EventType = "pipeline.update"
+	EventPipelineBlocked      EventType = "pipeline.blocked"
+	EventPipelineOverride     EventType = "pipeline.override"
+	EventPipelineOverrideUsed EventType = "pipeline.override_used"
+
+	EventSecurityDeny EventType = "security.denied"
+	EventConflict     EventType = "monitor.conflict"
+	EventAuthOIDC     EventType = "auth.oidc"
 
 	// Productivity layer audit events (goal and focus changes).
 	EventObjectiveCreated  EventType = "objective.created"

@@ -40,7 +40,7 @@ func main() {
 	root.AddCommand(runCmd(), agentCmd(), workspaceCmd(), grantCmd(), mountCmd(), monitorCmd(), eventsCmd(), tuiCmd(), statusCmd(), memoryCmd(), mcpCmd(), configCmd(),
 		secretCmd(), credentialCmd(), brokerCmd(), egressCmd(), webCmd(),
 		objectiveCmd(), taskCmd(), focusCmd(), planCmd(), evidenceCmd(),
-		budgetCmd(), reviewCmd(), workEventCmd(), suggestCmd(), calendarCmd(), exportCmd(), pruneCmd(), gateCmd())
+		budgetCmd(), reviewCmd(), workEventCmd(), suggestCmd(), calendarCmd(), exportCmd(), pruneCmd(), gateCmd(), pipelineCmd())
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
 	}

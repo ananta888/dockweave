@@ -35,14 +35,17 @@ func (s *Store) SaveGateRun(ctx context.Context, r *model.GateRun) error {
 		tamper = 1
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT INTO gate_runs(
-		id,workspace,issue_id,image,image_digest,status,gates,passed,duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		id,workspace,issue_id,image,image_digest,status,gates,passed,duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
+		workspace_fingerprint,upstream_agent_id,phases)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			status=excluded.status, gates=excluded.gates, passed=excluded.passed,
 			duration_ms=excluded.duration_ms, gates_hash=excluded.gates_hash,
-			tamper=excluded.tamper, detail=excluded.detail, finished_at=excluded.finished_at`,
+			tamper=excluded.tamper, detail=excluded.detail, finished_at=excluded.finished_at,
+			workspace_fingerprint=excluded.workspace_fingerprint`,
 		r.ID, r.Workspace, r.IssueID, r.Image, r.ImageDigest, string(r.Status), r.Gates, r.Passed,
-		r.DurationMS, r.GatesHash, tamper, r.Actor, string(detail), ts(r.StartedAt), ts(r.FinishedAt))
+		r.DurationMS, r.GatesHash, tamper, r.Actor, string(detail), ts(r.StartedAt), ts(r.FinishedAt),
+		r.WorkspaceFingerprint, r.UpstreamAgentID, strings.Join(r.Phases, ","))
 	if err != nil {
 		return fmt.Errorf("save gate run: %w", err)
 	}
@@ -60,11 +63,13 @@ func (s *Store) ListGateRuns(ctx context.Context, workspace string, limit int) (
 	)
 	if workspace == "" {
 		rows, err = s.db.QueryContext(ctx, `SELECT id,workspace,issue_id,image,image_digest,status,gates,passed,
-			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at
+			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
+			workspace_fingerprint,upstream_agent_id,phases
 			FROM gate_runs ORDER BY started_at DESC LIMIT ?`, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `SELECT id,workspace,issue_id,image,image_digest,status,gates,passed,
-			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at
+			duration_ms,gates_hash,tamper,actor,detail,started_at,finished_at,
+			workspace_fingerprint,upstream_agent_id,phases
 			FROM gate_runs WHERE workspace=? ORDER BY started_at DESC LIMIT ?`, workspace, limit)
 	}
 	if err != nil {
@@ -74,11 +79,15 @@ func (s *Store) ListGateRuns(ctx context.Context, workspace string, limit int) (
 	out := make([]*model.GateRun, 0, limit)
 	for rows.Next() {
 		r := &model.GateRun{}
-		var status, detail, started, finished string
+		var status, detail, started, finished, phases string
 		var tamper int
 		if err := rows.Scan(&r.ID, &r.Workspace, &r.IssueID, &r.Image, &r.ImageDigest, &status, &r.Gates, &r.Passed,
-			&r.DurationMS, &r.GatesHash, &tamper, &r.Actor, &detail, &started, &finished); err != nil {
+			&r.DurationMS, &r.GatesHash, &tamper, &r.Actor, &detail, &started, &finished,
+			&r.WorkspaceFingerprint, &r.UpstreamAgentID, &phases); err != nil {
 			return nil, fmt.Errorf("scan gate run: %w", err)
+		}
+		if phases != "" {
+			r.Phases = strings.Split(phases, ",")
 		}
 		r.Status = model.GateRunStatus(status)
 		r.Tamper = tamper == 1
