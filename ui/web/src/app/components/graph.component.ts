@@ -368,7 +368,7 @@ interface GraphEdge {
 
       @if (settingsOpen()) {
         <div class="settings-backdrop floating">
-          <div class="settings-modal popover popover-settings" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 64" (click)="$event.stopPropagation()">
+          <div class="settings-modal popover popover-settings" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 64"  [style.--pop-top.px]="popoverPos()?.y ?? 64" (click)="$event.stopPropagation()">
             <header>
               <h3>Graph settings &amp; schema</h3>
               <button class="ghost small" (click)="settingsOpen.set(false)">✕</button>
@@ -513,7 +513,7 @@ interface GraphEdge {
 
       @if (connectorsOpen()) {
         <div class="settings-backdrop floating">
-          <div class="settings-modal popover popover-wide" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
+          <div class="settings-modal popover popover-wide" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100"  [style.--pop-top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Connectoren · {{ connectorAgent()?.display_name || connectorAgent()?.name }}</h3>
               <button class="ghost small" (click)="connectorsOpen.set(false)">✕</button>
@@ -780,7 +780,7 @@ interface GraphEdge {
 
       @if (connectOpen()) {
         <div class="settings-backdrop floating">
-          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
+          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100"  [style.--pop-top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Neue Verbindung · {{ connectSource()?.title }}</h3>
               <button class="ghost small" (click)="connectOpen.set(false)">✕</button>
@@ -806,7 +806,7 @@ interface GraphEdge {
 
       @if (editConnectorId()) {
         <div class="settings-backdrop floating">
-          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
+          <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100"  [style.--pop-top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
             <header>
               <h3>Node konfigurieren</h3>
               <button class="ghost small" (click)="editConnectorId.set(null)">✕</button>
@@ -897,6 +897,7 @@ interface GraphEdge {
                   <button class="danger" (click)="deleteLocalEdited()">Delete</button>
                   <button (click)="editConnectorId.set(null)">Cancel</button>
                 </div>
+                @if (configError()) { <div class="notice error" role="alert">{{ configError() }}</div> }
               </section>
             </div>
           </div>
@@ -974,9 +975,9 @@ interface GraphEdge {
     .edge-actions button:last-child:hover { background:#f85149; color:#fff; }
     .edge-toolbar { position:fixed; z-index:120; background:#161b22; border:1px solid #58a6ff; border-radius:8px; padding:.35rem .6rem; display:flex; align-items:center; gap:.5rem; font-size:.75rem; box-shadow:0 6px 18px #000a; }
     .settings-backdrop.floating { position:fixed; inset:0; background:transparent; display:block; pointer-events:none; }
-    .settings-backdrop.floating .settings-modal.popover { position:fixed; pointer-events:auto; width:420px; max-width:calc(100vw - 16px); max-height:76vh; overflow:auto; }
+    .settings-backdrop.floating .settings-modal.popover { position:fixed; pointer-events:auto; width:420px; max-width:calc(100vw - 16px); max-height:min(76vh, calc(100vh - var(--pop-top, 100px) - 8px)); overflow:auto; }
     .settings-backdrop.floating .settings-modal.popover.popover-wide { width:520px; }
-    .settings-backdrop.floating .settings-modal.popover.popover-settings { width:680px; max-height:82vh; }
+    .settings-backdrop.floating .settings-modal.popover.popover-settings { width:680px; max-height:min(82vh, calc(100vh - var(--pop-top, 64px) - 8px)); }
     .settings-modal.popover .settings-body { padding:.55rem; }
     .settings-modal.popover .settings-body section { padding:.5rem .6rem; }
     f-flow { flex:1; min-height:0; position:relative; background:#0b0e14; }
@@ -2200,6 +2201,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   openLocalEditor(c: ConnectorConfig): void {
     const node = this.nodes().find(n => `connector-${c.id}` === n.id) ?? null;
     this.positionPopoverForNode(node, 380);
+    this.configError.set('');
     this.editConnectorId.set(c.id);
     this.ecName = c.name;
     this.ecKind = c.kind;

@@ -33,6 +33,15 @@ jobs:
         with:
           python-version: '3.12'
       - run: make web
+      # The Go binary embeds internal/webui/dist; it must match the reviewed
+      # frontend source (the Angular build is deterministic).
+      - name: embedded web bundle is up to date
+        run: |
+          if [ -n "$(git status --porcelain -- internal/webui/dist)" ]; then
+            git status --short -- internal/webui/dist
+            echo "internal/webui/dist is stale: run 'make web' and commit the result" >&2
+            exit 1
+          fi
       - run: npx playwright install --with-deps chromium
         working-directory: ui/web
       - run: npm run e2e:pipeline

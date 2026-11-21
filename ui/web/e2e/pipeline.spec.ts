@@ -156,13 +156,15 @@ test('legacy free-text routing opens as reason with the default action', async (
   graphDoc.connectors[0].contract = gateContract;
 });
 
+// The Paperclip workspace lives in the agent's connector popover.
 async function workspaceInput(page: Page) {
-  await page.getByRole('button', { name: 'Ports & Schema', exact: true }).click();
+  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right' });
+  await page.getByRole('button', { name: 'Connectoren konfigurieren…' }).click();
   return page.locator('input[name="paperclipWorkspace"]');
 }
 
 async function closeSettings(page: Page): Promise<void> {
-  await page.locator('.popover-settings header button').click();
+  await page.locator('.popover-wide header button').click();
 }
 
 test('conflict freezes autosave and keeps a recoverable draft across reload', async ({ page }) => {
@@ -183,7 +185,6 @@ test('conflict freezes autosave and keeps a recoverable draft across reload', as
   await page.clock.fastForward(1000);
   expect(m.puts).toHaveLength(1);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('dockweave.graphRecovery') || '{}').paperclip.workspace)).toBe('/draft/two');
-  await page.screenshot({ path: '../../.omo/evidence/graph-followup/conflict-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Serverstand laden', exact: true }).click();
   await expect(page.locator('.graph-save-status')).toContainText('gespeichert');
   expect(m.puts).toHaveLength(1);
@@ -245,7 +246,6 @@ test('unavailable admission is not presented as an unsynced or successful gate',
   await expect(page.locator('.edge-label.edge-proceed')).toHaveClass(/edge-state-unavailable/);
   await expect(page.locator('[data-node-id="agent-ag_b"] .pipeline-badge')).toContainText('Status unbekannt');
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '../../.omo/evidence/graph-followup/unavailable-phone.png', fullPage: true });
 });
 
 test('a delayed expression validation cannot save a changed editor snapshot', async ({ page }) => {
@@ -263,7 +263,7 @@ test('a delayed expression validation cannot save a changed editor snapshot', as
   await openGraph(page);
   await page.locator('[data-node-id="connector-conn-1"]').dblclick();
   await page.locator('input[name="ecExpression"]').fill('true');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => validations).toBeGreaterThan(0);
   await page.locator('input[name="ecCommand"]').fill('different command');
   release?.();
@@ -278,7 +278,7 @@ test('validation server failures do not save an unverified expression', async ({
   await openGraph(page);
   await page.locator('[data-node-id="connector-conn-1"]').dblclick();
   await page.locator('input[name="ecExpression"]').fill('true');
-  await page.getByRole('button', { name: 'Speichern', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.notice.error').filter({ hasText: 'Ausdruck nicht verifiziert' })).toBeVisible();
   expect(m.puts).toHaveLength(0);
 });

@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 59.0,
+      "progress_percent": 61.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 39.0,
+      "progress_percent": 46.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -304,8 +304,10 @@
         "remaining_gaps": [
           "Nach 'Serverstand laden' überschreibt persistRecovery() den Vor-Konflikt-Entwurf",
           "Kein Zwei-Client-Browsertest, kein Reload-und-Speichern-Test",
-          "Tests prüfen keine gespeicherten Connectoren/Positionen/Kanten",
-          "Konflikt-e2e-Test scheitert aktuell (Timeout auf paperclipWorkspace-Eingabe)"
+          "Tests prüfen keine gespeicherten Connectoren/Positionen/Kanten"
+        ],
+        "resolved": [
+          "2026-11-21: Konflikt-e2e-Test grün nach Selektor-Korrektur"
         ]
       }
     },
@@ -1513,7 +1515,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 60,
+      "progress_percent": 65,
       "description": "Ein 400-ms-Debounce verhindert keine überlappenden PUTs. Ein verzögerter initialer GET kann neuere lokale Änderungen überschreiben; Nicht-409-Speicherfehler werden ignoriert und ngOnDestroy verwirft einen noch ausstehenden Save-Timer.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -1561,8 +1563,10 @@
           "Kein Reload-/Navigationstest",
           "Entwurf nur exportierbar, nicht wiederherstellbar",
           "Kein 500-/Netzwerk-Retry-Test",
-          "pending/error/conflict teilen das Label 'ungespeicherte Änderungen'",
-          "4 von 5 neuen e2e-Tests scheitern aktuell"
+          "pending/error/conflict teilen das Label 'ungespeicherte Änderungen'"
+        ],
+        "resolved": [
+          "2026-11-21: e2e-Tests suchten das Workspace-Feld unter 'Ports & Schema' (liegt im Connector-Popover) – korrigiert; alle 9 Pipeline-e2e-Tests grün"
         ]
       }
     },
@@ -2323,7 +2327,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 55,
+      "progress_percent": 75,
       "description": "ci.yml führt Go-Build, vet, Unit-Tests und Race-Tests aus, aber weder die neuen Python-Wrapper-Tests noch Web-Build und Pipeline-Browser-Tests. make test enthält Wrapper-Tests, wird von CI jedoch nicht benutzt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2380,9 +2384,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Trace/Screenshot nicht aktiviert",
-          "Port 8797 fest",
           "Kein Nachweis aus echtem CI-Lauf"
+        ],
+        "resolved": [
+          "2026-11-21: trace retain-on-failure, screenshot only-on-failure; Port über PIPELINE_E2E_PORT"
         ]
       }
     },
@@ -2450,7 +2455,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 25,
+      "progress_percent": 65,
       "description": "Go bindet internal/webui/dist ein; make web kopiert separat gebaute Angular-Artefakte. Ein erfolgreicher Go-Build prüft nicht, ob die ausgelieferte Oberfläche dem aktuellen TypeScript-Stand entspricht. Der bereits ausgeführte Web-Build meldete außerdem eine Überschreitung des Komponenten-CSS-Warnbudgets.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2506,10 +2511,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Eingebettetes Bundle internal/webui/dist ist veraltet",
-          "Keine CI-Prüfung auf veraltetes Bundle",
-          "Kein Smoke-Test gegen Go-Server",
-          "Nicht-deterministische Build-Metadaten unbehandelt"
+          "Kein Smoke-Test gegen Go-Server"
+        ],
+        "resolved": [
+          "2026-11-21: internal/webui/dist neu gebaut; Angular-Build zweimal verglichen – deterministisch; CI-Schritt 'embedded web bundle is up to date' nach make web"
         ]
       }
     },
@@ -2518,10 +2523,10 @@
       "milestone": "M6",
       "type": "chore",
       "title": "Generierten Python-Bytecode aus Git entfernen und künftig ignorieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P3",
       "risk": "low",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "Mit den Wrapper-Tests wurde test_wrapper.cpython-312.pyc eingecheckt. Die Projekt-.gitignore enthält keine Regeln für __pycache__ oder Python-Bytecode.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -2556,9 +2561,10 @@
         "git status --short --untracked-files=all"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Behoben 2026-11-21: .pyc per git rm --cached entfernt; Abschluss mit Commit-SHA nachtragen"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt in 3e2c73f: .pyc aus dem Index entfernt, __pycache__/ und *.py[cod] ignoriert; git ls-files | grep -c pyc = 0; Wrapper-Tests mit python3 -B hinterlassen keine Git-Änderungen."
         ]
       }
     },
@@ -2832,7 +2838,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 70,
+      "progress_percent": 75,
       "description": "checkExpression und ensureValidExpression übernehmen Antworten ohne Aktualitätsprüfung; ensureValidExpression führt bei jedem HTTP-Fehler trotzdem den Save-Callback aus. Validate/Evaluate besitzen zudem keinen gemeinsamen Größen-/Verschachtelungsgrenzwert für Konfigurationen außerhalb des 16-KiB-Editor-Endpunkts.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -2892,6 +2898,9 @@
           "Add-Dialog und späte Inline-Prüfung ungetestet",
           "Limits undokumentiert",
           "Kein Fuzz-Test"
+        ],
+        "resolved": [
+          "2026-11-21: Speicher-Fehler (Ausdruck nicht verifiziert / Formular geändert) wurden im Bearbeiten-Dialog nie angezeigt – configError dort ergänzt; Popover-Höhe an Viewport gebunden (Save war unerreichbar); e2e grün"
         ]
       }
     },
@@ -3078,11 +3087,11 @@
     "by_status": {
       "todo": 5,
       "in_progress": 0,
-      "partial": 40,
+      "partial": 39,
       "blocked": 0,
-      "done": 0
+      "done": 1
     },
-    "progress_percent_done": 0.0,
+    "progress_percent_done": 2.22,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3127,9 +3136,9 @@
     "state": "in_progress",
     "todo_remaining": 5,
     "in_progress": 0,
-    "partial": 40,
+    "partial": 39,
     "blocked": 0,
-    "done": 0
+    "done": 1
   },
   "evidence_summary": {
     "by_level": {
