@@ -46,6 +46,12 @@ jobs:
         working-directory: ui/web
       - run: npm run e2e:pipeline
         working-directory: ui/web
+      - name: Pipeline smoke test on the embedded bundle
+        run: npm run e2e:pipeline -- -g "proceed edge and downstream|editor validates expressions"
+        working-directory: ui/web
+        env:
+          PIPELINE_E2E_DIR: ../../internal/webui/dist
+          PIPELINE_E2E_PORT: '8798'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

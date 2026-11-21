@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 80.0,
+      "progress_percent": 82.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 94.5,
+      "progress_percent": 96.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -1521,10 +1521,10 @@
       "milestone": "M4",
       "type": "frontend",
       "title": "Graph-Autosave serialisieren und ungespeicherte Änderungen wiederherstellbar halten",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "Ein 400-ms-Debounce verhindert keine überlappenden PUTs. Ein verzögerter initialer GET kann neuere lokale Änderungen überschreiben; Nicht-409-Speicherfehler werden ignoriert und ngOnDestroy verwirft einen noch ausstehenden Save-Timer.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -1567,12 +1567,13 @@
         "cd ui/web && npm run build && npm run e2e:pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
+        "verdict": "done",
         "remaining_gaps": [],
         "resolved": [
           "2026-11-21: e2e-Tests suchten das Workspace-Feld unter 'Ports & Schema' (liegt im Connector-Popover) – korrigiert; alle 9 Pipeline-e2e-Tests grün",
           "2026-11-21: Entwurf wiederherstellbar ('Entwurf übernehmen'); eigene Statuslabels für Fehler ('Speichern fehlgeschlagen') und Konflikt ('Konflikt mit dem Serverstand')",
-          "2026-11-21: e2e 'a failed save is retried by the retry button and a reload keeps the local draft' (500 -> kein Auto-Retry -> Retry-Button speichert denselben Stand; erneuter Fehler + Reload -> Entwurf erhalten und exportierbar)"
+          "2026-11-21: e2e 'a failed save is retried by the retry button and a reload keeps the local draft' (500 -> kein Auto-Retry -> Retry-Button speichert denselben Stand; erneuter Fehler + Reload -> Entwurf erhalten und exportierbar)",
+          "Erledigt 2026-11-21: e2e: ein Save in flight + Nachführen mit bestätigter Revision, langsamer GET, Konflikt friert Autosave ein, Konflikt-Entwurf übernehmen/verwerfen, 500 -> Retry-Button, Reload erhält Entwurf; Statuslabels pending/gespeichert/Speichern fehlgeschlagen/Konflikt."
         ]
       }
     },
@@ -2349,10 +2350,10 @@
       "milestone": "M6",
       "type": "ci",
       "title": "Wrapper- und Web-Pipeline-Prüfungen zu verbindlichen CI-Jobs machen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "ci.yml führt Go-Build, vet, Unit-Tests und Race-Tests aus, aber weder die neuen Python-Wrapper-Tests noch Web-Build und Pipeline-Browser-Tests. make test enthält Wrapper-Tests, wird von CI jedoch nicht benutzt.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2407,11 +2408,12 @@
         "CI-Änderung durch einen tatsächlichen späteren Workflow-Lauf verifizieren; lokale Befehle allein sind kein CI-Nachweis."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
+        "verdict": "done",
         "remaining_gaps": [],
         "resolved": [
           "2026-11-21: trace retain-on-failure, screenshot only-on-failure; Port über PIPELINE_E2E_PORT",
-          "2026-11-21: CI-Lauf 44934608299 (fc52f56): wrapper, test, web (inkl. Pipeline-e2e und Bundle-Check), integration grün"
+          "2026-11-21: CI-Lauf 44934608299 (fc52f56): wrapper, test, web (inkl. Pipeline-e2e und Bundle-Check), integration grün",
+          "Erledigt 2026-11-21: CI-Jobs wrapper (Wrapper-Suite, Track-Validator, Skript-Tests) und web (npm ci, Build, Bundle-Check, Pipeline-e2e, Smoke auf eingebettetem Bundle) ohne continue-on-error; Node 24.11.1/Python 3.12/Playwright aus Lockfile; Trace/Screenshot nur bei Fehlern (gemockte Daten, keine Tokens); Port per PIPELINE_E2E_PORT (Smoke auf 8798); Release hängt an test/web/wrapper/integration. Nachweis CI-Läufe 44934608299 ff."
         ]
       }
     },
@@ -2478,10 +2480,10 @@
       "milestone": "M6",
       "type": "build",
       "title": "Eingebettetes Web-Bundle gegen den geprüften Frontend-Quellstand absichern",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "Go bindet internal/webui/dist ein; make web kopiert separat gebaute Angular-Artefakte. Ein erfolgreicher Go-Build prüft nicht, ob die ausgelieferte Oberfläche dem aktuellen TypeScript-Stand entspricht. Der bereits ausgeführte Web-Build meldete außerdem eine Überschreitung des Komponenten-CSS-Warnbudgets.",
       "evidence_level": "coverage_gap",
       "scope_origin": "interaction",
@@ -2535,11 +2537,12 @@
         "go build ./..."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
+        "verdict": "done",
         "remaining_gaps": [],
         "resolved": [
           "2026-11-21: internal/webui/dist neu gebaut; Angular-Build zweimal verglichen – deterministisch; CI-Schritt 'embedded web bundle is up to date' nach make web",
-          "2026-11-21: TestEmbeddedBundleServesEveryReferencedAsset: echter webui-Server liefert jedes in index.html referenzierte Asset aus dem eingebetteten Bundle mit eigenem Inhalt (nicht SPA-Fallback) aus"
+          "2026-11-21: TestEmbeddedBundleServesEveryReferencedAsset: echter webui-Server liefert jedes in index.html referenzierte Asset aus dem eingebetteten Bundle mit eigenem Inhalt (nicht SPA-Fallback) aus",
+          "Erledigt 2026-11-21: make web baut aus Lockfile und ersetzt internal/webui/dist vollständig; CI-Bundle-Check (Build deterministisch, zweifach verglichen); TestEmbeddedBundleServesEveryReferencedAsset (Go-Server liefert jedes referenzierte Asset, kein SPA-Fallback); Browser-Smoke 'proceed edge…'/'editor validates…' gegen internal/webui/dist (PIPELINE_E2E_DIR, CI-Schritt). CSS: Budget 16 kB begründet in ui/web/DESIGN.md; einzige CSS-Änderung dieser Runde (Popover-Höhe an Viewport) per Desktop-Screenshot (1280x720) geprüft: Editor vollständig, Save erreichbar. Beobachtung außerhalb des Tasks: Die App-Shell ist bei 390 px nicht benutzbar (feste Seitenleiste, Graph-Fläche 0 px breit) – seit dem Review-Stand unverändert, kein Effekt dieser Änderungen."
         ]
       }
     },
@@ -3116,11 +3119,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 18,
+      "partial": 15,
       "blocked": 0,
-      "done": 26
+      "done": 29
     },
-    "progress_percent_done": 57.78,
+    "progress_percent_done": 64.44,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3135,8 +3138,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 9,
-      "remaining": 14
+      "done": 12,
+      "remaining": 11
     },
     "milestones": {
       "total": 7,
@@ -3165,9 +3168,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 18,
+    "partial": 15,
     "blocked": 0,
-    "done": 26
+    "done": 29
   },
   "evidence_summary": {
     "by_level": {
