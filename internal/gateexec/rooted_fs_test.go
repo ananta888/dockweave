@@ -79,7 +79,7 @@ func TestCopyTreePreservesInternalLinksAndWritableFiles(t *testing.T) {
 	if err := os.Symlink("sub/file", filepath.Join(root, "link")); err != nil {
 		t.Fatal(err)
 	}
-	if err := copyTree(context.Background(), root, dst); err != nil {
+	if _, err := copyTree(context.Background(), root, dst, "fail"); err != nil {
 		t.Fatal(err)
 	}
 	link, err := os.Readlink(filepath.Join(dst, "link"))

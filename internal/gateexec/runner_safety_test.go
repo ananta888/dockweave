@@ -146,3 +146,42 @@ func TestRunWithUnreadableWorkspaceNeverPasses(t *testing.T) {
 		t.Fatalf("want an error result, got %+v", run)
 	}
 }
+
+func TestRunSymlinkPolicyEndToEnd(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "host-file")
+	if err := os.WriteFile(outside, []byte("host"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		policy string
+		pass   bool
+	}{{"", true}, {"hash", true}, {"ignored", true}, {"fail", false}} {
+		t.Run("policy="+tc.policy, func(t *testing.T) {
+			runner, _ := newTestRunner(t, nil)
+			cfg := `{"version":1,"gates":[{"id":"check","command":"test ! -e node_modules/.bin/tool"}]}`
+			if tc.policy != "" {
+				cfg = `{"version":1,"symlink_policy":"` + tc.policy + `","gates":[{"id":"check","command":"test ! -e node_modules/.bin/tool"}]}`
+			}
+			workspace := writeWorkspace(t, cfg)
+			if err := os.MkdirAll(filepath.Join(workspace, "node_modules", ".bin"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, filepath.Join(workspace, "node_modules", ".bin", "tool")); err != nil {
+				t.Fatal(err)
+			}
+			run, err := runner.Run(context.Background(), Request{Workspace: workspace})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.pass {
+				// The link is absent in the sandbox (the gate checks that) and the
+				// recorded fingerprint is the live one, links included.
+				if run.Status != model.GatePassed || run.WorkspaceFingerprint != mustFP(t, workspace) || len(run.Warnings) == 0 {
+					t.Fatalf("want PASS with warning: %+v", run)
+				}
+			} else if run.Status == model.GatePassed {
+				t.Fatalf("fail policy passed: %+v", run)
+			}
+		})
+	}
+}

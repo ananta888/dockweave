@@ -29,6 +29,12 @@ var ErrFingerprintLimit = errors.New("workspace exceeds fingerprint limits")
 // Fingerprint hashes content and link text, never symlink targets. All access
 // is rooted with openat2, with no path-based fallback on unsupported kernels.
 func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (string, error) {
+	return fingerprintExcluding(ctx, root, lim, nil)
+}
+
+// fingerprintExcluding leaves the given relative paths out; the runner uses
+// it to compare a snapshot that omitted links under the symlink policy.
+func fingerprintExcluding(ctx context.Context, root string, lim FingerprintLimits, exclude map[string]bool) (string, error) {
 	if lim.MaxFiles <= 0 {
 		lim.MaxFiles = DefaultFingerprintLimits.MaxFiles
 	}
@@ -55,6 +61,9 @@ func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (strin
 		visited++
 		if visited > lim.MaxFiles {
 			return ErrFingerprintLimit
+		}
+		if exclude[e.rel] {
+			return nil
 		}
 		if e.info.IsDir() {
 			return nil

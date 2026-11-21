@@ -25,7 +25,9 @@ func TestCopyTreeDoesNotChangeExternalSymlinkTarget(t *testing.T) {
 			if err := os.Symlink(link, filepath.Join(src, "escape")); err != nil {
 				t.Fatal(err)
 			}
-			_ = copyTree(context.Background(), src, dst)
+			for _, policy := range []string{"hash", "ignored", "fail"} {
+				_, _ = copyTree(context.Background(), src, filepath.Join(dst, policy), policy)
+			}
 			info, err := os.Stat(target)
 			if err != nil {
 				t.Fatal(err)

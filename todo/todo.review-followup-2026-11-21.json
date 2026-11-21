@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 92.08,
+      "progress_percent": 93.75,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -549,10 +549,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Sandbox-Vorbereitung und Host-Hashing gegen externe Symlink-Ziele absichern",
-      "status": "partial",
+      "status": "done",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "copyTree erhält Symlinks mit cp -a. makeWritable ruft os.Chmod auf allen Einträgen auf; hashPaths/hashFile folgen Pfaden mit os.Stat/os.Open. Damit sind Host-Zugriffe außerhalb der privaten Kopie möglich. Die Operationen sind im Code belegt, ein vollständiger Angriff wurde nicht ausgeführt.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -603,14 +603,12 @@
         "Gezielte Tests für hash.go können als neue Datei im bestehenden Paket ergänzt werden."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Escape-Prüfung in snapshot.go ist lexikalisch (verkettete Links)",
-          "Absolute Symlinks irgendwo im Tree (node_modules, .git) brechen den Lauf ab – Entscheidung nötig"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: SD-021 in docs/security-decisions.md (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung, Restrisiken)",
-          "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)"
+          "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)",
+          "Erledigt 2026-11-21. Nutzerentscheidung 2026-11-21: Symlinks nach außen konfigurierbar (symlink_policy hash|ignored|fail, Standard hash, strengster Wert gewinnt, unbekannt = fail). Umsetzung copyTree/runner (Policy aus Live-Config vor dem Kopieren, Abgleich mit Snapshot-Config; Snapshot gegen Workspace-Fingerprint ohne genau die weggelassenen Links geprüft; gespeichert wird der volle Live-Fingerprint), gatesync-Merge, Editor-Auswahl in beiden Gate-Dialogen. Tests: TestCopyTreeSymlinkPolicies, TestStricterSymlinkPolicyWins, TestRunSymlinkPolicyEndToEnd (Docker, alle 4 Modi), TestCopyTreeDoesNotChangeExternalSymlinkTarget (alle Modi), e2e 'the gate editor stores the symlink policy in the contract'. Doku: gate-model EN/DE, SD-021. Restrisiko (dokumentiert): lexikalische Prüfung verketteter relativer Links wirkt nur im unprivilegierten Container, nie auf dem Host."
         ]
       }
     },
@@ -3120,11 +3118,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 25,
+      "partial": 24,
       "blocked": 0,
-      "done": 19
+      "done": 20
     },
-    "progress_percent_done": 42.22,
+    "progress_percent_done": 44.44,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3139,8 +3137,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 6,
-      "remaining": 17
+      "done": 7,
+      "remaining": 16
     },
     "milestones": {
       "total": 7,
@@ -3169,9 +3167,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 25,
+    "partial": 24,
     "blocked": 0,
-    "done": 19
+    "done": 20
   },
   "evidence_summary": {
     "by_level": {

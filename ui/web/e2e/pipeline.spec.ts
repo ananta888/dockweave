@@ -401,3 +401,16 @@ test('pipeline status recovers after an admission outage', async ({ page }) => {
   await expect(badge).toContainText('blockiert', { timeout: 20000 });
   await expect(page.locator('.edge-label.edge-proceed')).toHaveClass(/edge-state-failed/);
 });
+
+test('the gate editor stores the symlink policy in the contract', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  await openGraph(page);
+  await page.locator('[data-node-id="connector-conn-1"]').dblclick();
+  await expect(page.locator('select[name="ecSymlinks"]')).toHaveValue('');
+  await page.locator('select[name="ecSymlinks"]').selectOption('ignored');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => m.puts.length).toBeGreaterThan(0);
+  const saved = (m.puts.at(-1) as any).connectors.find((c: any) => c.id === 'conn-1');
+  expect(JSON.parse(saved.contract).symlink_policy).toBe('ignored');
+});

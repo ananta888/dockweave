@@ -416,8 +416,9 @@ chmod or read files outside the workspace, and a file swapped between
    an anchored directory handle. There is no path-based fallback: kernels
    without `openat2` (< 5.6) make gate runs and admission fail closed.
 2. Symlinks are never followed on the host. Fingerprints and hashes cover the
-   link text. The private gate snapshot recreates links verbatim but aborts
-   on links that are absolute or lexically leave the tree.
+   link text. The private gate snapshot recreates internal links verbatim;
+   links that are absolute or lexically leave the tree follow
+   `symlink_policy` (omit or abort, see residual risk).
 3. FIFOs, sockets and devices are rejected (fail closed); regular files are
    opened `O_NONBLOCK` and must be the same inode as the enumerated entry
    (`os.SameFile`). A replaced root, directory or file aborts the operation.
@@ -436,6 +437,9 @@ chmod or read files outside the workspace, and a file swapped between
 - The snapshot escape check is lexical. Chained relative links (`y -> .`,
   `x -> y/..`) pass it; they only resolve inside the unprivileged gate
   container, which has no host mounts beyond the snapshot, never on the host.
-- Any absolute symlink in the workspace, including `node_modules` or `.git`,
-  aborts the gate run. This is deliberately strict; whether such links should
-  instead be hashed and skipped is an open decision (RF-007).
+- Escaping symlinks are configurable per workspace (`symlink_policy`,
+  decided 2026-11-21): `hash` (default) omits them from the sandbox, `ignored`
+  omits them only in dependency/build trees, `fail` aborts. Every mode keeps
+  them out of host reads; the recorded fingerprint covers their link text,
+  and the snapshot is verified against the workspace minus exactly the
+  omitted links. A gate therefore never sees content behind such a link.

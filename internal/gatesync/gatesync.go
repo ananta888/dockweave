@@ -94,6 +94,8 @@ type Contract struct {
 	DependencyManifests   []string `json:"dependency_manifests,omitempty"`
 	SecretScan            bool     `json:"secret_scan"`
 	Budget                *Budget  `json:"budget"`
+	// SymlinkPolicy: hash | ignored | fail (see StricterSymlinkPolicy).
+	SymlinkPolicy string `json:"symlink_policy,omitempty"`
 }
 
 // Budget is an optional broker-backed limit checked before/after a gate run.
@@ -125,6 +127,13 @@ type Config struct {
 	DependencyManifests []string `json:"dependency_manifests,omitempty"`
 	SecretScan          bool     `json:"secret_scan,omitempty"`
 	Budget              *Budget  `json:"budget,omitempty"`
+	// SymlinkPolicy decides what the gate snapshot does with symlinks that
+	// point outside the workspace; links are never followed on the host:
+	//   hash    (default) hashed by link text, left out of the sandbox
+	//   ignored left out inside dependency/build trees (node_modules, .git,
+	//           dist, ...), the run fails for any other escaping link
+	//   fail    the run fails for any escaping link
+	SymlinkPolicy string `json:"symlink_policy,omitempty"`
 }
 
 type Review struct {
@@ -258,6 +267,10 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 		cfg.DenyNewDependencies = cfg.DenyNewDependencies || ct.DenyNewDependencies
 		cfg.DependencyManifests = mergeUnique(cfg.DependencyManifests, ct.DependencyManifests)
 		cfg.SecretScan = cfg.SecretScan || ct.SecretScan
+		cfg.SymlinkPolicy = StricterSymlinkPolicy(cfg.SymlinkPolicy, ct.SymlinkPolicy)
+		if v := strings.TrimSpace(ct.SymlinkPolicy); v != "" && !ValidSymlinkPolicy(v) {
+			warnings = append(warnings, fmt.Sprintf("gate %q: symlink_policy %q is unknown (hash|ignored|fail); treated as fail", c.Name, v))
+		}
 		if ct.Budget != nil && cfg.Budget == nil {
 			cfg.Budget = ct.Budget
 		}
@@ -514,6 +527,7 @@ func mergeConfigs(a, b Config) Config {
 	out.DenyNewDependencies = a.DenyNewDependencies || b.DenyNewDependencies
 	out.DependencyManifests = unionStrings(a.DependencyManifests, b.DependencyManifests)
 	out.SecretScan = a.SecretScan || b.SecretScan
+	out.SymlinkPolicy = StricterSymlinkPolicy(a.SymlinkPolicy, b.SymlinkPolicy)
 	if out.Budget == nil {
 		out.Budget = b.Budget
 	}

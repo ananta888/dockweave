@@ -154,6 +154,15 @@ variable stays unusable.
     `yarn.lock`, `Cargo.lock`, …) and content-hash notations (`h1:`,
     `sha512-` …) are excluded from the entropy check, not from the pattern
     scan.
+  - `symlink_policy`: what the gate snapshot does with symlinks that leave
+    the workspace (absolute or `..` targets). Links are never followed on
+    the host and always count in the fingerprint by their link text.
+    `hash` (default) leaves them out of the sandbox and adds a run warning;
+    `ignored` does that only inside dependency/build trees (`node_modules`,
+    `.git`, `dist`, …) and fails the run for any other escaping link;
+    `fail` fails the run for every escaping link. With several connectors
+    on one workspace the strictest value wins; an unknown value counts as
+    `fail`.
 - every run is stored in `gate_runs` and appended to the audit hash chain
   (`gate.run`).
 

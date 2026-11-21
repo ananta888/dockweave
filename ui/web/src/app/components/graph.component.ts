@@ -755,6 +755,14 @@ interface GraphEdge {
                     <label class="wide">Workspace (optional, überschreibt Standard) <input [(ngModel)]="gateWorkspace" name="gateWorkspace" placeholder="/pfad/zum/workspace" /></label>
                     <label><input type="checkbox" [(ngModel)]="gateReview" name="gateReview" /> Review erforderlich</label>
                     <label><input type="checkbox" [(ngModel)]="gateHuman" name="gateHuman" /> Menschliche Freigabe</label>
+                    <label>Symlinks nach außen
+                      <select [(ngModel)]="gateSymlinks" name="gateSymlinks" title="Links, die den Workspace verlassen, werden nie verfolgt">
+                        <option value="">Standard (hash)</option>
+                        <option value="hash">hash – Linktext hashen, nicht in die Sandbox</option>
+                        <option value="ignored">ignored – nur in node_modules/.git/dist … erlaubt</option>
+                        <option value="fail">fail – Lauf abbrechen</option>
+                      </select>
+                    </label>
                   }
                   @if (connKind === 'custom') {
                     <label class="wide">JSON contract <textarea rows="4" [(ngModel)]="connContract" name="connContract"></textarea></label>
@@ -895,6 +903,14 @@ interface GraphEdge {
                     <label class="wide">Workspace (optional) <input [(ngModel)]="ecWorkspace" name="ecWorkspace" placeholder="/pfad/zum/workspace" /></label>
                     <label><input type="checkbox" [(ngModel)]="ecReview" name="ecReview" /> Review erforderlich</label>
                     <label><input type="checkbox" [(ngModel)]="ecHuman" name="ecHuman" /> Menschliche Freigabe</label>
+                    <label>Symlinks nach außen
+                      <select [(ngModel)]="ecSymlinks" name="ecSymlinks" title="Links, die den Workspace verlassen, werden nie verfolgt">
+                        <option value="">Standard (hash)</option>
+                        <option value="hash">hash – Linktext hashen, nicht in die Sandbox</option>
+                        <option value="ignored">ignored – nur in node_modules/.git/dist … erlaubt</option>
+                        <option value="fail">fail – Lauf abbrechen</option>
+                      </select>
+                    </label>
                   }
                   @if (ecKind === 'custom') {
                     <label class="wide">JSON contract <textarea rows="5" [(ngModel)]="ecContract" name="ecContract"></textarea></label>
@@ -1202,6 +1218,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   gateTimeout = 300;
   gateReview = false;
   gateHuman = false;
+  gateSymlinks = '';
   gateWorkspace = '';
   editAvatar = '';
   editAvatarSVG = '';
@@ -1230,6 +1247,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   ecTimeout = 300;
   ecReview = false;
   ecHuman = false;
+  ecSymlinks = '';
   ecWorkspace = '';
   ecContract = '';
   connectOpen = signal(false);
@@ -1642,10 +1660,10 @@ export class GraphComponent implements OnChanges, OnDestroy {
     return JSON.stringify(which === 'add'
       ? [this.connectorAgent()?.id, this.connKind, this.connName, this.connTargetAgent, this.connURL, this.connContract, this.connDirection,
         this.gateExpression, this.gateTrue, this.gateTrueWake, this.gateFalse, this.gateReasonTrue, this.gateReasonFalse,
-        this.gateMaxAge, this.gateCommand, this.gateCwd, this.gateTimeout, this.gateReview, this.gateHuman, this.gateWorkspace]
+        this.gateMaxAge, this.gateCommand, this.gateCwd, this.gateTimeout, this.gateReview, this.gateHuman, this.gateWorkspace, this.gateSymlinks]
       : [this.editConnectorId(), this.ecName, this.ecKind, this.ecDirection, this.ecTarget, this.ecURL, this.ecContract,
         this.ecExpression, this.ecTrue, this.ecTrueWake, this.ecFalse, this.ecReasonTrue, this.ecReasonFalse, this.ecMaxAge,
-        this.ecBudget, this.ecCommand, this.ecCwd, this.ecTimeout, this.ecReview, this.ecHuman, this.ecWorkspace]);
+        this.ecBudget, this.ecCommand, this.ecCwd, this.ecTimeout, this.ecReview, this.ecHuman, this.ecWorkspace, this.ecSymlinks]);
   }
 
   private ensureValidExpression(expr: string, budgetConfigured: boolean, which: string, fn: () => void): void {
@@ -2278,6 +2296,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     this.ecReview = false;
     this.ecHuman = false;
     this.ecWorkspace = '';
+    this.ecSymlinks = '';
     if (c.kind === 'gate' && c.contract) {
       try {
         const g = JSON.parse(c.contract) as {
@@ -2285,7 +2304,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
           reason_true?: string; reason_false?: string; max_age_sec?: number;
           command?: string; cwd?: string; timeout_sec?: number;
           review_required?: boolean; human_approval_required?: boolean;
-          workspace?: string; budget?: unknown;
+          workspace?: string; budget?: unknown; symlink_policy?: string;
         };
         this.ecExpression = g.expression || '';
         // Backwards compatible: free text from older contracts becomes the reason.
@@ -2305,6 +2324,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
         this.ecReview = !!g.review_required;
         this.ecHuman = !!g.human_approval_required;
         this.ecWorkspace = g.workspace || '';
+        this.ecSymlinks = ['hash', 'ignored', 'fail'].includes(g.symlink_policy || '') ? g.symlink_policy || '' : '';
       } catch { /* ignore */ }
     }
   }
@@ -2347,6 +2367,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
         if (this.ecReview) gate['review_required'] = true;
         if (this.ecHuman) gate['human_approval_required'] = true;
         if (this.ecWorkspace.trim()) gate['workspace'] = this.ecWorkspace.trim();
+        if (this.ecSymlinks) gate['symlink_policy'] = this.ecSymlinks;
         contract = JSON.stringify(gate, null, 2);
       }
       return { ...c, name: this.ecName.trim() || c.name, kind: this.ecKind, direction: this.ecDirection,
@@ -2814,6 +2835,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     this.gateReview = false;
     this.gateHuman = false;
     this.gateWorkspace = '';
+    this.gateSymlinks = '';
     this.connectorsOpen.set(true);
     this.loadAgentConfig(a.id);
   }
@@ -2854,6 +2876,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
       if (this.gateReview) contract['review_required'] = true;
       if (this.gateHuman) contract['human_approval_required'] = true;
       if (this.gateWorkspace.trim()) contract['workspace'] = this.gateWorkspace.trim();
+      if (this.gateSymlinks) contract['symlink_policy'] = this.gateSymlinks;
       contractRaw = JSON.stringify(contract, null, 2);
     }
     if (contractRaw) {

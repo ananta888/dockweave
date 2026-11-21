@@ -133,10 +133,23 @@ func (r *Runner) Run(ctx context.Context, req Request) (result *model.GateRun, r
 		run.Reason = "source fingerprint: " + err.Error()
 		return run, nil
 	}
-	if err := copyTree(runCtx, workspace, work); err != nil {
+	// The symlink policy is needed while copying, so it is read from the live
+	// (rooted) config first and must match the snapshot's config afterwards.
+	liveCfg, _, err := readConfigContext(runCtx, workspace)
+	if err != nil {
 		run.Reason = err.Error()
 		run.FinishedAt = time.Now().UTC()
 		return run, nil
+	}
+	omitted, err := copyTree(runCtx, workspace, work, liveCfg.SymlinkPolicy)
+	if err != nil {
+		run.Reason = err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run, nil
+	}
+	if len(omitted) > 0 {
+		run.Warnings = append(run.Warnings, fmt.Sprintf("symlink_policy %s: %d link(s) leaving the workspace hashed but not copied into the sandbox (e.g. %s)",
+			firstNonEmpty(liveCfg.SymlinkPolicy, gatesync.SymlinkHash), len(omitted), omitted[0]))
 	}
 
 	snapshotFP, err := Fingerprint(runCtx, work, r.FingerprintLimits)
@@ -145,17 +158,31 @@ func (r *Runner) Run(ctx context.Context, req Request) (result *model.GateRun, r
 		return run, nil
 	}
 	sourceAfter, err := Fingerprint(runCtx, workspace, r.FingerprintLimits)
-	if err != nil || sourceBefore != snapshotFP || sourceAfter != snapshotFP {
+	expected := sourceAfter
+	if err == nil && len(omitted) > 0 {
+		skip := map[string]bool{}
+		for _, p := range omitted {
+			skip[p] = true
+		}
+		expected, err = fingerprintExcluding(runCtx, workspace, r.FingerprintLimits, skip)
+	}
+	if err != nil || sourceBefore != sourceAfter || expected != snapshotFP {
 		run.Reason = "workspace changed while creating gate snapshot"
 		if err != nil {
 			run.Reason += ": " + err.Error()
 		}
 		return run, nil
 	}
-	run.WorkspaceFingerprint = snapshotFP
+	// Admission compares the live workspace, links included.
+	run.WorkspaceFingerprint = sourceAfter
 	cfg, cfgRaw, err := readConfigContext(runCtx, work)
 	if err != nil {
 		run.Reason = err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run, nil
+	}
+	if cfg.SymlinkPolicy != liveCfg.SymlinkPolicy {
+		run.Reason = "workspace changed while creating gate snapshot: symlink_policy differs"
 		run.FinishedAt = time.Now().UTC()
 		return run, nil
 	}

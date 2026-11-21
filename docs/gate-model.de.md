@@ -160,6 +160,15 @@ Ausdrucksvariable `budget` bleibt unbenutzbar.
     (`go.sum`, `package-lock.json`, `yarn.lock`, `Cargo.lock`, …) und
     Content-Hash-Notationen (`h1:`, `sha512-` …) sind von der
     Entropie-Prüfung ausgenommen, nicht vom Muster-Scan.
+  - `symlink_policy`: was der Gate-Snapshot mit Symlinks macht, die den
+    Workspace verlassen (absolute oder `..`-Ziele). Links werden auf dem
+    Host nie verfolgt und zählen im Fingerabdruck immer über ihren Linktext.
+    `hash` (Standard) lässt sie in der Sandbox weg und vermerkt eine
+    Warnung am Lauf; `ignored` tut das nur in Abhängigkeits-/Build-Bäumen
+    (`node_modules`, `.git`, `dist`, …) und bricht bei jedem anderen
+    ausbrechenden Link ab; `fail` bricht bei jedem ausbrechenden Link ab.
+    Bei mehreren Connectoren auf einem Workspace gilt der strengste Wert;
+    ein unbekannter Wert zählt als `fail`.
 - jeder Lauf landet in `gate_runs` und in der Audit-Hash-Kette (`gate.run`).
 
 ## Pipelines (Agent A → Gate → Agent B)
