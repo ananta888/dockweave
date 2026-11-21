@@ -120,3 +120,47 @@ func TestGateEvidenceNeedsNoTask(t *testing.T) {
 		t.Fatalf("gate evidence without task rejected: inserted=%v err=%v", inserted, err)
 	}
 }
+
+func TestPruneGateRuns(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "registry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	base := time.Now().UTC().Add(-48 * time.Hour)
+
+	save := func(id, ws string, at time.Time) {
+		if err := store.SaveGateRun(ctx, &model.GateRun{
+			ID: id, Workspace: ws, Image: "node:22", Status: model.GatePassed,
+			Gates: 1, Passed: 1, StartedAt: at, FinishedAt: at,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("old-a1", "/ws-a", base.Add(-30*time.Hour))
+	save("old-a2", "/ws-a", base.Add(-20*time.Hour))
+	save("old-a3", "/ws-a", base.Add(-10*time.Hour))
+	save("new-a", "/ws-a", base.Add(24*time.Hour))
+	save("old-b1", "/ws-b", base.Add(-30*time.Hour))
+	save("old-b2", "/ws-b", base.Add(-10*time.Hour))
+	save("new-b", "/ws-b", base.Add(24*time.Hour))
+
+	// Delete runs older than base, keeping the newest 1 per workspace. /ws-a
+	// has 3 old runs, /ws-b has 2, so 2+1 = 3 old runs are removed.
+	n, err := store.PruneGateRuns(ctx, base, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 {
+		t.Fatalf("pruned = %d, want 3", n)
+	}
+	runs, err := store.ListGateRuns(ctx, "", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remaining: 1 kept old + 1 new per workspace = 4.
+	if len(runs) != 4 {
+		t.Fatalf("remaining runs = %d, want 4", len(runs))
+	}
+}

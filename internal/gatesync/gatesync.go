@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,7 +56,14 @@ type Document struct {
 }
 
 // Contract is the JSON stored in Connector.Contract for gate connectors.
+//
+// expression/on_true/on_false are descriptive only: DockWeave currently
+// executes the shell `command` and derives the verdict from its exit code
+// (plus the policy gates). A connector that carries an expression but no
+// command therefore describes intent that is not enforced; Derive surfaces a
+// warning for it rather than silently dropping it.
 type Contract struct {
+	GateID                string   `json:"gate_id"`
 	Expression            string   `json:"expression"`
 	OnTrue                string   `json:"on_true"`
 	OnFalse               string   `json:"on_false"`
@@ -63,6 +71,7 @@ type Contract struct {
 	Cwd                   string   `json:"cwd"`
 	TimeoutSec            int      `json:"timeout_sec"`
 	When                  string   `json:"when"`
+	Workspace             string   `json:"workspace"`
 	ReviewRequired        bool     `json:"review_required"`
 	HumanApprovalRequired bool     `json:"human_approval_required"`
 	RunnerImage           string   `json:"runner_image"`
@@ -79,6 +88,10 @@ type Budget struct {
 	MaxRequestsDay int     `json:"max_requests_day"`
 	MaxTokensDay   int64   `json:"max_tokens_day"`
 	MaxCostDayUSD  float64 `json:"max_cost_day_usd"`
+	// OnUnavailable controls what happens when a budget is configured but the
+	// broker cannot be reached. "fail" (the default) fails the run; "warn"
+	// records a warning and continues.
+	OnUnavailable string `json:"on_unavailable"`
 }
 
 // Config is the Paperclip gates.json shape.
@@ -132,12 +145,57 @@ type Result struct {
 	Warnings      []string `json:"warnings,omitempty"`
 }
 
-// Derive builds the Paperclip config from enabled gate connectors. It never
-// touches the filesystem, which makes it easy to test and preview.
+// Derive builds the Paperclip config for the default workspace (the
+// paperclip.workspace setting). Gate connectors that carry their own
+// `workspace` in the contract are excluded here — use DeriveAll to fan them
+// out to their targets. Derive never touches the filesystem, which makes it
+// easy to test and preview.
 func Derive(doc Document) (Config, []string) {
-	cfg := Config{Version: 1, Gates: []Gate{}}
+	groups, warnings := deriveGroups(doc)
+	key := ""
+	if doc.Paperclip != nil {
+		key = strings.TrimSpace(doc.Paperclip.Workspace)
+	}
+	cfg, ok := groups[key]
+	if !ok || cfg.Gates == nil {
+		cfg = Config{Version: 1, Gates: []Gate{}}
+	}
+	if cfg.Review.Required && cfg.Review.IssueMatch == "" {
+		cfg.Review.IssueMatch = "review"
+	}
+	return cfg, warnings
+}
+
+// DeriveAll returns one config per target workspace (key = absolute workspace
+// path as configured, which the caller canonicalises). The default workspace
+// is the paperclip.workspace setting; per-gate `workspace` overrides win.
+func DeriveAll(doc Document) (map[string]Config, []string) {
+	groups, warnings := deriveGroups(doc)
+	for ws, cfg := range groups {
+		if cfg.Review.Required && cfg.Review.IssueMatch == "" {
+			cfg.Review.IssueMatch = "review"
+		}
+		groups[ws] = cfg
+	}
+	return groups, warnings
+}
+
+// deriveGroups groups enabled gate connectors by their target workspace.
+func deriveGroups(doc Document) (map[string]Config, []string) {
+	defaultWS := ""
+	if doc.Paperclip != nil {
+		defaultWS = strings.TrimSpace(doc.Paperclip.Workspace)
+	}
+	groups := map[string]Config{defaultWS: {Version: 1, Gates: []Gate{}}}
 	var warnings []string
 	seen := map[string]bool{}
+
+	ensure := func(ws string) Config {
+		if cfg, ok := groups[ws]; ok && cfg.Gates != nil {
+			return cfg
+		}
+		return Config{Version: 1, Gates: []Gate{}}
+	}
 
 	for _, c := range doc.Connectors {
 		if !c.Enabled || c.Kind != "gate" {
@@ -150,6 +208,12 @@ func Derive(doc Document) (Config, []string) {
 				continue
 			}
 		}
+		ws := defaultWS
+		if override := strings.TrimSpace(ct.Workspace); override != "" {
+			ws = override
+		}
+		cfg := ensure(ws)
+
 		cfg.Review.Required = cfg.Review.Required || ct.ReviewRequired
 		cfg.HumanApproval.Required = cfg.HumanApproval.Required || ct.HumanApprovalRequired
 		if ct.RunnerImage != "" && cfg.RunnerImage == "" {
@@ -165,20 +229,19 @@ func Derive(doc Document) (Config, []string) {
 
 		command := strings.TrimSpace(ct.Command)
 		if command == "" {
+			if strings.TrimSpace(ct.Expression) != "" {
+				warnings = append(warnings, fmt.Sprintf(
+					"gate %q: expression %q is descriptive only (no command); it is not evaluated", c.Name, ct.Expression))
+			}
+			groups[ws] = cfg
 			continue
 		}
-		id := slug(c.Name)
-		if id == "" {
-			id = slug(c.ID)
-		}
-		if id == "" {
-			id = fmt.Sprintf("gate-%d", len(cfg.Gates)+1)
-		}
+		id := gateID(c, ct, len(cfg.Gates))
 		base := id
-		for n := 2; seen[id]; n++ {
+		for n := 2; seen[ws+"|"+id]; n++ {
 			id = fmt.Sprintf("%s-%d", base, n)
 		}
-		seen[id] = true
+		seen[ws+"|"+id] = true
 
 		when := strings.TrimSpace(ct.When)
 		if when == "" {
@@ -193,17 +256,31 @@ func Derive(doc Document) (Config, []string) {
 			timeout = 300
 		}
 		cfg.Gates = append(cfg.Gates, Gate{ID: id, When: when, Command: command, Cwd: cwd, TimeoutSec: timeout})
+		groups[ws] = cfg
 	}
-
-	if cfg.Review.Required && cfg.Review.IssueMatch == "" {
-		cfg.Review.IssueMatch = "review"
-	}
-	return cfg, warnings
+	return groups, warnings
 }
 
-// Sync derives the config and writes it into the configured workspace. roots
+// gateID derives a stable gate identifier. An explicit gate_id in the contract
+// wins (so renames never change the identity), then the connector name and
+// finally the connector id.
+func gateID(c Connector, ct Contract, fallback int) string {
+	if id := slug(ct.GateID); id != "" {
+		return id
+	}
+	if id := slug(c.Name); id != "" {
+		return id
+	}
+	if id := slug(c.ID); id != "" {
+		return id
+	}
+	return fmt.Sprintf("gate-%d", fallback+1)
+}
+
+// Sync derives the config for the default workspace and writes it. roots
 // restricts where the web gateway may write (the same allowlist as the admin
-// directory browser).
+// directory browser). Prefer SyncAll when gate connectors may target multiple
+// workspaces.
 func Sync(raw []byte, roots []string) Result {
 	var doc Document
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -219,13 +296,57 @@ func Sync(raw []byte, roots []string) Result {
 	if workspace == "" {
 		return Result{Skipped: true, Reason: "no paperclip workspace configured"}
 	}
-
 	canonical, err := validateWorkspace(workspace, roots)
 	if err != nil {
 		return Result{Workspace: workspace, Error: err.Error()}
 	}
-
 	cfg, warnings := Derive(doc)
+	return writeConfig(canonical, cfg, warnings)
+}
+
+// SyncAll derives configs for every target workspace (the default paperclip
+// workspace plus any per-gate `workspace` overrides) and writes each one. It
+// returns one Result per configured workspace.
+func SyncAll(raw []byte, roots []string) []Result {
+	var doc Document
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return []Result{{Error: "graph document is not JSON: " + err.Error()}}
+	}
+	if doc.Paperclip == nil {
+		return []Result{{Skipped: true, Reason: "no paperclip settings in the graph document"}}
+	}
+	if !doc.Paperclip.enabled() {
+		return []Result{{Skipped: true, Reason: "gate sync is disabled"}}
+	}
+	groups, warnings := DeriveAll(doc)
+	workspaces := make([]string, 0, len(groups))
+	for ws := range groups {
+		workspaces = append(workspaces, ws)
+	}
+	sort.Strings(workspaces)
+
+	out := make([]Result, 0, len(workspaces))
+	for _, ws := range workspaces {
+		if strings.TrimSpace(ws) == "" {
+			continue
+		}
+		canonical, err := validateWorkspace(ws, roots)
+		if err != nil {
+			out = append(out, Result{Workspace: ws, Error: err.Error()})
+			continue
+		}
+		out = append(out, writeConfig(canonical, groups[ws], warnings))
+	}
+	if len(out) == 0 {
+		return []Result{{Skipped: true, Reason: "no gate workspace configured"}}
+	}
+	return out
+}
+
+// writeConfig merges into and writes the gates.json for one canonical
+// workspace. It preserves a hand-maintained config on the first sync and
+// clears a DockWeave-generated file when the last gate is removed.
+func writeConfig(canonical string, cfg Config, warnings []string) Result {
 	path := filepath.Join(canonical, filepath.FromSlash(gatesRelPath))
 
 	var existing Config

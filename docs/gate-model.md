@@ -62,6 +62,22 @@ executes the workspace config in a short-lived sandbox:
 - one container per gate, logs truncated to the last 40 lines
 - the image digest is recorded for reproducibility (`runner_image`)
 
+### Phase semantics
+
+The runner accepts `when` values `pre_run`, `after_run` and `post_run` and
+executes them **sequentially in a single pass** inside one `gate run`
+invocation — they order the gates, they do not schedule separate trigger
+points. Today only `after_run` is actually wired into the Paperclip wrapper
+(`gates.py` / `dockweave-run.sh` run the gates after the agent run). Until a
+real pre-/post-run orchestration hook exists, `pre_run` and `post_run` behave
+exactly like `after_run`; an unknown phase is a configuration error.
+
+### Retention
+
+`dockweave gate prune` (daemon endpoint `POST /api/v1/gates/prune`, admin only)
+deletes `gate_runs` older than a cutoff (default 30 days) while always keeping
+the newest runs per workspace (default 20), bounding the audit table's growth.
+
 ### Tamper and policy checks
 
 - protected files (`gates.json`, manifests, lockfiles, test configs, plus

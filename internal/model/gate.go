@@ -55,6 +55,10 @@ type GateReview struct {
 	RecordedAt time.Time `json:"recorded_at"`
 	Conflict   bool      `json:"conflict,omitempty"`
 	Existing   string    `json:"existing,omitempty"`
+	// AssignedReviewer is the identity the issue is assigned to for review,
+	// provided by the Paperclip wrapper. A verdict only counts when it matches
+	// this identity or is recorded by an admin.
+	AssignedReviewer string `json:"assigned_reviewer,omitempty"`
 }
 
 // GateRun records one sandboxed execution of a workspace gate config.

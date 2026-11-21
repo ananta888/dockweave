@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ananta888/dockweave/internal/model"
 )
@@ -126,6 +127,7 @@ func (s *Store) UpsertGateReview(ctx context.Context, review *model.GateReview) 
 		_ = json.Unmarshal([]byte(payload), &body)
 		existing.Actor = body["actor"]
 		existing.Note = body["note"]
+		existing.AssignedReviewer = body["assigned_reviewer"]
 		existing.RecordedAt, _ = parseTS(created)
 		if !strings.EqualFold(existing.Verdict, review.Verdict) {
 			existing.Conflict = true
@@ -151,10 +153,11 @@ func (s *Store) UpsertGateReview(ctx context.Context, review *model.GateReview) 
 		Verified:       verified,
 		IdempotencyKey: key,
 		Payload: map[string]string{
-			"verdict": strings.ToUpper(review.Verdict),
-			"actor":   review.Actor,
-			"note":    review.Note,
-			"source":  "paperclip",
+			"verdict":           strings.ToUpper(review.Verdict),
+			"actor":             review.Actor,
+			"note":              review.Note,
+			"assigned_reviewer": review.AssignedReviewer,
+			"source":            "paperclip",
 		},
 	}
 	inserted, err := s.AddEvidence(ctx, ev)
@@ -225,6 +228,7 @@ func decodeGateReview(issueID, id, status, payload, created string) (*model.Gate
 	_ = json.Unmarshal([]byte(payload), &body)
 	r.Actor = body["actor"]
 	r.Note = body["note"]
+	r.AssignedReviewer = body["assigned_reviewer"]
 	r.RecordedAt, _ = parseTS(created)
 	return r, nil
 }
@@ -243,4 +247,28 @@ func (s *Store) GetGateApproval(ctx context.Context, issueID string) (*model.Gat
 	}
 	a.ApprovedAt, _ = parseTS(approved)
 	return a, nil
+}
+
+// PruneGateRuns deletes gate runs older than olderThan while always keeping the
+// newest keepPerWorkspace runs per workspace. It returns the number of deleted
+// rows. This bounds the growth of the gate_runs table (retention policy).
+func (s *Store) PruneGateRuns(ctx context.Context, olderThan time.Time, keepPerWorkspace int) (int64, error) {
+	if keepPerWorkspace <= 0 {
+		keepPerWorkspace = 20
+	}
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM gate_runs
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id,
+					ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC) AS rn
+				FROM gate_runs
+				WHERE started_at < ?
+			) WHERE rn > ?
+		)`, ts(olderThan), keepPerWorkspace)
+	if err != nil {
+		return 0, fmt.Errorf("prune gate runs: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }

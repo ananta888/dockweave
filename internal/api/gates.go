@@ -111,9 +111,10 @@ func (s *Server) getGateApproval(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createGateReview(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		IssueID string `json:"issue_id"`
-		Verdict string `json:"verdict"`
-		Note    string `json:"note"`
+		IssueID          string `json:"issue_id"`
+		Verdict          string `json:"verdict"`
+		Note             string `json:"note"`
+		AssignedReviewer string `json:"assigned_reviewer"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode review: %w", err))
@@ -125,11 +126,31 @@ func (s *Server) createGateReview(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid", errors.New("issue_id and verdict PASS|FAIL are required"))
 		return
 	}
+
+	// Attribution: a review verdict is only trustworthy when it comes from the
+	// issue's assigned reviewer or from an admin. The Paperclip wrapper verifies
+	// assignment before calling here and passes the assignee; the daemon
+	// re-checks it so a bare peer cannot record an unattributed verdict.
+	role, _ := r.Context().Value(peerRoleKey{}).(Role)
+	reviewer := strings.TrimSpace(body.AssignedReviewer)
+	isAdmin := role == RoleAdmin
+	if reviewer == "" && !isAdmin {
+		writeErr(w, http.StatusForbidden, "forbidden",
+			errors.New("reviews require an assigned reviewer or admin role"))
+		return
+	}
+	if reviewer != "" && !isAdmin && actor(r) != reviewer {
+		writeErr(w, http.StatusForbidden, "forbidden",
+			fmt.Errorf("review for issue %s is assigned to %s, not %s", body.IssueID, reviewer, actor(r)))
+		return
+	}
+
 	review := &model.GateReview{
-		IssueID: body.IssueID,
-		Verdict: body.Verdict,
-		Actor:   actor(r),
-		Note:    strings.TrimSpace(body.Note),
+		IssueID:          body.IssueID,
+		Verdict:          body.Verdict,
+		Actor:            actor(r),
+		Note:             strings.TrimSpace(body.Note),
+		AssignedReviewer: reviewer,
 	}
 	saved, err := s.Store.UpsertGateReview(r.Context(), review)
 	if errors.Is(err, persistence.ErrConflict) {
@@ -179,4 +200,33 @@ func (s *Server) listGateReviews(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"reviews": reviews})
+}
+
+func (s *Server) pruneGateRuns(w http.ResponseWriter, r *http.Request) {
+	role, _ := r.Context().Value(peerRoleKey{}).(Role)
+	if role != RoleAdmin {
+		writeErr(w, http.StatusForbidden, "forbidden", errors.New("only admins may prune gate runs"))
+		return
+	}
+	var body struct {
+		Days             int `json:"days"`
+		KeepPerWorkspace int `json:"keep_per_workspace"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode prune: %w", err))
+		return
+	}
+	if body.Days <= 0 {
+		body.Days = 30
+	}
+	if body.KeepPerWorkspace <= 0 {
+		body.KeepPerWorkspace = 20
+	}
+	n, err := s.Store.PruneGateRuns(r.Context(),
+		time.Now().Add(-time.Duration(body.Days)*24*time.Hour), body.KeepPerWorkspace)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pruned": n})
 }

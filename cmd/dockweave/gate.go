@@ -125,6 +125,7 @@ func gateCmd() *cobra.Command {
 
 	var verdict string
 	var reviewNote string
+	var reviewer string
 	review := &cobra.Command{
 		Use:   "review ISSUE",
 		Short: "Record a review verdict (PASS|FAIL) for an issue, idempotently",
@@ -133,6 +134,7 @@ func gateCmd() *cobra.Command {
 			var out model.GateReview
 			if err := client().Do(context.Background(), "POST", "/api/v1/gates/reviews", map[string]any{
 				"issue_id": args[0], "verdict": verdict, "note": reviewNote,
+				"assigned_reviewer": reviewer,
 			}, &out); err != nil {
 				return err
 			}
@@ -146,6 +148,7 @@ func gateCmd() *cobra.Command {
 	}
 	review.Flags().StringVar(&verdict, "verdict", "", "PASS or FAIL")
 	review.Flags().StringVar(&reviewNote, "note", "", "review note")
+	review.Flags().StringVar(&reviewer, "assignee", "", "identity the review issue is assigned to")
 	_ = review.MarkFlagRequired("verdict")
 
 	var reviewLimit int
@@ -171,6 +174,31 @@ func gateCmd() *cobra.Command {
 	}
 	reviews.Flags().IntVar(&reviewLimit, "limit", 20, "maximum number of reviews")
 
-	cmd.AddCommand(run, runs, approve, approval, review, reviews)
+	var pruneDays int
+	var pruneKeep int
+	prune := &cobra.Command{
+		Use:   "prune",
+		Short: "Delete old gate runs (retention)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			var out struct {
+				Pruned int64 `json:"pruned"`
+			}
+			if err := client().Do(context.Background(), "POST", "/api/v1/gates/prune", map[string]any{
+				"days": pruneDays, "keep_per_workspace": pruneKeep,
+			}, &out); err != nil {
+				return err
+			}
+			if jsonOut {
+				printJSON(out)
+				return nil
+			}
+			fmt.Printf("pruned %d gate run(s)\n", out.Pruned)
+			return nil
+		},
+	}
+	prune.Flags().IntVar(&pruneDays, "days", 30, "delete runs older than this many days")
+	prune.Flags().IntVar(&pruneKeep, "keep", 20, "keep this many runs per workspace")
+
+	cmd.AddCommand(run, runs, approve, approval, review, reviews, prune)
 	return cmd
 }

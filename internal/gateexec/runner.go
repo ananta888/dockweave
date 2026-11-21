@@ -208,9 +208,7 @@ gateLoop:
 			run.Diff.OutOfScope = outOfScope(changed, cfg.AllowPaths)
 		}
 		if cfg.DenyNewDependencies {
-			beforePkg, _ := os.ReadFile(filepath.Join(workspace, "package.json"))
-			afterPkg, _ := os.ReadFile(filepath.Join(work, "package.json"))
-			run.Diff.NewDependencies = newDependencies(beforePkg, afterPkg)
+			run.Diff.NewDependencies = newDependenciesAcrossManifests(workspace, work)
 		}
 		if cfg.SecretScan {
 			run.Diff.Secrets = scanSecrets(work, changed)
@@ -344,11 +342,17 @@ func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *mode
 	}
 	if r.Broker == nil {
 		out.Reason = "budget check unavailable: broker not configured"
+		if !budgetWarnOnly(budget) {
+			out.Exceeded = true
+		}
 		return out
 	}
 	usage, err := r.Broker.Usage(ctx, budget.GrantID)
 	if err != nil {
 		out.Reason = "budget check unavailable: " + err.Error()
+		if !budgetWarnOnly(budget) {
+			out.Exceeded = true
+		}
 		return out
 	}
 	out.RequestsDay = usage.RequestsDay
@@ -368,8 +372,14 @@ func (r *Runner) checkBudget(ctx context.Context, budget *gatesync.Budget) *mode
 	return out
 }
 
-func (r *Runner) record(ctx context.Context, run *model.GateRun) {
-	if r.Store != nil {
+// budgetWarnOnly reports whether a configured budget should degrade to a
+// warning instead of failing the run when the broker is unreachable. The
+// default is fail-closed.
+func budgetWarnOnly(budget *gatesync.Budget) bool {
+	return budget != nil && strings.EqualFold(strings.TrimSpace(budget.OnUnavailable), "warn")
+}
+
+func (r *Runner) record(ctx context.Context, run *model.GateRun) {	if r.Store != nil {
 		if err := r.Store.SaveGateRun(context.Background(), run); err != nil && r.Logger != nil {
 			r.Logger.Warn("save gate run failed", "error", err)
 		}

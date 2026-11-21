@@ -17,6 +17,26 @@ func TestNewDependencies(t *testing.T) {
 	}
 }
 
+func TestNewDependenciesAcrossManifests(t *testing.T) {
+	before := t.TempDir()
+	after := t.TempDir()
+	write := func(dir, name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(before, "package.json", `{"dependencies":{"a":"1"}}`)
+	write(after, "package.json", `{"dependencies":{"a":"1","c":"2"}}`)
+	write(before, "go.mod", "module example.com/x\n\nrequire github.com/x/y v1.0.0\n")
+	write(after, "go.mod", "module example.com/x\n\nrequire (\n\tgithub.com/x/y v1.0.0\n\tgithub.com/new/dep v2.0.0\n)\n")
+
+	got := newDependenciesAcrossManifests(before, after)
+	want := []string{"go.mod: github.com/new/dep", "package.json: c"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("newDependenciesAcrossManifests = %v, want %v", got, want)
+	}
+}
+
 func TestOutOfScope(t *testing.T) {
 	changed := []string{"src/a.ts", "src/b.ts", "README.md", "package.json"}
 	if got := outOfScope(changed, []string{"src/"}); !reflect.DeepEqual(got, []string{"README.md", "package.json"}) {

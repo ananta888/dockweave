@@ -184,6 +184,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/gates/reviews", s.createGateReview)
 	s.mux.HandleFunc("GET /api/v1/gates/reviews", s.listGateReviews)
 	s.mux.HandleFunc("GET /api/v1/gates/reviews/{issue}", s.getGateReview)
+	s.mux.HandleFunc("POST /api/v1/gates/prune", s.pruneGateRuns)
 	s.mux.HandleFunc("GET /api/v1/objectives", s.listObjectives)
 	s.mux.HandleFunc("POST /api/v1/objectives", s.createObjective)
 	s.mux.HandleFunc("PATCH /api/v1/objectives/{id}", s.updateObjective)
