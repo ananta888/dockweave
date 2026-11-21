@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 80.0,
+      "progress_percent": 87.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2014,10 +2014,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Neue Pipeline- und Gate-CLI-Befehle über reale Prozessaufrufe testen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 30,
+      "progress_percent": 100,
       "description": "Pipeline-CLI, blockierter Exit-Code 3 und neue Gate-Flags sind vorhanden, direkte Tests im CLI-Paket fehlen. Die SDK-Happy-Path-Tests beweisen weder Prozess-Exit noch stdout/stderr-Verhalten.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2068,11 +2068,10 @@
         "Neue CLI-Tests im bestehenden cmd/dockweave-Paket ergänzen; os.Exit-Pfade in Kindprozessen testen, nicht durch zufälligen Abbruch des Testprozesses."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "stdout/stderr nicht getrennt geprüft",
-          "status/admission-Alias, Filter, Sonderzeichen fehlen",
-          "Override-Validierung, single-use/TTL, ungültige Werte, review --assignee, prune fehlen"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: cmd/dockweave/pipeline_process_test.go (Exit 0/3/1, gate --phase/--upstream-agent, Workspace-Escaping) und pipeline_cli_contract_test.go als echte Subprozesse gegen protokollierenden Unix-Socket: stdout reines JSON / Fehler auf stderr mit leerem stdout, Einzel-/Sammel-Status, admission-Alias, list/overrides-Filter, Sonderzeichen, Override ohne Gate/Grund ohne Request, Defaults single_use=true ttl 900, --reusable/--ttl, ungültige --ttl ohne Request, Serverablehnung, review --assignee/--verdict-Pflicht, prune --days/--keep inkl. Fehlerantwort, ungültiges --timeout."
         ]
       }
     },
@@ -3117,11 +3116,11 @@
     "by_status": {
       "todo": 2,
       "in_progress": 0,
-      "partial": 38,
+      "partial": 37,
       "blocked": 0,
-      "done": 5
+      "done": 6
     },
-    "progress_percent_done": 11.11,
+    "progress_percent_done": 13.33,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3166,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 38,
+    "partial": 37,
     "blocked": 0,
-    "done": 5
+    "done": 6
   },
   "evidence_summary": {
     "by_level": {
