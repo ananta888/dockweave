@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 58.33,
+      "progress_percent": 62.5,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 61.0,
+      "progress_percent": 63.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -265,7 +265,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 40,
+      "progress_percent": 65,
       "description": "pushGraph übernimmt nach HTTP 409 nur die nachgeladene Revision. Das weiterhin veraltete lokale Gesamtdokument kann beim nächsten Autosave mit dieser gültigen Revision fremde Änderungen überschreiben.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -302,12 +302,12 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Nach 'Serverstand laden' überschreibt persistRecovery() den Vor-Konflikt-Entwurf",
           "Kein Zwei-Client-Browsertest, kein Reload-und-Speichern-Test",
           "Tests prüfen keine gespeicherten Connectoren/Positionen/Kanten"
         ],
         "resolved": [
-          "2026-11-21: Konflikt-e2e-Test grün nach Selektor-Korrektur"
+          "2026-11-21: Konflikt-e2e-Test grün nach Selektor-Korrektur",
+          "2026-11-21: Konflikt-Entwurf wird bei 'Serverstand laden' eingefroren (dockweave.graphConflictDraft) und von späteren Änderungen nicht überschrieben; explizite Auflösung 'Entwurf übernehmen' (speichert auf bestätigter Server-Revision) / 'Entwurf verwerfen'; e2e 'a conflict draft survives later edits and can be restored onto the server revision'"
         ]
       }
     },
@@ -1516,7 +1516,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 75,
       "description": "Ein 400-ms-Debounce verhindert keine überlappenden PUTs. Ein verzögerter initialer GET kann neuere lokale Änderungen überschreiben; Nicht-409-Speicherfehler werden ignoriert und ngOnDestroy verwirft einen noch ausstehenden Save-Timer.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -1562,12 +1562,11 @@
         "verdict": "partial",
         "remaining_gaps": [
           "Kein Reload-/Navigationstest",
-          "Entwurf nur exportierbar, nicht wiederherstellbar",
-          "Kein 500-/Netzwerk-Retry-Test",
-          "pending/error/conflict teilen das Label 'ungespeicherte Änderungen'"
+          "Kein 500-/Netzwerk-Retry-Test"
         ],
         "resolved": [
-          "2026-11-21: e2e-Tests suchten das Workspace-Feld unter 'Ports & Schema' (liegt im Connector-Popover) – korrigiert; alle 9 Pipeline-e2e-Tests grün"
+          "2026-11-21: e2e-Tests suchten das Workspace-Feld unter 'Ports & Schema' (liegt im Connector-Popover) – korrigiert; alle 9 Pipeline-e2e-Tests grün",
+          "2026-11-21: Entwurf wiederherstellbar ('Entwurf übernehmen'); eigene Statuslabels für Fehler ('Speichern fehlgeschlagen') und Konflikt ('Konflikt mit dem Serverstand')"
         ]
       }
     },

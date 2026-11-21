@@ -282,3 +282,41 @@ test('validation server failures do not save an unverified expression', async ({
   await expect(page.locator('.notice.error').filter({ hasText: 'Ausdruck nicht verifiziert' })).toBeVisible();
   expect(m.puts).toHaveLength(0);
 });
+
+test('a conflict draft survives later edits and can be restored onto the server revision', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  await page.route('**/graph', async route => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    const body = route.request().postDataJSON();
+    m.puts.push(body);
+    if (m.puts.length === 1) return route.fulfill({ status: 409, contentType: 'application/json', body: '{"error":"revision conflict"}' });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body, revision: body.revision + 1 }) });
+  });
+  await openGraph(page);
+  const draftKey = () => page.evaluate(() => JSON.parse(localStorage.getItem('dockweave.graphConflictDraft') || 'null')?.paperclip?.workspace);
+  let input = await workspaceInput(page);
+  await input.fill('/mine');
+  await expect(page.locator('.graph-save-status')).toContainText('Konflikt mit dem Serverstand');
+  await closeSettings(page);
+  await page.getByRole('button', { name: 'Serverstand laden', exact: true }).click();
+  await expect(page.locator('.graph-save-status')).toContainText('gespeichert');
+  expect(await draftKey()).toBe('/mine');
+
+  // A later edit is autosaved normally but never overwrites the frozen draft.
+  input = await workspaceInput(page);
+  await expect(input).toHaveValue('/ws');
+  await input.fill('/later');
+  await expect.poll(() => m.puts.length).toBe(2);
+  await expect(page.locator('.graph-save-status')).toContainText('gespeichert');
+  expect(await draftKey()).toBe('/mine');
+  await closeSettings(page);
+
+  // Explicit "keep mine": saved on top of the confirmed server revision.
+  await page.getByRole('button', { name: 'Entwurf übernehmen', exact: true }).click();
+  await expect.poll(() => m.puts.length).toBe(3);
+  expect(m.puts[2]).toMatchObject({ revision: 2, paperclip: { workspace: '/mine' } });
+  await expect(page.locator('.graph-save-status')).toContainText('gespeichert');
+  expect(await draftKey()).toBeUndefined();
+  await expect(page.getByRole('button', { name: 'Entwurf übernehmen' })).toHaveCount(0);
+});

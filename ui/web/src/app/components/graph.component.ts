@@ -149,11 +149,15 @@ interface GraphEdge {
       </div>
 
         <div class="notice graph-save-status" role="status">
-          Graph: {{ graphSaveState() === 'saved' ? 'gespeichert' : graphSaveState() === 'saving' ? 'wird gespeichert' : graphSaveState() === 'loading' ? 'wird geladen' : 'ungespeicherte Änderungen' }}
+          Graph: {{ saveStateLabel() }}
           @if (graphSaveError()) { <span role="alert">{{ graphSaveError() }}</span> }
           @if (graphSaveState() === 'error') { <button class="small" (click)="retryGraphSave()">Speichern erneut versuchen</button> }
           @if (graphSaveState() === 'conflict') { <button class="small" (click)="loadGraph(true)">Serverstand laden</button> }
-          @if (recoveryAvailable()) { <button class="small" (click)="exportRecovery()">Lokalen Entwurf exportieren</button> }
+          @if (recoveryAvailable() || conflictDraftAvailable()) { <button class="small" (click)="exportRecovery()">Lokalen Entwurf exportieren</button> }
+          @if (conflictDraftAvailable() && graphSaveState() === 'saved') {
+            <button class="small" (click)="restoreConflictDraft()" title="Ersetzt den Serverstand durch den gesicherten Entwurf (neue Revision)">Entwurf übernehmen</button>
+            <button class="small" (click)="discardConflictDraft()">Entwurf verwerfen</button>
+          }
         </div>
         @if (pipelineError()) { <div class="notice warn" role="status">{{ pipelineError() }}</div> }
         @if (pipelineSync()?.error) {
@@ -1280,6 +1284,14 @@ export class GraphComponent implements OnChanges, OnDestroy {
   readonly graphSaveState = signal<'loading' | 'pending' | 'saving' | 'saved' | 'conflict' | 'error'>('loading');
   readonly graphSaveError = signal('');
   readonly recoveryAvailable = signal(false);
+  /** Draft frozen when the user chose "Serverstand laden" after a conflict;
+   *  later edits never overwrite it (unlike the autosave recovery entry). */
+  readonly conflictDraftAvailable = signal(false);
+  private readonly conflictDraftKey = 'dockweave.graphConflictDraft';
+  readonly saveStateLabel = computed(() => ({
+    saved: 'gespeichert', saving: 'wird gespeichert', loading: 'wird geladen', pending: 'ungespeicherte Änderungen',
+    error: 'Speichern fehlgeschlagen', conflict: 'Konflikt mit dem Serverstand',
+  } as Record<string, string>)[this.graphSaveState()] ?? 'ungespeicherte Änderungen');
   readonly syncBusy = signal(false);
   private readonly recoveryKey = 'dockweave.graphRecovery';
 
@@ -1355,7 +1367,13 @@ export class GraphComponent implements OnChanges, OnDestroy {
 
   loadGraph(discard = false): void {
     if (this.saveInFlight) return;
-    if (discard && this.editVersion !== this.savedVersion) this.persistRecovery();
+    if (discard && this.editVersion !== this.savedVersion) {
+      this.persistRecovery();
+      try {
+        localStorage.setItem(this.conflictDraftKey, JSON.stringify(this.graphDocument()));
+        this.conflictDraftAvailable.set(true);
+      } catch { this.graphSaveError.set('Entwurf konnte lokal nicht gesichert werden. Bitte vor dem Laden exportieren.'); return; }
+    }
     this.graphLoaded = false;
     this.graphSaveState.set('loading');
     const startedVersion = this.editVersion;
@@ -1375,7 +1393,10 @@ export class GraphComponent implements OnChanges, OnDestroy {
         this.savedVersion = this.editVersion;
         this.graphSaveState.set('saved');
         this.graphSaveError.set('');
-        try { this.recoveryAvailable.set(localStorage.getItem(this.recoveryKey) !== null); }
+        try {
+          this.recoveryAvailable.set(localStorage.getItem(this.recoveryKey) !== null);
+          this.conflictDraftAvailable.set(localStorage.getItem(this.conflictDraftKey) !== null);
+        }
         catch { this.graphSaveError.set('Lokale Wiederherstellung nicht verfügbar.'); }
         this.loadGateSyncStatus();
         this.loadGateHealth();
@@ -1404,9 +1425,26 @@ export class GraphComponent implements OnChanges, OnDestroy {
     } catch { this.graphSaveError.set('Entwurf konnte lokal nicht gesichert werden. Bitte vor dem Verlassen exportieren.'); }
   }
 
+  /** Explicit conflict resolution "keep mine": apply the frozen draft on top
+   *  of the freshly loaded server revision and save it as a new revision. */
+  restoreConflictDraft(): void {
+    let draft: Record<string, unknown> | null = null;
+    try { draft = JSON.parse(localStorage.getItem(this.conflictDraftKey) || 'null'); }
+    catch { this.graphSaveError.set('Gesicherter Entwurf ist nicht lesbar; bitte exportieren.'); return; }
+    if (!draft || typeof draft !== 'object' || Array.isArray(draft)) { this.discardConflictDraft(); return; }
+    this.applyGraph({ saved: true, body: draft, revision: this.graphRevision } as GraphDocumentResponse);
+    this.discardConflictDraft();
+    this.scheduleGraphSave();
+  }
+
+  discardConflictDraft(): void {
+    try { localStorage.removeItem(this.conflictDraftKey); } catch { /* ignore */ }
+    this.conflictDraftAvailable.set(false);
+  }
+
   exportRecovery(): void {
     let raw: string | null = null;
-    try { raw = localStorage.getItem(this.recoveryKey); }
+    try { raw = localStorage.getItem(this.conflictDraftKey) ?? localStorage.getItem(this.recoveryKey); }
     catch { this.graphSaveError.set('Lokale Wiederherstellung nicht verfügbar; aktueller Entwurf wird exportiert.'); }
     const url = URL.createObjectURL(new Blob([raw ?? JSON.stringify(this.graphDocument(), null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
