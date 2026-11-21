@@ -27,6 +27,22 @@ type Store interface {
 	ConsumePipelineOverridesAudited(ctx context.Context, ids []string, at time.Time, actor, issue string) error
 }
 
+// retentionStore is optionally implemented by stores that record retention.
+type retentionStore interface {
+	GateHistoryPrunedAt(ctx context.Context, workspace string) (time.Time, bool, error)
+}
+
+// prunedAt is best effort: it only changes the message of a block that
+// happens anyway, so a lookup error is ignored.
+func (e *Evaluator) prunedAt(workspace string) (time.Time, bool) {
+	rs, ok := e.Store.(retentionStore)
+	if !ok {
+		return time.Time{}, false
+	}
+	at, ok, err := rs.GateHistoryPrunedAt(context.Background(), workspace)
+	return at, ok && err == nil
+}
+
 // FingerprintFunc computes the current fingerprint of a canonical workspace.
 type FingerprintFunc func(ctx context.Context, workspace string) (string, error)
 
@@ -274,7 +290,12 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 	}
 	run := relevantRun(runs, edge.GateID)
 	if run == nil {
-		return block(model.AdmitNoRun, fmt.Sprintf("gate %q has no run in %s yet", edge.GateID, edge.Workspace))
+		msg := fmt.Sprintf("gate %q has no run in %s yet", edge.GateID, edge.Workspace)
+		if at, ok := e.prunedAt(edge.Workspace); ok {
+			msg = fmt.Sprintf("gate %q has no run in %s; retention removed runs of this workspace up to %s, so earlier evidence may be gone; run the gate again",
+				edge.GateID, edge.Workspace, at.Format(time.RFC3339))
+		}
+		return block(model.AdmitNoRun, msg)
 	}
 	ae.RunID = run.ID
 	ae.RunStatus = string(run.Status)

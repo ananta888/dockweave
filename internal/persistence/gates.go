@@ -299,18 +299,54 @@ func (s *Store) PruneGateRuns(ctx context.Context, olderThan time.Time, keepPerW
 	if keepPerWorkspace <= 0 {
 		keepPerWorkspace = 20
 	}
-	res, err := s.db.ExecContext(ctx, `
-		DELETE FROM gate_runs
-		WHERE id IN (
-			SELECT id FROM (
-				SELECT id, started_at,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("prune gate runs begin: %w", err)
+	}
+	defer tx.Rollback()
+	const candidates = `
+			SELECT id, workspace, started_at FROM (
+				SELECT id, workspace, started_at,
 					ROW_NUMBER() OVER (PARTITION BY workspace ORDER BY started_at DESC, id DESC) AS rn
 				FROM gate_runs
-			) WHERE rn > ? AND started_at < ?
-	)`, keepPerWorkspace, gateTS(olderThan))
+			) WHERE rn > ? AND started_at < ?`
+	// Remember per workspace up to when evidence was deleted, so a missing
+	// run can be reported as retention loss instead of "never ran" (RF-015).
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO meta(key, value)
+		SELECT ?||workspace, max(started_at) FROM (`+candidates+`) WHERE true GROUP BY workspace
+		ON CONFLICT(key) DO UPDATE SET value = max(value, excluded.value)`,
+		gateHistoryPrunedKey, keepPerWorkspace, gateTS(olderThan)); err != nil {
+		return 0, fmt.Errorf("record gate retention: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM gate_runs WHERE id IN (SELECT id FROM (`+candidates+`))`,
+		keepPerWorkspace, gateTS(olderThan))
 	if err != nil {
 		return 0, fmt.Errorf("prune gate runs: %w", err)
 	}
 	n, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("prune gate runs commit: %w", err)
+	}
 	return n, nil
+}
+
+const gateHistoryPrunedKey = "gate_history_pruned:"
+
+// GateHistoryPrunedAt reports the start time of the newest gate run that
+// retention deleted for the workspace (ok=false if none was ever deleted).
+func (s *Store) GateHistoryPrunedAt(ctx context.Context, workspace string) (time.Time, bool, error) {
+	var v string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, gateHistoryPrunedKey+workspace).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read gate retention: %w", err)
+	}
+	t, err := parseTS(v)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("parse gate retention: %w", err)
+	}
+	return t, true, nil
 }

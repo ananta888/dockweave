@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 90.42,
+      "progress_percent": 92.08,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -1045,10 +1045,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Neuesten relevanten Gate-Lauf ohne Verlust durch ein starres Suchfenster bestimmen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "Die Admission betrachtet standardmäßig 200 Workspace-Läufe; RecentGateRuns holt höchstens 500 vor der fachlichen Auswahl. Viele irrelevante Phasenläufe können den letzten weiterhin gültigen relevanten Run aus diesem Fenster verdrängen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1092,9 +1092,10 @@
         "go test ./internal/persistence ./internal/pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Retention-Verlust wird als AdmitNoRun gemeldet, nicht unterscheidbar von 'nie gelaufen'"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: PruneGateRuns merkt sich transaktional pro Workspace den Zeitpunkt der neuesten gelöschten Läufe (meta gate_history_pruned:<ws>); Admission bleibt no_run (sperrt), meldet aber Retention-Verlust ausdrücklich (TestRetentionLossIsReportedDistinctly, vorher gescheitert); >500 irrelevante Läufe verdecken den relevanten nicht (TestRelevantGateLookupSurvivesUnrelatedHistoryAndRetention); indizierte LIMIT-1-Abfrage."
         ]
       }
     },
@@ -3121,11 +3122,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 28,
+      "partial": 27,
       "blocked": 0,
-      "done": 16
+      "done": 17
     },
-    "progress_percent_done": 35.56,
+    "progress_percent_done": 37.78,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3170,9 +3171,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 28,
+    "partial": 27,
     "blocked": 0,
-    "done": 16
+    "done": 17
   },
   "evidence_summary": {
     "by_level": {
