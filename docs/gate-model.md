@@ -29,6 +29,7 @@ Paperclip.
 | Tamper detection of gate/test files | no | yes |
 | Diff scope, dependency and secret policy | no | yes |
 | Review PASS attribution | transport (comments/interactions), assignment check | audit record (admin peer), assignee stored as metadata |
+| Pipeline gate → agent (admission, freshness, override) | wake/rework transport (wrapper) | edges, admission, enforcement at the endpoint, audit |
 | Human approval role | transport (interaction) | OIDC role + audit |
 | Audit chain | no | yes |
 
@@ -64,13 +65,20 @@ executes the workspace config in a short-lived sandbox:
 
 ### Phase semantics
 
-The runner accepts `when` values `pre_run`, `after_run` and `post_run` and
-executes them **sequentially in a single pass** inside one `gate run`
-invocation — they order the gates, they do not schedule separate trigger
-points. Today only `after_run` is actually wired into the Paperclip wrapper
-(`gates.py` / `dockweave-run.sh` run the gates after the agent run). Until a
-real pre-/post-run orchestration hook exists, `pre_run` and `post_run` behave
-exactly like `after_run`; an unknown phase is a configuration error.
+The runner accepts `when` values `pre_run`, `after_run` and `post_run`.
+Without a phase selection one `gate run` executes all phases sequentially
+(`pre_run`, then `after_run`, then `post_run`). A caller can restrict a run
+to explicit phases (`dockweave gate run --phase pre_run`, API field
+`phases`); the run records them in `phases`. An unknown phase is a
+configuration error.
+
+The Paperclip wrapper uses real trigger points:
+
+- `pre_run` gates run **before** the agent gets its task. A failing `pre_run`
+  gate prevents the agent run (fail-closed) and re-queues the issue. Without
+  `pre_run` gates the run is skipped.
+- `after_run` and `post_run` gates run together **after** an agent reported
+  `STATUS: DONE`, with the agent recorded as upstream.
 
 ### Retention
 
@@ -83,22 +91,34 @@ workspace without recent runs therefore keeps its newest N old runs.
 
 ### Gate expressions
 
-A gate may carry an `expression` plus optional `on_true`/`on_false` texts.
-After the command has run, the runner evaluates the expression
-deterministically:
+A gate may carry an `expression`, routing actions `on_true`/`on_false` and
+the verdict texts `reason_true`/`reason_false`. After the command has run,
+the runner evaluates the expression deterministically:
 
 | Variable | Type | Meaning |
 |---|---|---|
 | `command`, `exit` | int | exit code of the gate command |
 | `budget` | float | the day's cost in USD from the broker usage snapshot |
 
-Operators: `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!`, unary `-` and
-parentheses; a bare value counts as true when non-zero.
+Literals: numbers, `true` (1) and `false` (0). Operators: `==`, `!=`, `<`,
+`<=`, `>`, `>=`, `&&`, `||`, `!`, unary `-` and parentheses; a bare value
+counts as true when non-zero. Both sides of `&&`/`||` are always evaluated,
+so an unavailable `budget` fails the expression even where short-circuiting
+would skip it.
 
-- Without an expression the exit code decides (0 = passed).
+- Without an expression the exit code decides (0 = passed). New gates in the
+  editor start without an expression; documents with the old default
+  `expression: "true"` keep working.
 - With an expression, **its result replaces the exit-code verdict**:
-  `command != 0` can express an expected failure. `on_true` becomes the reason
-  on pass, `on_false` on failure.
+  `command != 0` can express an expected failure. `reason_true` becomes the
+  reason on pass, `reason_false` on failure.
+- `on_true`/`on_false` are routing actions (ADR 0002): `allow`, `deny`,
+  `wake:<agent-id>`, `rework`; defaults `allow`/`deny`. A legacy free-text
+  value still works as the reason (unless `reason_*` is set), the default
+  action applies and the graph sync warns.
+- The editor validates expressions before saving
+  (`POST /graph/validate-expression`, `gateexec.Validate`) and warns when an
+  expression reads `budget` without a configured budget.
 - An invalid expression ends the gate with status `error`.
 - `budget` is fail-closed: if no budget is configured for the workspace, or
   the broker could not be queried, an expression that references `budget`
@@ -136,6 +156,48 @@ variable stays unusable.
     scan.
 - every run is stored in `gate_runs` and appended to the audit hash chain
   (`gate.run`).
+
+## Pipelines (agent A → gate → agent B)
+
+A gate connector with a target agent (`targetAgentId`, `proceed` edge in the
+2D graph) makes the target a **downstream agent**: it only takes pipeline
+work while the gate's latest relevant run passed on exactly the current
+workspace content. Decision record: `docs/adr/0002-pipeline-enforcement.md`.
+
+- **Model:** the web gateway derives the edges on every save
+  (`gatesync.DerivePipeline`) and pushes them with the graph revision to the
+  daemon (`PUT /api/v1/pipelines`, admin). The daemon stores them in
+  `pipeline_edges`, validates agents and canonical workspaces (allowed
+  roots), replaces the set atomically and never lets an older revision win.
+  A failed push keeps the graph and shows `pipeline_sync.error` in the UI.
+- **Admission:** `GET /api/v1/pipelines/admission?agent=<id|name>` (also
+  `GET /api/v1/agents/{id}/pipeline`, `dockweave pipeline status`). Every
+  incoming edge must be satisfied; an agent without edges is always allowed.
+- **Reasons:** `ok`, `override`, `no_run`, `failed`, `error`, `stale`,
+  `expired`, `tamper`, `fingerprint_unavailable`, `unknown_gate`, `denied`,
+  `internal` — each with gate id, run id and message.
+- **Freshness:** every run stores a `workspace_fingerprint` (SHA-256 over
+  paths and contents of the sandbox copy, same ignored trees as the diff).
+  The admission recomputes it on the live workspace; any change means
+  `stale`. Runs from before migration 17 have no fingerprint and are never
+  fresh. Limits: 100 000 files, 2 GiB, 60 s — beyond that
+  `fingerprint_unavailable` (blocked). Optional `max_age_sec` per gate.
+- **Enforcement:** `POST /v1/chat/completions` and the herdr prompt check the
+  admission before the agent is driven; a blocked agent gets `409` with
+  `code: pipeline_blocked`, the reasons and the action. Interactive terminal
+  sessions are not affected. The Paperclip wrapper asks the admission before
+  each turn as well and reports a block on the issue.
+- **Routing:** the admission returns the applicable action per edge (`on_true`
+  when passed, `on_false` when failed, `deny` otherwise). The wrapper wakes
+  released agents (`allow`, `wake:<agent>`) and opens one rework issue per
+  gate run for `rework`.
+- **Override:** `dockweave pipeline override <agent> --gate <id> --reason …`
+  (`POST /api/v1/pipelines/override`, admin): mandatory reason, 15 minutes by
+  default (max. 24 h), single use unless `--reusable`. Audited as
+  `pipeline.override` and `pipeline.override_used`. Never applies to
+  `tamper`.
+- **Audit:** `pipeline.update` (push), `pipeline.blocked` (rate-limited to
+  one event per agent, issue and reason set per minute).
 
 ## Configuration
 
@@ -213,3 +275,10 @@ in the contract keeps the gate identity across renames.
   `budget`: the gate ends with status `error`.
 - Tamper, scope, dependency or secret violation: the run fails even if the
   command exited 0.
+- Pipeline admission: an unreadable database, missing run, missing or
+  uncomputable fingerprint, unknown gate or any internal error blocks the
+  downstream agent; it is never allowed by default. The wrapper treats an
+  unreachable daemon or an invalid answer as blocked, and an unconfirmed gate
+  result after `STATUS: DONE` keeps the issue open.
+- `blocked-check.py`: a failing or unreadable Paperclip lookup counts as
+  blocked unless `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN=1` is set.

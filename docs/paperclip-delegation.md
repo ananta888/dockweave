@@ -63,8 +63,8 @@ dockweave-run.sh lead orchestrate
   session, so parallel runs of the same agent would interleave answers.
 - Agent run keys are scoped to the running agent; waking another agent falls
   back to the local board identity.
-- All roles work in the same registered workspace (default
-  `/workspace/crystal-run`); the wrapper repeats the workspace path and the
+- All roles work in the same registered workspace
+  (`DOCKWEAVE_PAPERCLIP_WORKSPACE`, default `/workspace`); the wrapper repeats the workspace path and the
   "no parallel writes to the same file" rule in every child issue.
 
 ## Gates
@@ -109,7 +109,7 @@ The graph document carries a `paperclip` block:
 ```json
 {
   "paperclip": {
-    "workspace": "/home/krusty/projects/crystal-run",
+    "workspace": "/srv/projects/app",
     "syncGates": true
   }
 }
@@ -120,10 +120,14 @@ ones:
 
 ```json
 {
-  "expression": "npm run build == 0",
-  "on_true": "STATUS: DONE",
-  "on_false": "in_progress",
+  "gate_id": "build",
   "command": "npm run build",
+  "expression": "command == 0",
+  "on_true": "allow",
+  "on_false": "rework",
+  "reason_true": "build green",
+  "reason_false": "build red, please fix",
+  "max_age_sec": 3600,
   "cwd": ".",
   "timeout_sec": 300,
   "review_required": true,
@@ -152,6 +156,46 @@ Safety rules:
   last gate is removed
 - a failed sync never fails the graph save: the result is returned as `gates`
   in the `PUT /graph` response and shown in the UI
+- the same save derives the pipeline edges and pushes them to the daemon; the
+  outcome is returned as `pipeline_sync` (`pushed`, `edges`, `warnings`,
+  `error`)
 
 The sync runs on the web gateway, which is the path used by the Angular app.
 `PUT /api/v1/graph` on the daemon only stores the document.
+
+## Pipeline: agent A → gate → agent B
+
+A gate connector with a target agent (`targetAgentId`, drawn as a `proceed`
+edge) releases agent B only after agent A's work passed the gate on the
+current workspace content (ADR 0002, `docs/gate-model.md` "Pipelines").
+
+1. **A works.** Before every turn `dockweave-run.sh` runs `pre_run` gates
+   (if any) and asks `pipeline.py precheck <agent>`; A has no incoming edge
+   and is allowed.
+2. **A reports `STATUS: DONE`.** The wrapper runs the `after_run`/`post_run`
+   gates in the sandbox with A as upstream (`gates.py run … --phase
+   after_run,post_run`, `DOCKWEAVE_UPSTREAM_AGENT`). The run stores the
+   workspace fingerprint.
+3. **Routing.** `pipeline.py route --upstream <A>` evaluates the admission of
+   every downstream agent of A:
+   - allowed (`allow`) → wake B in Paperclip; `wake:<agent>` wakes the named
+     agent instead
+   - failed with `rework` → exactly one rework issue for A per gate run
+     (title tag `[gate <id> / run <run-id>]`, idempotent)
+   - `deny` or another reason (`stale`, `no_run` …) → reported in the comment,
+     nobody is woken
+4. **B is woken.** Its wrapper asks the admission first; if the workspace
+   changed since the PASS (`stale`) or the gate failed, B is reported as
+   blocked on its issue (once per reason set; the issue goes back to `todo`,
+   never `blockedBy`) and no model turn is spent. If the precheck is skipped,
+   the daemon still answers `409 pipeline_blocked` and the wrapper handles it
+   the same way.
+
+The Paperclip ↔ DockWeave agent mapping for waking is explicit:
+`DOCKWEAVE_PAPERCLIP_AGENT_MAP` points to a JSON file
+`{"<dockweave-agent-id-or-name>": "<paperclip-agent-id>"}`. Unmapped agents
+are reported as `UNMAPPED` and never guessed.
+
+Admin escape hatch: `dockweave pipeline override <B> --gate <id> --reason …`
+(single use, 15 minutes, audited; never for `tamper`).
+

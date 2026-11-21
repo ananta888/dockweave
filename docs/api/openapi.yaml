@@ -260,6 +260,127 @@ paths:
                 type: object
                 additionalProperties: { type: string }
 
+  /api/v1/pipelines:
+    get:
+      summary: Stored gate -> agent pipeline edges (ADR 0002)
+      parameters:
+        - { name: agent, in: query, description: downstream agent id or name, schema: { type: string } }
+      responses:
+        "200":
+          description: Edge set and the graph revision it came from
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineState" }
+    put:
+      summary: Replace all edges for a graph revision (admin)
+      description: >
+        Atomic replacement. Agent ids must exist and workspaces must resolve
+        below the allowed roots. An older revision never overwrites a newer
+        one (409 stale_revision) unless reset is true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, edges]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                reset: { type: boolean }
+                edges: { type: array, items: { $ref: "#/components/schemas/PipelineEdge" } }
+      responses:
+        "200":
+          description: Stored state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineState" }
+        "400": { description: Validation error }
+        "403": { description: Not an admin peer }
+        "409": { description: Stale revision }
+
+  /api/v1/pipelines/admission:
+    get:
+      summary: May an agent take pipeline work now? (read-only, never consumes overrides)
+      parameters:
+        - { name: agent, in: query, description: agent id or name; omitted = every agent with edges, schema: { type: string } }
+      responses:
+        "200":
+          description: Admission (or {revision, admissions[]} without agent)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Admission" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/agents/{id}/pipeline:
+    get:
+      summary: Pipeline admission as agent status
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Admission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Admission" }
+
+  /api/v1/pipelines/override:
+    post:
+      summary: Audited admin override for a blocked edge (never for tamper)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent, gate_id, reason]
+              properties:
+                agent: { type: string }
+                gate_id: { type: string, description: "gate id or * for every gate of the agent" }
+                reason: { type: string, minLength: 3 }
+                ttl_sec: { type: integer, default: 900, maximum: 86400 }
+                single_use: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Created override
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineOverride" }
+        "400": { description: Validation error }
+        "403": { description: Not an admin peer }
+
+  /api/v1/pipelines/overrides:
+    get:
+      summary: List pipeline overrides
+      parameters:
+        - { name: agent, in: query, schema: { type: string } }
+        - { name: active, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Overrides
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overrides: { type: array, items: { $ref: "#/components/schemas/PipelineOverride" } }
+
+  /v1/chat/completions:
+    post:
+      summary: OpenAI-compatible prompt to an agent (see docs/openai-endpoint.md)
+      description: >
+        Before the agent is driven the pipeline admission is enforced. A
+        blocked agent receives 409 with error.code = pipeline_blocked; nothing
+        is sent to the agent.
+      parameters:
+        - { name: X-DockWeave-Issue, in: header, description: optional issue id for the audit trail, schema: { type: string } }
+      responses:
+        "200": { description: chat.completion (or SSE stream) }
+        "409":
+          description: Pipeline blocked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PipelineBlocked" }
+
 components:
   responses:
     NotFound:
@@ -388,3 +509,85 @@ components:
         timestamp: { type: string, format: date-time }
         prev_hash: { type: string }
         hash: { type: string }
+
+    PipelineEdge:
+      type: object
+      required: [gate_id, downstream_agent_id, workspace]
+      properties:
+        id: { type: string }
+        gate_id: { type: string }
+        upstream_agent_id: { type: string }
+        downstream_agent_id: { type: string }
+        workspace: { type: string, description: canonical absolute path }
+        on_true: { type: string, description: "allow | deny | wake:<agent-id>" }
+        on_false: { type: string, description: "deny | rework" }
+        reason_true: { type: string }
+        reason_false: { type: string }
+        max_age_sec: { type: integer }
+        source_revision: { type: integer }
+        updated_at: { type: string, format: date-time }
+
+    PipelineState:
+      type: object
+      properties:
+        revision: { type: integer }
+        updated_at: { type: string, format: date-time }
+        edges: { type: array, items: { $ref: "#/components/schemas/PipelineEdge" } }
+
+    AdmissionEdge:
+      type: object
+      properties:
+        edge_id: { type: string }
+        gate_id: { type: string }
+        upstream_agent_id: { type: string }
+        workspace: { type: string }
+        satisfied: { type: boolean }
+        code:
+          type: string
+          enum: [ok, override, no_run, failed, error, stale, expired, tamper, fingerprint_unavailable, unknown_gate, denied, internal]
+        message: { type: string }
+        run_id: { type: string }
+        run_status: { type: string }
+        run_finished_at: { type: string, format: date-time }
+        action: { type: string }
+        reason: { type: string }
+        override_id: { type: string }
+
+    Admission:
+      type: object
+      properties:
+        agent_id: { type: string }
+        agent: { type: string }
+        allowed: { type: boolean }
+        action: { type: string, description: "allow | wake:<agent> when allowed; deny | rework when blocked" }
+        edges: { type: array, items: { $ref: "#/components/schemas/AdmissionEdge" } }
+        revision: { type: integer }
+        checked_at: { type: string, format: date-time }
+        fingerprints: { type: object, additionalProperties: { type: string } }
+
+    PipelineOverride:
+      type: object
+      properties:
+        id: { type: string }
+        agent_id: { type: string }
+        gate_id: { type: string }
+        reason: { type: string }
+        actor: { type: string }
+        single_use: { type: boolean }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        used_at: { type: string, format: date-time }
+
+    PipelineBlocked:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            message: { type: string }
+            type: { type: string, enum: [pipeline_blocked] }
+            code: { type: string, enum: [pipeline_blocked] }
+            gate_id: { type: string }
+            action: { type: string }
+            reasons: { type: array, items: { $ref: "#/components/schemas/AdmissionEdge" } }
+        admission: { $ref: "#/components/schemas/Admission" }

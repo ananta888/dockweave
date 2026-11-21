@@ -88,6 +88,35 @@ Das Go-Binary bettet `internal/webui/dist` ein; `make web` baut Angular neu
 und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
 `@foblex/flow` (dasselbe Framework wie das ObjectGraph-Policy-Frontend).
 
+### Gates und Pipelines im Graphen
+
+- **Gate-Editor** (Connector-Dialog und Node-Popover): optionaler Ausdruck
+  (leer = Exit-Code entscheidet), inline gegen
+  `POST /graph/validate-expression` geprüft; ein ungültiger Ausdruck lässt
+  sich nicht speichern, und ein Ausdruck, der `budget` liest, ohne dass ein
+  Budget konfiguriert ist, zeigt eine Warnung. Routing ist eine Auswahl statt
+  Freitext: bei PASS `allow`, `wake` (mit Agentenauswahl) oder `deny`; bei
+  FAIL `deny` oder `rework`; dazu `reason_true`/`reason_false` und optional
+  ein maximales PASS-Alter. Alter Freitext öffnet sich als Begründung mit der
+  Default-Aktion.
+- **proceed-Kante** (Gate → Ziel-Agent) zeigt den Pipeline-Zustand aus
+  `GET /api/v1/pipelines/admission`: grün `✓ ok`/`override`, rot
+  `✕ failed`/`error`/`tamper`/`denied`, gelb gestrichelt `stale`/`expired`/
+  `no_run`/`unknown_gate` und `nicht übertragen`, solange der Daemon die
+  Kante nicht kennt. Das Label ist per Tastatur fokussierbar; Tooltip und
+  zugänglicher Name nennen Ausdruck, Grund-Code, letzte Lauf-ID und Alter.
+- **Downstream-Agenten** tragen ein Badge `Pipeline frei` / `⛔ blockiert`
+  mit Textalternative, die die sperrenden Gates nennt. Der Status
+  aktualisiert sich alle 15 Sekunden und nach jedem Speichern, ohne Reload.
+- **Sync-Fehler:** `pipeline_sync.error` aus der Speicher-Antwort erscheint
+  als Banner auf der Canvas und im Einstellungsabschnitt „Pipeline (Gate →
+  Agent)“, zusammen mit den Ableitungs-Warnungen. Ein Gate mit Ziel-Agent,
+  aber ohne Shell-Befehl wird mit einer Warnung markiert (das Ziel bliebe
+  gesperrt).
+
+UI-Test ohne Daemon: `cd ui/web && npm run build && npm run e2e:pipeline`
+(Playwright, gemocktes Backend).
+
 ### Graph-Einstellungen
 
 - **Layout**: Hierarchie, Spalten, Grid, Radial, Frei oder Gemischt;
@@ -108,7 +137,7 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
   Rechtsklick auf einen Platzhalter aktiviert/deaktiviert oder entfernt ihn.
 - **Node-Palette**: immer sichtbare Node-Typen für MCP, Skill, deterministisches Gate, HTTP, Agentenkette und Custom; Workspace/Memory/Credential/Knowledge kommen aus den Agentendaten. Die Palette ist drag-and-drop-fähig: Node auf die Canvas ziehen erzeugt sie an dieser Position; ein Klick platziert sie in der aktuellen Ansicht. Beim Erzeugen öffnet sich kein Dialog. Doppelklick auf einen Node öffnet die passende Konfiguration als kompaktes Popover direkt neben der Node (kein bildschirmfüllender Dialog). Kanten-Aktionen und die Löschen-Toolbar erscheinen neben der angeklickten Kante.
 - **Verbindungen**: Neue Nodes werden unverbunden platziert. Beim Hovern zeigt eine Node rechts kleine Buttons: `＋` startet den Verbindungsmodus (Typ wählen, dann Ziel-Node anklicken), `×` entfernt die Node. Beim Hovern einer Kante erscheinen mittig `＋` (Zwischen-Node einfügen) und `×` (Kante löschen). Klick auf eine Verbindung zeigt eine Toolbar mit Löschen; Rechtsklick bietet ebenfalls Löschen.
-- **Deterministische Gates** zeigen ihre Bedingung und `true→…` / `false→…`-Ergebnisse direkt im Node und werden im Connector-Dialog konfiguriert.
+- **Deterministische Gates** zeigen Bedingung und Routing (`PASS→…` / `FAIL→…`) direkt im Node und werden im Connector-Dialog konfiguriert (siehe „Gates und Pipelines im Graphen“).
 - **2D-Agentenfiguren**: 15 eingebaute Rollenfiguren (CEO, CTO, Developer, Reviewer, QA, DevOps, Researcher, Designer, Analyst, Operator, Product, Architect, Security, Data, Support) plus eigener SVG-Import. Eigene SVGs werden bereinigt (keine Scripts/Event-Handler/foreignObject/JS-URLs, max. 64 KiB) und pro Agent gespeichert.
 - **Rechtsklick-Menü** auf jedem Node und auf der Canvas: Layout als Template
   speichern, Template anwenden, Node-Position zurücksetzen, Agent öffnen,

@@ -8,6 +8,43 @@ All notable changes to DockWeave are documented here. The format follows
 
 ### Added
 
+- Gate pipelines (ADR 0002): a gate connector with a target agent releases
+  that agent only after the gate passed on the current workspace content.
+  Daemon-side edges (`PUT/GET /api/v1/pipelines`), fail-closed admission
+  (`GET /api/v1/pipelines/admission`, `GET /api/v1/agents/{id}/pipeline`),
+  enforcement at `POST /v1/chat/completions` and the herdr prompt
+  (`409 pipeline_blocked`), workspace fingerprints on gate runs, audited
+  single-use admin overrides (`POST /api/v1/pipelines/override`) and the CLI
+  `dockweave pipeline list|status|override|overrides`. The web gateway pushes
+  the edges on every graph save and reports `pipeline_sync`.
+- Gate routing actions `allow | deny | wake:<agent> | rework` for
+  `on_true`/`on_false`, verdict texts in `reason_true`/`reason_false`,
+  optional `max_age_sec`.
+- Gate expressions: `true`/`false` literals, static validation
+  (`gateexec.Validate`, `POST /graph/validate-expression`).
+- Explicit gate phases: `dockweave gate run --phase …` / API `phases`; the
+  Paperclip wrapper runs `pre_run` gates before the agent and
+  `after_run,post_run` after `STATUS: DONE`; `--upstream-agent` records the
+  checked agent.
+- Paperclip wrapper: `pipeline.py` (admission precheck, 409 handling,
+  wake/rework routing with an explicit agent map), configuration file
+  `~/.config/dockweave/paperclip.env`, `make test-wrapper`.
+- Web UI: pipeline state on proceed edges and downstream agents, routing
+  editor, inline expression validation, pipeline sync errors; Playwright
+  `npm run e2e:pipeline` against a mocked backend.
+
+### Changed
+
+- **Breaking (Go API):** `gatesync.SyncAll(raw, previous, roots)` now takes
+  the previous graph document and returns `([]Result, []string)` (results
+  plus document warnings).
+- Gate expressions decide the verdict instead of the exit code; `budget` is
+  fail-closed. Review verdicts require the admin role.
+- `blocked-check.py` is fail-closed (opt-out
+  `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN=1`); the wrapper has no user- or
+  project-specific default paths any more and treats an unreadable gate
+  result after `STATUS: DONE` as a failure.
+
 - `dockweave run [AGENT] [-- CMD...]`: uses the current directory as the
   project workspace, registers and grants it, starts the selected agent and
   attaches to its terminal in one step (`--no-attach`, `--mode`, `--name`).

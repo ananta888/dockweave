@@ -343,3 +343,54 @@ code fell short of its own documented contract. Fixed in this round:
 **Tests:** `internal/mounts/hardening_test.go` (staging sequence + fail-closed
 NOSYMFOLLOW), `internal/mounthelper/helper_test.go` (fd source link),
 `internal/webui/server_test.go` (role enforcement).
+
+## SD-020 — Pipeline enforcement at the execution endpoint (2026-11-21)
+
+**Context:** The 2D graph can release an agent B only after agent A's work
+passed a deterministic gate (`proceed` edge). Until now nothing enforced it:
+the graph lived with the web gateway and the daemon never read it. Paperclip
+drives agents through the OpenAI-compatible endpoint, not through container
+start. Full decision record: `docs/adr/0002-pipeline-enforcement.md`.
+
+**Decision:**
+
+1. The daemon refuses pipeline work at the execution point:
+   `POST /v1/chat/completions` (streaming and non-streaming) and
+   `POST /api/v1/agents/{id}/herdr/prompt` evaluate the admission after
+   resolving the agent and before anything reaches it. Blocked requests get
+   `409 pipeline_blocked`. Interactive terminal sessions are out of scope.
+2. Fail-closed admission: missing or failed runs, `tamper`, a changed
+   workspace (`stale`), an uncomputable fingerprint, unknown gates and any
+   internal error block. Only agents without incoming edges are unaffected.
+3. Freshness is a content fingerprint of the workspace (sorted paths and
+   SHA-256 of contents; symlinks hashed by target, never followed; dependency
+   and build trees ignored like the gate diff). The daemon reads the
+   workspace only below the allowed roots (AGENTS.md rule 4) and within fixed
+   limits (100 000 files, 2 GiB, 60 s).
+4. Edges are written only by admin peers (`PUT /api/v1/pipelines`), agent ids
+   and canonical workspaces are validated, the replacement is atomic and an
+   older graph revision never overwrites a newer one. A failed push keeps the
+   previous (stricter or equal) enforcement and is reported in the UI.
+5. Admin overrides need a reason, expire (default 15 minutes, max. 24 h), are
+   single use by default (consumed transactionally) and never release
+   `tamper`. Creation and use are audited (`pipeline.override`,
+   `pipeline.override_used`); blocks are audited as `pipeline.blocked`
+   (rate-limited).
+6. The Paperclip wrapper additionally asks the admission before each turn
+   and treats an unreachable daemon or invalid answer as blocked;
+   `blocked-check.py` became fail-closed (opt-out
+   `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN=1`).
+
+**Residual risk:** the legacy `docker exec` path of `dockweave-run.sh`
+(`dockweave-<cid>` targets) bypasses the daemon and therefore the pipeline;
+it is deprecated. A host user with access to the agent's interactive
+terminal can still drive the agent — by design, the gate governs pipeline
+work, not humans.
+
+**Tests:** `internal/pipeline/admission_test.go` (all reason codes,
+multi-edge, overrides, tamper), `internal/api/pipelines_test.go` (roles,
+validation, revision guard, 409 without agent call, fail-closed),
+`internal/persistence/pipelines_test.go` (atomic replace, revision guard,
+concurrent override consumption), `tests/integration/pipeline_e2e_test.go`
+(PASS/FAIL/STALE/override/tamper/no edge with the real sandbox runner),
+`deployments/paperclip/tests/test_wrapper.py`.

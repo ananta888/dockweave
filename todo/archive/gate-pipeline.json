@@ -34,7 +34,9 @@
         "B: Nur im Wrapper dockweave-run.sh (schnell, aber umgehbar, sobald jemand den Endpoint direkt nutzt).",
         "C: Beim Container-Start (agent start) - wirkungslos, weil Paperclip-Arbeit nicht ueber den Container-Start, sondern ueber den Endpoint laeuft."
       ],
-      "recommendation": "A"
+      "recommendation": "A",
+      "decision": "A",
+      "decided": "2026-11-21 (vom Nutzer bestaetigt)"
     },
     {
       "id": "D-2",
@@ -44,7 +46,9 @@
         "A (empfohlen): Aktionen mit festem Vokabular: allow | deny | wake:<agent-id> | rework (Nacharbeit-Issue an den Upstream-Agenten); Begruendungstexte wandern in reason_true/reason_false. Unbekannte Werte werden abwaertskompatibel als Begruendungstext behandelt und erzeugen eine Warnung.",
         "B: Reiner Begruendungstext (heutiger Stand); Weiterleiten ergibt sich nur implizit aus der proceed-Kante."
       ],
-      "recommendation": "A"
+      "recommendation": "A",
+      "decision": "A",
+      "decided": "2026-11-21 (vom Nutzer bestaetigt)"
     }
   ],
   "milestones": [
@@ -56,7 +60,7 @@
         "GP-010",
         "GP-011"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M1",
@@ -77,7 +81,7 @@
         "GP-012",
         "GP-013"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "M3",
@@ -86,7 +90,7 @@
         "GP-014",
         "GP-015"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M4",
@@ -100,7 +104,7 @@
         "GP-007",
         "GP-021"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M5",
@@ -111,7 +115,7 @@
         "GP-024",
         "GP-025"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M6",
@@ -121,7 +125,7 @@
         "GP-026",
         "GP-027"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M7",
@@ -129,7 +133,7 @@
       "task_ids": [
         "GP-006"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M8",
@@ -139,7 +143,7 @@
         "GP-029",
         "GP-030"
       ],
-      "status": "todo"
+      "status": "done"
     }
   ],
   "tasks": [
@@ -149,7 +153,7 @@
       "type": "bug",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Default-Expression 'true' und UI-Placeholder erzeugen Gate-Status error",
       "description": "Das UI legt neue Gate-Connectoren mit expression 'true' an (graph.component.ts ~1545) und schlaegt als Placeholder 'tests == green && budget < 5' vor (~651). Der Evaluator (internal/gateexec/expression.go) kennt weder true/false noch tests/green und liefert 'unknown variable'. Jedes neue Gate mit Kommando endet dadurch mit status error. Seit CR-005 entscheidet die Expression allein, der Fehler ist damit voll wirksam.",
       "components": [
@@ -164,7 +168,8 @@
         "Bestehende graph.json-Dokumente mit expression 'true' laufen ohne Migration."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Evaluator kennt true/false (1/0); Validate(); neue Gates ohne Expression; Placeholder 'command == 0 && budget < 5 (leer = Exit-Code entscheidet)'. Tests TestEvaluateBooleanLiterals, TestDefaultTrueExpressionPassesGate, Integration 'legacy expression true passes'."
     },
     {
       "id": "GP-010",
@@ -172,7 +177,7 @@
       "type": "chore",
       "priority": "P0",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Fixes aus dem Commit-Review committen",
       "description": "Die 11 Fixes aus todo/archive/commit-review-2026-11-21.json liegen uncommittet in der Arbeitskopie (19 Dateien + graph_test.go + Archivdatei). Sie sind Grundlage fuer M4 (SyncAll-Signatur, budget fail-closed, gateVerdict).",
       "acceptance_criteria": [
@@ -181,7 +186,8 @@
         "Working Tree danach sauber."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "6 thematische Commits (5145b0c..e8f354f), jeder baut fuer sich; go test gruen."
     },
     {
       "id": "GP-011",
@@ -189,7 +195,7 @@
       "type": "chore",
       "priority": "P2",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "todo.gates-2d-hardening.json archivieren",
       "description": "Alle 19 Tasks sind done, die Datei liegt aber noch in todo/. Konvention: abgeschlossene Tracks nach todo/archive/ verschieben.",
       "acceptance_criteria": [
@@ -199,7 +205,8 @@
       "depends_on": [
         "GP-010"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "git mv nach todo/archive/gates-2d-hardening.json, Verweis in implementation_notes angepasst."
     },
     {
       "id": "GP-001",
@@ -282,7 +289,7 @@
       "type": "backend",
       "priority": "P1",
       "risk": "high",
-      "status": "partial",
+      "status": "done",
       "title": "gateexec wertet expression aus und setzt on_true/on_false",
       "description": "Nach dem Kommando-Lauf wertet der Runner die expression mit exit-Code und Budget aus. Seit CR-005 ersetzt das Ergebnis das Exit-Code-Urteil; on_true/on_false werden als Reason gesetzt. Das Kriterium 'Integrationstest' war als done markiert, es existieren aber nur Unit-Tests (gateVerdict, Evaluate).",
       "acceptance_criteria": [
@@ -295,8 +302,8 @@
         "GP-003",
         "GP-004"
       ],
-      "progress_percent": 75,
-      "implementation_note": "runner.go gateVerdict + budgetExprEnv. Status von done auf partial korrigiert, weil der Integrationstest fehlt."
+      "progress_percent": 100,
+      "implementation_note": "Integrationstest TestGateExpressionPathInSandbox (GP-013) deckt den Expression-Pfad im echten Sandbox-Runner ab."
     },
     {
       "id": "GP-012",
@@ -304,7 +311,7 @@
       "type": "ui",
       "priority": "P1",
       "risk": "medium",
-      "status": "todo",
+      "status": "done",
       "title": "Expression schon im Editor validieren",
       "description": "Ein ungueltiger Ausdruck faellt heute erst beim Sandbox-Lauf als status error auf. Das Web-Gateway ist Go und kann gateexec.Evaluate direkt nutzen: ein Validierungs-Endpunkt prueft Syntax und erlaubte Variablen, der Editor zeigt das Ergebnis inline.",
       "components": [
@@ -322,7 +329,8 @@
       "depends_on": [
         "GP-009"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "gateexec.Validate + POST /graph/validate-expression {ok,error,uses_budget,warning}; Editor (Dialog + Popover) prueft inline, verhindert Speichern, warnt bei budget ohne Budget. Tests TestValidate, TestValidateExpressionEndpoint, Playwright e2e/pipeline.spec.ts."
     },
     {
       "id": "GP-013",
@@ -330,7 +338,7 @@
       "type": "test",
       "priority": "P1",
       "risk": "medium",
-      "status": "todo",
+      "status": "done",
       "title": "Integrationstest fuer den Expression-Pfad im Sandbox-Runner",
       "description": "Echter Runner-Lauf (Docker) mit einem Wegwerf-Workspace: gates.json mit expression, Kommando mit definiertem Exit-Code. Schliesst das offene Kriterium von GP-005.",
       "components": [
@@ -347,7 +355,8 @@
       "depends_on": [
         "GP-009"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "tests/integration/gate_expression_test.go: expected failure + reason_true, budget fail-closed, ungueltiger Ausdruck, legacy true, explizite Phase; skippt ohne Docker/Image; lokal gegen Docker gruen."
     },
     {
       "id": "GP-014",
@@ -355,7 +364,7 @@
       "type": "decision",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Entscheidung D-1: Durchsetzungspunkt fuer blockierte Downstream-Agenten",
       "description": "Paperclip-Arbeit erreicht einen Agenten nicht ueber den Container-Start, sondern ueber dockweave-run.sh -> POST /v1/chat/completions (Daemon, internal/api/api.go:249). Empfehlung: Durchsetzung im Daemon am Endpoint (nicht umgehbar) plus Vorab-Pruefung im Wrapper (kein verschwendeter Modell-Turn, saubere Rueckmeldung an Paperclip). Interaktive Terminal-Sitzungen bleiben unberuehrt.",
       "acceptance_criteria": [
@@ -364,7 +373,8 @@
         "ADR legt Verhalten bei Fehlern fest (Daemon/DB/Fingerprint nicht ermittelbar => blockiert)."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "D-1 = A (Daemon am Endpoint + Wrapper-Vorabpruefung), ADR docs/adr/0002-pipeline-enforcement.md + .de.md."
     },
     {
       "id": "GP-015",
@@ -372,7 +382,7 @@
       "type": "decision",
       "priority": "P1",
       "risk": "medium",
-      "status": "todo",
+      "status": "done",
       "title": "Entscheidung D-2: Semantik von on_true/on_false",
       "description": "Das Ziel verlangt, dass on_true/on_false das Weiterleiten steuern; heute sind es Begruendungstexte mit UI-Default allow/deny. Empfehlung: festes Aktionsvokabular allow | deny | wake:<agent-id> | rework, Texte in reason_true/reason_false, abwaertskompatible Behandlung unbekannter Werte als Text mit Warnung.",
       "acceptance_criteria": [
@@ -381,7 +391,8 @@
         "Festgelegt, wer die Aktion ausfuehrt (Daemon liefert die Aktion in der Admission-Antwort, Wrapper fuehrt Paperclip-seitige Aktionen wie wake/rework aus)."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "D-2 = A (allow|deny|wake:<agent>|rework, reason_true/reason_false, Freitext abwaertskompatibel als Begruendung), im ADR 0002; gatesync/action.go."
     },
     {
       "id": "GP-016",
@@ -389,7 +400,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Pipeline-Datenmodell und Migration im Daemon",
       "description": "Der Daemon liest graph.json nie (die Datei liegt beim Web-Gateway unter ~/.local/share/dockweave/graph.json). Er braucht ein eigenes, versioniertes Modell der Pipeline-Kanten in SQLite.",
       "components": [
@@ -407,7 +418,8 @@
         "GP-014",
         "GP-015"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "model.PipelineEdge/PipelineOverride, Migration 18 (pipeline_edges UNIQUE(gate_id,downstream,workspace), pipeline_overrides), ReplacePipelineEdges atomar mit Revisionsschutz + reset, ListPipelineEdges, EdgesForDownstream. Tests inkl. Reopen/Atomaritaet."
     },
     {
       "id": "GP-017",
@@ -415,7 +427,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Pipeline-API im Daemon (v1)",
       "description": "Versionierte REST-Endpunkte fuer Pipeline-Kanten, damit Web-Gateway, CLI und Wrapper denselben Stand nutzen.",
       "components": [
@@ -433,7 +445,8 @@
       "depends_on": [
         "GP-016"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "PUT/GET /api/v1/pipelines (admin/monitor), Validierung Agenten + kanonische Workspaces unter AllowedRoots, Audit pipeline.update, pkg/sdk/pipelines.go, CLI dockweave pipeline list. Tests TestPutPipelinesRolesValidationAndRevision."
     },
     {
       "id": "GP-018",
@@ -441,7 +454,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Gateway leitet Pipeline-Kanten aus dem Graph ab und uebertraegt sie",
       "description": "gatesync.Connector kennt weder agentId noch targetAgentId. Beim Graph-Speichern muss das Gateway die proceed-Kanten ableiten und an den Daemon uebertragen, analog zum gates.json-Mirror.",
       "components": [
@@ -460,7 +473,8 @@
         "GP-017",
         "GP-010"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Connector.AgentID/TargetAgentID, gatesync.DerivePipeline (Gate-ID wie in gates.json, fail-closed Kanten ohne Kommando, Selbstkanten verworfen, Zyklus-Warnung), putGraph pusht mit Revision (reset bei neuer Datei), pipeline_sync in der Antwort + Log pipeline_sync.error. Tests mit Fake-Daemon."
     },
     {
       "id": "GP-019",
@@ -468,7 +482,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "critical",
-      "status": "todo",
+      "status": "done",
       "title": "Frische des PASS: Workspace-Fingerprint und Upstream-Bezug im Gate-Run",
       "description": "Ein Gate-Run speichert heute weder den ausloesenden Agenten noch den Workspace-Stand. Ein alter PASS wuerde B auch nach spaeteren Aenderungen durchlassen. Der Run muss an den Inhalt gebunden werden, den er geprueft hat.",
       "components": [
@@ -487,7 +501,8 @@
       "depends_on": [
         "GP-010"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "gateexec.Fingerprint (Pfade+Inhalte, Symlinks per Ziel, defaultIgnore, Limits 100k/2GiB/60s -> ErrFingerprintLimit), GateRun.workspace_fingerprint/upstream_agent_id/phases, Migration 17; Fingerprint der Sandbox-Kopie vor dem ersten Gate. Tests fingerprint_test.go."
     },
     {
       "id": "GP-020",
@@ -495,7 +510,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "critical",
-      "status": "todo",
+      "status": "done",
       "title": "Admission-Auswertung und Endpunkt",
       "description": "Reine Funktion plus Endpunkt, der fuer einen Downstream-Agenten beantwortet, ob er arbeiten darf. Grundlage fuer Durchsetzung (GP-007), Wrapper (GP-022) und UI (GP-008).",
       "components": [
@@ -516,7 +531,8 @@
         "GP-016",
         "GP-019"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "internal/pipeline Evaluator (Admission read-only, Admit verbraucht Overrides), alle Gruende inkl. denied/internal, Aktion je Kante und gesamt, GET /api/v1/pipelines/admission (+ ohne agent: alle), GET /api/v1/agents/{id}/pipeline. Tabellengetriebene Tests."
     },
     {
       "id": "GP-007",
@@ -524,7 +540,7 @@
       "type": "backend",
       "priority": "P0",
       "risk": "critical",
-      "status": "todo",
+      "status": "done",
       "title": "Blocking-Semantik: Downstream-Agent arbeitet nur bei PASS",
       "description": "Durchsetzung am Ausfuehrungspunkt gemaess Entscheidung D-1: POST /v1/chat/completions verweigert Pipeline-Arbeit fuer einen Agenten, dessen Admission blocked ist. Blockierte Agenten erscheinen mit sichtbarem Grund statt still zu starten.",
       "components": [
@@ -543,7 +559,8 @@
       "depends_on": [
         "GP-020"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "openAIChatCompletions (auch Streaming) und herdrPrompt rufen admitPipelineWork vor dem Agenten; 409 pipeline_blocked mit Gruenden/Aktion/Admission; SD-020. Tests TestChatCompletionsEnforcesPipeline, TestChatCompletionsFailClosedOnAdmissionError."
     },
     {
       "id": "GP-021",
@@ -551,7 +568,7 @@
       "type": "backend",
       "priority": "P1",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Audit und auditierter admin-Override fuer blockierte Pipelines",
       "description": "Blockaden muessen nachvollziehbar sein, und ein Operator braucht einen bewussten, auditierten Weg, eine Blockade einmalig aufzuheben (analog zum Force-Flag bei Mounts).",
       "acceptance_criteria": [
@@ -564,7 +581,8 @@
       "depends_on": [
         "GP-007"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Audit pipeline.blocked (rate-limitiert je Agent/Issue/Gruende pro Minute), POST /api/v1/pipelines/override (Pflichtgrund, TTL 15min/max 24h, single_use transaktional), pipeline.override/override_used, CLI pipeline override/overrides, nie fuer tamper. Tests in api, pipeline, persistence."
     },
     {
       "id": "GP-022",
@@ -572,7 +590,7 @@
       "type": "wrapper",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "dockweave-run.sh: Admission vor dem Lauf abfragen (fail-closed)",
       "description": "Der Wrapper soll einen blockierten Agenten gar nicht erst ansprechen: kein verschwendeter Modell-Turn, klare Rueckmeldung an Paperclip. Der Daemon setzt unabhaengig davon durch (GP-007).",
       "components": [
@@ -590,7 +608,8 @@
       "depends_on": [
         "GP-020"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "pipeline.py precheck vor dem Turn (fail-closed bei Daemon-Ausfall/ungueltiger Antwort), Kommentar einmal je Grund, Status todo (kein blockedBy), handle-409, X-DockWeave-Issue-Header, DOCKWEAVE_UPSTREAM_AGENT -> gate run --upstream-agent. Tests deployments/paperclip/tests/test_wrapper.py."
     },
     {
       "id": "GP-023",
@@ -598,7 +617,7 @@
       "type": "wrapper",
       "priority": "P1",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Weiterleiten nach PASS/FAIL (wake / rework)",
       "description": "Setzt die Aktionen aus Entscheidung D-2 auf Paperclip-Seite um: nach PASS wird der Downstream-Agent geweckt, nach FAIL entsteht ein Nacharbeit-Issue beim Upstream-Agenten.",
       "components": [
@@ -617,7 +636,8 @@
         "GP-015",
         "GP-022"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "pipeline.py route: allow/wake:<agent> wecken, rework genau ein Issue je Gate-Lauf (Marker + Titel-Tag), deny melden; explizite Zuordnung DOCKWEAVE_PAPERCLIP_AGENT_MAP, UNMAPPED statt raten. Tests fuer alle Aktionen + Idempotenz."
     },
     {
       "id": "GP-024",
@@ -625,7 +645,7 @@
       "type": "wrapper",
       "priority": "P1",
       "risk": "medium",
-      "status": "todo",
+      "status": "done",
       "title": "blocked-check.py fail-closed machen",
       "description": "blocked-check.py gibt bei CLI-Fehlern, ungueltigem JSON oder fehlendem Argument 0 zurueck (= darf laufen). Das widerspricht dem Fail-closed-Grundsatz.",
       "components": [
@@ -638,7 +658,8 @@
         "Tests mit gefaktem paperclipai-CLI."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "blocked-check.py: CLI-Fehler/ungueltiges JSON/unlesbarer Blocker -> Exit 1, fehlendes Argument -> Exit 2, Opt-out DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN=1. Tests mit gefaktem paperclipai."
     },
     {
       "id": "GP-025",
@@ -646,7 +667,7 @@
       "type": "wrapper",
       "priority": "P2",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Fest eingetragene Pfade im Paperclip-Wrapper parametrisieren",
       "description": "dockweave-run.sh und Helfer enthalten feste Pfade (/home/krusty/projects/crystal-run, /workspace/crystal-run, /home/krusty/.local/bin/paperclipai in blocked-check.py). Fuer andere Projekte und Rechner nicht nutzbar.",
       "acceptance_criteria": [
@@ -655,7 +676,8 @@
         "deployments/paperclip/README.md listet alle Variablen mit Bedeutung."
       ],
       "depends_on": [],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Keine /home/krusty- oder crystal-run-Defaults mehr (Test prueft das), PAPERCLIPAI_BIN/PATH-Lookup ueberall, Env-Datei ~/.config/dockweave/paperclip.env, Variablentabelle in deployments/paperclip/README.md."
     },
     {
       "id": "GP-008",
@@ -663,7 +685,7 @@
       "type": "ui",
       "priority": "P1",
       "risk": "medium",
-      "status": "todo",
+      "status": "done",
       "title": "Pipeline-Status in der 2D-Darstellung",
       "description": "Die Kette agent->gate->agent zeigt den aktuellen Pipeline-Zustand aus der Admission: Gate gruen (PASS, frisch), gelb (stale/expired), rot (FAIL/TAMPER/error), Downstream-Agent grau/blockiert. Tooltip nennt den Grund.",
       "components": [
@@ -679,7 +701,8 @@
       "depends_on": [
         "GP-020"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "proceed-Kante faerbt sich nach Admission-Code (Farbe + gestrichelt + Text), Tooltip/aria-label mit Ausdruck, Code, Lauf-ID, Alter, tabindex; Badge Pipeline frei/blockiert an Downstream-Agenten; Polling 15 s + nach Speichern."
     },
     {
       "id": "GP-026",
@@ -687,7 +710,7 @@
       "type": "ui",
       "priority": "P2",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Editor fuer Routing-Aktionen und Pipeline-Sync-Fehler",
       "description": "Die Felder on_true/on_false werden heute als Freitext mit Default allow/deny gepflegt. Nach Entscheidung D-2 braucht der Editor eine Auswahl der Aktionen plus Begruendungsfelder und muss Fehler der Pipeline-Uebertragung (GP-018) anzeigen.",
       "acceptance_criteria": [
@@ -700,7 +723,8 @@
         "GP-015",
         "GP-018"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Auswahl allow/wake(+Agent)/deny bzw. deny/rework, reason_true/reason_false, max_age_sec; Freitext wird beim Oeffnen als Begruendung zugeordnet; pipeline_sync.error als Banner + Abschnitt; Warnung bei Gate mit Ziel ohne Befehl."
     },
     {
       "id": "GP-027",
@@ -708,7 +732,7 @@
       "type": "test",
       "priority": "P2",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Web-Bundle neu bauen und Playwright-E2E fuer die Pipeline",
       "description": "Das eingebettete Bundle internal/webui/dist muss nach den UI-Aenderungen neu gebaut werden; ui/web/e2e enthaelt bisher nur graph-layout.spec.ts.",
       "acceptance_criteria": [
@@ -721,7 +745,8 @@
         "GP-012",
         "GP-026"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "internal/webui/dist neu gebaut (main-RIO55XC4.js, alter Bundle entfernt); e2e/pipeline.spec.ts mit playwright.pipeline.config.ts (gemocktes Backend), npm run e2e:pipeline: 3/3 gruen."
     },
     {
       "id": "GP-006",
@@ -729,7 +754,7 @@
       "type": "backend",
       "priority": "P2",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "Echte pre_run/post_run-Trigger in der Orchestrierung",
       "description": "Der Paperclip-Wrapper ruft den Gate-Runner kuenftig getrennt vor (pre_run) und nach (after_run/post_run) dem Agentenlauf auf, statt alles in einem Rutsch. Fuer die Pipeline nicht erforderlich (A's after_run ist B's Vorbedingung), daher nach GP-007 eingeordnet und auf P2 gesenkt.",
       "acceptance_criteria": [
@@ -741,7 +766,8 @@
       "depends_on": [
         "GP-007"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "Runner akzeptiert Phases (API phases, CLI --phase), GateRun.phases; Wrapper: pre_run vor dem Lauf (Fehlschlag verhindert Lauf), after_run,post_run nach DONE; Admission ueberspringt phasenbeschraenkte Laeufe ohne das Gate; Doku 'Phase semantics' EN+DE angepasst."
     },
     {
       "id": "GP-028",
@@ -749,7 +775,7 @@
       "type": "test",
       "priority": "P0",
       "risk": "high",
-      "status": "todo",
+      "status": "done",
       "title": "End-to-End-Test der Pipeline A -> Gate -> B",
       "description": "Nachweis, dass das Ziel erreicht ist: echter Daemon (Testinstanz), echter Sandbox-Runner, Fake-Agenten am Endpoint.",
       "components": [
@@ -769,7 +795,8 @@
         "GP-022",
         "GP-013"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "tests/integration/pipeline_e2e_test.go mit echtem Runner/Store/API: no_run, PASS->durchgereicht, STALE, FAIL+rework, Override genau einmal, tamper trotz Override blockiert, keine Kante; Audit-Events geprueft; lokal gegen Docker gruen."
     },
     {
       "id": "GP-029",
@@ -777,7 +804,7 @@
       "type": "docs",
       "priority": "P1",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Doku zur Pipeline (EN + DE) und Sicherheitsentscheidung",
       "description": "Zweisprachige Doku nach Projektkonvention; die Durchsetzung am Endpoint beruehrt das Bedrohungsmodell.",
       "acceptance_criteria": [
@@ -793,7 +820,8 @@
         "GP-023",
         "GP-008"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "gate-model EN+DE (Pipelines, Phasen, Ausdruecke, Fail-closed), paperclip-delegation EN+DE (Ablauf A->Gate->B, wake/rework), web-ui EN+DE, docs/api/openapi.yaml (Pipeline-Endpunkte + Schemas), SD-020, ADR 0002 verlinkt."
     },
     {
       "id": "GP-030",
@@ -801,7 +829,7 @@
       "type": "chore",
       "priority": "P2",
       "risk": "low",
-      "status": "todo",
+      "status": "done",
       "title": "Uebergabe: HANDOFF, CHANGELOG, statische Analyse, Track archivieren",
       "description": "HANDOFF.md steht auf dem 19.11.; staticcheck ist nicht installiert (AGENTS.md verlangt go vet + staticcheck); der Track ist nach Abschluss zu archivieren.",
       "acceptance_criteria": [
@@ -814,7 +842,8 @@
         "GP-028",
         "GP-029"
       ],
-      "progress_percent": 0
+      "progress_percent": 100,
+      "implementation_note": "HANDOFF.md Abschnitt 3.0 + offene Punkte, CHANGELOG (Pipeline + Breaking SyncAll), staticcheck v0.8.2 gepinnt (Makefile STATICCHECK_VERSION), keine neuen Befunde (11 vorbestehende), Track archiviert."
     }
   ],
   "critical_path_tasks": [
@@ -839,32 +868,32 @@
     "Doku (EN + DE), ADR und Sicherheitsentscheidung sind aktuell; Track archiviert."
   ],
   "implementation_notes": [
-    "Aufbauend auf todo/archive/commit-review-2026-11-21.json (Ausdruecke entscheiden, budget fail-closed, SyncAll mit previous) und todo.gates-2d-hardening.json (abgeschlossen; Archivierung GP-011).",
+    "Aufbauend auf todo/archive/commit-review-2026-11-21.json (Ausdruecke entscheiden, budget fail-closed, SyncAll mit previous) und todo/archive/gates-2d-hardening.json (abgeschlossen, archiviert).",
     "Empfohlene Reihenfolge: M0 -> M3 (Entscheidungen) -> GP-019 parallel zu GP-016/017 -> GP-018 -> GP-020 -> GP-007 -> GP-022 -> M6 -> GP-028 -> M8; GP-006 zuletzt.",
     "Durchsetzung (GP-007, GP-021) und Fingerprint (GP-019) sind sicherheitskritisch: nur mit erweiterten Tests und Review; SD-Eintrag in docs/security-decisions.md.",
     "Die Graph-Agenten-IDs sind DockWeave-Agent-IDs; der Wrapper adressiert Agenten ueber den Modellnamen (MODEL_OR_CONTAINER). Die Admission muss daher ID und Name aufloesen.",
     "Commits klein und thematisch (Conventional Commits); TODO-Stand im selben Commit pflegen."
   ],
   "progress_summary": {
-    "state": "in_progress",
-    "todo_remaining": 25,
+    "state": "done",
+    "todo_remaining": 0,
     "in_progress": 0,
-    "partial": 1,
+    "partial": 0,
     "blocked": 0,
-    "done": 4,
-    "milestones_done": 1,
+    "done": 30,
+    "milestones_done": 9,
     "milestones_total": 9
   },
   "tasks_status_summary": {
     "total": 30,
     "by_status": {
-      "todo": 25,
+      "todo": 0,
       "in_progress": 0,
-      "partial": 1,
+      "partial": 0,
       "blocked": 0,
-      "done": 4
+      "done": 30
     },
-    "progress_percent_done": 13.3,
+    "progress_percent_done": 100.0,
     "by_priority": {
       "P0": 15,
       "P1": 9,
@@ -879,15 +908,15 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 0,
-      "remaining": 11
+      "done": 11,
+      "remaining": 0
     },
     "milestones": {
       "total": 9,
-      "todo": 7,
-      "in_progress": 1,
+      "todo": 0,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 1
+      "done": 9
     }
   },
   "tasks_type_summary": {
@@ -895,30 +924,30 @@
     "by_type": {
       "bug": {
         "total": 1,
-        "done": 0,
+        "done": 1,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 1,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 1
         }
       },
       "chore": {
         "total": 3,
-        "done": 0,
+        "done": 3,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 3,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 3
         }
       },
       "schema": {
@@ -937,86 +966,86 @@
       },
       "ui": {
         "total": 4,
-        "done": 1,
+        "done": 4,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 25.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 3,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 1
+          "done": 4
         }
       },
       "backend": {
         "total": 11,
-        "done": 2,
-        "partial": 1,
+        "done": 11,
+        "partial": 0,
         "blocked": 0,
-        "progress_percent": 18.2,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 8,
+          "todo": 0,
           "in_progress": 0,
-          "partial": 1,
+          "partial": 0,
           "blocked": 0,
-          "done": 2
+          "done": 11
         }
       },
       "test": {
         "total": 3,
-        "done": 0,
+        "done": 3,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 3,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 3
         }
       },
       "decision": {
         "total": 2,
-        "done": 0,
+        "done": 2,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 2,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 2
         }
       },
       "wrapper": {
         "total": 4,
-        "done": 0,
+        "done": 4,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 4,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 4
         }
       },
       "docs": {
         "total": 1,
-        "done": 0,
+        "done": 1,
         "partial": 0,
         "blocked": 0,
-        "progress_percent": 0.0,
+        "progress_percent": 100.0,
         "by_status": {
-          "todo": 1,
+          "todo": 0,
           "in_progress": 0,
           "partial": 0,
           "blocked": 0,
-          "done": 0
+          "done": 1
         }
       }
     }
@@ -1025,5 +1054,24 @@
     "Version 2 (21.11.2026): nach der Projektanalyse um M0, M3 bis M5 und M8 erweitert; GP-005 von done auf partial korrigiert (Integrationstest fehlt, siehe GP-013); GP-006 hinter GP-007 eingeordnet und auf P2 gesenkt; GP-007 und GP-008 an den Admission-Ansatz angepasst.",
     "Offene Entscheidungen D-1 (Durchsetzungspunkt) und D-2 (Semantik on_true/on_false) blockieren M4; Empfehlungen sind jeweils Option A.",
     "Akuter Bug GP-009: jedes neu angelegte Gate mit Kommando endet heute mit status error."
+  ],
+  "end_summaries": [
+    {
+      "summary_id": "ES-1",
+      "title": "Gate-Pipeline abgeschlossen (2026-11-21)",
+      "items": [
+        "Pipeline A -> Gate -> B vollstaendig: D-1/D-2 entschieden (ADR 0002), Kanten im Daemon (Migration 18), Workspace-Fingerprint (Migration 17), fail-closed Admission, Durchsetzung an /v1/chat/completions und herdr-Prompt, auditierter Override, Wrapper-Vorabpruefung + wake/rework, blocked-check fail-closed, parametrisierte Pfade, UI-Status/Editor, Playwright, Integrationstests gegen Docker, Doku EN+DE, SD-020, staticcheck gepinnt.",
+        "Verifiziert: go build ./... && go vet ./...",
+        "Verifiziert: go test -race ./...",
+        "Verifiziert: make test-wrapper (27 Tests)",
+        "Verifiziert: go test -tags integration -run 'TestGateExpressionPathInSandbox|TestPipelineEndToEnd' ./tests/integration/",
+        "Verifiziert: cd ui/web && npm run build && npm run e2e:pipeline (3 Tests)",
+        "Verifiziert: staticcheck ./... (keine neuen Befunde)",
+        "Folgearbeit: Daemon-Build mit Migrationen 17/18 deployen (sudo), CLI + dockweave-web neu installieren",
+        "Folgearbeit: DOCKWEAVE_PAPERCLIP_AGENT_MAP fuer wake/rework anlegen",
+        "Folgearbeit: Legacy-Ziele dockweave-<cid> umgehen die Pipeline (deprecated)",
+        "Folgearbeit: Vorbestehende staticcheck-Befunde (SA1019 u. a.) separat abbauen"
+      ]
+    }
   ]
 }

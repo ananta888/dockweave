@@ -29,6 +29,7 @@ Paperclip.
 | Tamper-Erkennung von Gate-/Testdateien | nein | ja |
 | Diff-Scope-, Dependency- und Secret-Policy | nein | ja |
 | Review-PASS-Attribution | Transport (Kommentare/Interactions), Zuweisungsprüfung | Audit-Datensatz (admin-Peer), Zuständige als Metadatum |
+| Pipeline Gate → Agent (Admission, Frische, Override) | Transport für wake/rework (Wrapper) | Kanten, Admission, Durchsetzung am Endpunkt, Audit |
 | Rolle der menschlichen Freigabe | Transport (Interaction) | OIDC-Rolle + Audit |
 | Audit-Hash-Kette | nein | ja |
 
@@ -66,14 +67,21 @@ führt die Workspace-Konfiguration in einer kurzlebigen Sandbox aus:
 
 ### Phasen-Semantik
 
-Der Runner akzeptiert die `when`-Werte `pre_run`, `after_run` und `post_run`
-und führt sie **nacheinander in einem einzigen Durchlauf** innerhalb eines
-`gate run`-Aufrufs aus – sie ordnen die Gates, sie planen keine getrennten
-Auslösezeitpunkte. Im Paperclip-Wrapper ist heute nur `after_run` tatsächlich
-verdrahtet (`gates.py` / `dockweave-run.sh` führen die Gates nach dem
-Agentenlauf aus). Bis es einen echten Pre-/Post-Run-Hook gibt, verhalten sich
-`pre_run` und `post_run` genau wie `after_run`; eine unbekannte Phase ist ein
-Konfigurationsfehler.
+Der Runner akzeptiert die `when`-Werte `pre_run`, `after_run` und `post_run`.
+Ohne Phasenauswahl führt ein `gate run` alle Phasen nacheinander aus
+(`pre_run`, dann `after_run`, dann `post_run`). Ein Aufrufer kann einen Lauf
+auf bestimmte Phasen beschränken (`dockweave gate run --phase pre_run`,
+API-Feld `phases`); der Lauf hält sie in `phases` fest. Eine unbekannte Phase
+ist ein Konfigurationsfehler.
+
+Der Paperclip-Wrapper nutzt echte Auslösezeitpunkte:
+
+- `pre_run`-Gates laufen **bevor** der Agent seine Aufgabe bekommt. Ein
+  fehlgeschlagenes `pre_run`-Gate verhindert den Agentenlauf (fail-closed)
+  und stellt das Issue zurück in die Warteschlange. Ohne `pre_run`-Gates
+  entfällt der Lauf.
+- `after_run`- und `post_run`-Gates laufen gemeinsam **nachdem** ein Agent
+  `STATUS: DONE` gemeldet hat; der Agent wird als Upstream festgehalten.
 
 ### Retention
 
@@ -87,21 +95,34 @@ daher seine neuesten N alten Läufe.
 
 ### Gate-Ausdrücke
 
-Ein Gate kann eine `expression` sowie optional `on_true`/`on_false`-Texte
-tragen. Nach dem Kommando wertet der Runner den Ausdruck deterministisch aus:
+Ein Gate kann eine `expression`, die Routing-Aktionen `on_true`/`on_false`
+und die Begründungstexte `reason_true`/`reason_false` tragen. Nach dem
+Kommando wertet der Runner den Ausdruck deterministisch aus:
 
 | Variable | Typ | Bedeutung |
 |---|---|---|
 | `command`, `exit` | int | Exit-Code des Gate-Kommandos |
 | `budget` | float | Tageskosten in USD aus dem Usage-Snapshot des Brokers |
 
-Operatoren: `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!`, unäres `-` und
-Klammern; ein einzelner Wert gilt als wahr, wenn er ungleich 0 ist.
+Literale: Zahlen, `true` (1) und `false` (0). Operatoren: `==`, `!=`, `<`,
+`<=`, `>`, `>=`, `&&`, `||`, `!`, unäres `-` und Klammern; ein einzelner Wert
+gilt als wahr, wenn er ungleich 0 ist. Beide Seiten von `&&`/`||` werden
+immer ausgewertet, damit ein nicht verfügbares `budget` den Ausdruck auch
+dort scheitern lässt, wo Kurzschluss-Auswertung ihn übersprungen hätte.
 
-- Ohne Ausdruck entscheidet der Exit-Code (0 = bestanden).
+- Ohne Ausdruck entscheidet der Exit-Code (0 = bestanden). Neue Gates
+  beginnen im Editor ohne Ausdruck; Dokumente mit dem alten Default
+  `expression: "true"` laufen weiter.
 - Mit Ausdruck **ersetzt dessen Ergebnis das Exit-Code-Urteil**:
-  `command != 0` kann ein erwartetes Scheitern ausdrücken. `on_true` wird bei
-  PASS zum Grund, `on_false` bei FAIL.
+  `command != 0` kann ein erwartetes Scheitern ausdrücken. `reason_true` wird
+  bei PASS zum Grund, `reason_false` bei FAIL.
+- `on_true`/`on_false` sind Routing-Aktionen (ADR 0002): `allow`, `deny`,
+  `wake:<agent-id>`, `rework`; Defaults `allow`/`deny`. Ein alter
+  Freitextwert funktioniert weiter als Begründung (sofern `reason_*` nicht
+  gesetzt ist), die Default-Aktion greift und der Graph-Sync warnt.
+- Der Editor prüft Ausdrücke vor dem Speichern
+  (`POST /graph/validate-expression`, `gateexec.Validate`) und warnt, wenn
+  ein Ausdruck `budget` liest, aber kein Budget konfiguriert ist.
 - Ein ungültiger Ausdruck beendet das Gate mit Status `error`.
 - `budget` ist fail-closed: Ist für den Workspace kein Budget konfiguriert
   oder war der Broker nicht abfragbar, endet ein Ausdruck, der `budget`
@@ -140,6 +161,52 @@ Ausdrucksvariable `budget` bleibt unbenutzbar.
     Content-Hash-Notationen (`h1:`, `sha512-` …) sind von der
     Entropie-Prüfung ausgenommen, nicht vom Muster-Scan.
 - jeder Lauf landet in `gate_runs` und in der Audit-Hash-Kette (`gate.run`).
+
+## Pipelines (Agent A → Gate → Agent B)
+
+Ein Gate-Connector mit Ziel-Agent (`targetAgentId`, `proceed`-Kante im
+2D-Graphen) macht das Ziel zum **Downstream-Agenten**: Er übernimmt
+Pipeline-Arbeit nur, solange der letzte relevante Lauf des Gates auf genau
+dem aktuellen Workspace-Inhalt bestanden ist. Entscheidung:
+`docs/adr/0002-pipeline-enforcement.de.md`.
+
+- **Modell:** Das Web-Gateway leitet die Kanten bei jedem Speichern ab
+  (`gatesync.DerivePipeline`) und überträgt sie mit der Graph-Revision an
+  den Daemon (`PUT /api/v1/pipelines`, admin). Der Daemon speichert sie in
+  `pipeline_edges`, prüft Agenten und kanonische Workspaces (erlaubte
+  Wurzeln), ersetzt den Satz atomar und lässt nie eine ältere Revision
+  gewinnen. Eine fehlgeschlagene Übertragung behält den Graphen und zeigt
+  `pipeline_sync.error` in der UI.
+- **Admission:** `GET /api/v1/pipelines/admission?agent=<id|name>` (auch
+  `GET /api/v1/agents/{id}/pipeline`, `dockweave pipeline status`). Jede
+  eingehende Kante muss erfüllt sein; ein Agent ohne Kanten ist immer frei.
+- **Gründe:** `ok`, `override`, `no_run`, `failed`, `error`, `stale`,
+  `expired`, `tamper`, `fingerprint_unavailable`, `unknown_gate`, `denied`,
+  `internal` — jeweils mit Gate-ID, Lauf-ID und Meldung.
+- **Frische:** Jeder Lauf speichert einen `workspace_fingerprint` (SHA-256
+  über Pfade und Inhalte der Sandbox-Kopie, dieselben ignorierten Bäume wie
+  der Diff). Die Admission berechnet ihn auf dem echten Workspace neu; jede
+  Änderung bedeutet `stale`. Läufe vor Migration 17 haben keinen
+  Fingerabdruck und sind nie frisch. Grenzen: 100 000 Dateien, 2 GiB, 60 s —
+  darüber `fingerprint_unavailable` (blockiert). Optional `max_age_sec` je
+  Gate.
+- **Durchsetzung:** `POST /v1/chat/completions` und der herdr-Prompt prüfen
+  die Admission, bevor der Agent angesprochen wird; ein blockierter Agent
+  erhält `409` mit `code: pipeline_blocked`, den Gründen und der Aktion.
+  Interaktive Terminal-Sitzungen sind nicht betroffen. Der Paperclip-Wrapper
+  fragt die Admission zusätzlich vor jedem Turn ab und meldet eine Sperre am
+  Issue.
+- **Routing:** Die Admission liefert pro Kante die zutreffende Aktion
+  (`on_true` bei bestanden, `on_false` bei fehlgeschlagen, sonst `deny`). Der
+  Wrapper weckt freigegebene Agenten (`allow`, `wake:<agent>`) und legt für
+  `rework` pro Gate-Lauf genau ein Nacharbeit-Issue an.
+- **Override:** `dockweave pipeline override <agent> --gate <id> --reason …`
+  (`POST /api/v1/pipelines/override`, admin): Pflichtbegründung,
+  standardmäßig 15 Minuten (max. 24 h), einmalig, außer mit `--reusable`.
+  Auditiert als `pipeline.override` und `pipeline.override_used`. Gilt nie
+  für `tamper`.
+- **Audit:** `pipeline.update` (Übertragung), `pipeline.blocked`
+  (begrenzt auf ein Ereignis pro Agent, Issue und Grund-Satz und Minute).
 
 ## Konfiguration
 
@@ -223,3 +290,12 @@ hinweg.
   `budget` braucht: das Gate endet mit Status `error`.
 - Tamper-, Scope-, Dependency- oder Secret-Verstoß: der Lauf schlägt fehl,
   auch wenn das Kommando mit 0 endete.
+- Pipeline-Admission: eine nicht lesbare Datenbank, ein fehlender Lauf, ein
+  fehlender oder nicht berechenbarer Fingerabdruck, ein unbekanntes Gate oder
+  ein interner Fehler blockiert den Downstream-Agenten; nie wird
+  standardmäßig freigegeben. Der Wrapper behandelt einen nicht erreichbaren
+  Daemon oder eine ungültige Antwort als blockiert, und ein nicht
+  bestätigtes Gate-Ergebnis nach `STATUS: DONE` lässt das Issue offen.
+- `blocked-check.py`: eine fehlgeschlagene oder nicht lesbare
+  Paperclip-Abfrage gilt als blockiert, außer
+  `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN=1` ist gesetzt.

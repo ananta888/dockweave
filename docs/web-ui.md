@@ -50,6 +50,33 @@ Secret values are never shown. Creating/rotating secrets and credential
 grants stays on the `dockweave secret` / `credential` CLI (broker admin
 socket).
 
+### Gates and pipelines in the graph
+
+- **Gate editor** (connector dialog and node popover): optional expression
+  (empty = the exit code decides), checked inline against
+  `POST /graph/validate-expression`; an invalid expression cannot be saved,
+  and an expression that reads `budget` without a configured budget shows a
+  warning. Routing is a choice, not free text: on PASS `allow`,
+  `wake` (with an agent picker) or `deny`; on FAIL `deny` or `rework`; plus
+  `reason_true`/`reason_false` and an optional maximum PASS age. Older free
+  text opens as the reason with the default action.
+- **proceed edge** (gate → target agent) shows the pipeline state from
+  `GET /api/v1/pipelines/admission`: green `✓ ok`/`override`, red
+  `✕ failed`/`error`/`tamper`/`denied`, amber dashed `stale`/`expired`/
+  `no_run`/`unknown_gate`, and `nicht übertragen` when the daemon does not
+  know the edge yet. The label is keyboard-focusable; its tooltip and
+  accessible name list the expression, reason code, last run id and age.
+- **Downstream agents** carry a `Pipeline frei` / `⛔ blockiert` badge with a
+  text alternative naming the blocking gates. The status refreshes every 15
+  seconds and after every save, without a reload.
+- **Sync errors:** the save response's `pipeline_sync.error` appears as a
+  banner on the canvas and in the settings section "Pipeline (Gate → Agent)",
+  together with derivation warnings. A gate with a target agent but no shell
+  command is marked with a warning (the target would stay blocked).
+
+UI test without a daemon: `cd ui/web && npm run build && npm run e2e:pipeline`
+(Playwright, mocked backend).
+
 ## Architecture
 
 ```

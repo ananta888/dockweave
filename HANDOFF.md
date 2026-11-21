@@ -1,11 +1,11 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-19, letzter Commit `8935692` (gepusht nach `origin/main`).
-Working Tree sauber, `main` == `origin/main`.
+Stand: 2026-11-21, Branch `main` (lokal, noch nicht gepusht). Gate-Pipeline
+A → Gate → B vollständig umgesetzt (Track `todo/archive/gate-pipeline.json`).
 
 Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
-weiterarbeiten kann. Sie wurde nach der Graph-/Gate-Session neu geschrieben
-und um die Security-Hardening-Runde (Abschnitt 3.4) ergänzt.
+weiterarbeiten kann. Abschnitt 3.0 beschreibt die Pipeline-Session; 3.1–3.4
+sind der vorherige Stand (Graph/Gates, Security-Hardening).
 
 ---
 
@@ -45,7 +45,53 @@ funktionieren live. Web + CLI sind deployt.
 
 ---
 
-## 3. Letzte Session — was gebaut wurde
+## 3. Letzte Sessions — was gebaut wurde
+
+### 3.0 Gate-Pipeline (2026-11-21)
+
+Ziel: Agent B arbeitet nur, wenn das deterministische Gate hinter Agent A auf
+dem aktuellen Workspace-Stand bestanden ist. Entscheidungen D-1 (Durchsetzung
+am Endpoint + Wrapper-Vorabprüfung) und D-2 (`on_true`/`on_false` als
+Aktionen) in `docs/adr/0002-pipeline-enforcement.md`, SD-020.
+
+- **Ausdrücke:** Literale `true`/`false`; `gateexec.Validate` +
+  `POST /graph/validate-expression`; neue Gates ohne Default-Ausdruck.
+- **Routing:** `allow | deny | wake:<agent> | rework`, Texte in
+  `reason_true`/`reason_false`; alter Freitext bleibt als Begründung gültig
+  (`internal/gatesync/action.go`).
+- **Frische:** `gateexec.Fingerprint` (Pfade + Inhalte, ignorierte Bäume wie
+  der Diff, Limits 100k Dateien / 2 GiB / 60 s). `gate_runs` hat
+  `workspace_fingerprint`, `upstream_agent_id`, `phases` (Migration 17).
+- **Kanten:** `gatesync.DerivePipeline` → Gateway pusht bei jedem Speichern
+  `PUT /api/v1/pipelines` (admin, Revisionsschutz, `reset` bei neuer
+  Graph-Datei). Tabellen `pipeline_edges`, `pipeline_overrides` (Migration 18).
+- **Admission:** `internal/pipeline` (fail-closed, Gründe `no_run`, `failed`,
+  `error`, `stale`, `expired`, `tamper`, `fingerprint_unavailable`,
+  `unknown_gate`, `denied`, `internal`, `override`).
+  `GET /api/v1/pipelines/admission`, `GET /api/v1/agents/{id}/pipeline`.
+- **Durchsetzung:** `/v1/chat/completions` und herdr-Prompt → `409
+  pipeline_blocked` vor dem ersten Byte an den Agenten. Audit
+  `pipeline.update|blocked|override|override_used`.
+- **Override:** `dockweave pipeline override <agent> --gate <id> --reason …`
+  (einmalig, 15 min, nie für tamper).
+- **CLI/SDK:** `dockweave pipeline list|status|override|overrides`,
+  `gate run --upstream-agent --phase`; `pkg/sdk/pipelines.go`.
+- **Wrapper:** `deployments/paperclip/pipeline.py` (precheck, handle-409,
+  route), `pre_run`-Gates vor dem Lauf, `after_run,post_run` nach DONE,
+  `blocked-check.py` fail-closed, keine hart codierten Pfade mehr
+  (Konfiguration in `~/.config/dockweave/paperclip.env`, alte Werte dort
+  eingetragen). Tests: `make test-wrapper`.
+- **UI:** proceed-Kante mit Status/Tooltip, Badge an Downstream-Agenten,
+  Routing-Editor, Inline-Validierung, `pipeline_sync.error`-Banner;
+  Playwright `npm run e2e:pipeline` (gemocktes Backend); `internal/webui/dist`
+  neu gebaut.
+- **Tests:** `go test ./...`, `make test-wrapper`,
+  `go test -tags integration -run 'TestGateExpressionPathInSandbox|TestPipelineEndToEnd' ./tests/integration/`
+  (echtes Docker, ohne Mount-Operationen).
+
+**Noch zu tun durch den Nutzer:** neuen `dockweaved` deployen (Migrationen
+17/18 laufen beim Start), `dockweave` CLI + `dockweave-web` neu installieren,
+für wake/rework `DOCKWEAVE_PAPERCLIP_AGENT_MAP` anlegen.
 
 ### 3.1 2D-Graph (Angular)
 
@@ -230,7 +276,14 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 | Web-Sync-Status | `internal/webui/graph.go`, `internal/webui/server.go` |
 | Paperclip | `deployments/paperclip/{gates,parent-close}.py`, `dockweave-run.sh` |
 | Doku | `docs/gate-model.md` / `.de.md`, `docs/paperclip-delegation.md` / `.de.md` |
-| TODO | `todo/archive/gate-enforcement.json` |
+| TODO | `todo/archive/gate-enforcement.json`, `todo/archive/gate-pipeline.json` |
+| Pipeline | `internal/pipeline/admission.go`, `internal/api/pipelines.go`, `internal/persistence/pipelines.go`, `internal/model/pipeline.go` |
+| Pipeline-Ableitung | `internal/gatesync/{pipeline,action}.go` |
+| Fingerprint | `internal/gateexec/fingerprint.go` |
+| Pipeline-CLI/SDK | `cmd/dockweave/pipeline.go`, `pkg/sdk/pipelines.go` |
+| Pipeline-Wrapper | `deployments/paperclip/pipeline.py`, `deployments/paperclip/tests/test_wrapper.py` |
+| Pipeline-UI | `ui/web/src/app/core/services/pipeline.service.ts`, `ui/web/e2e/pipeline.spec.ts` |
+| ADR | `docs/adr/0002-pipeline-enforcement.md` / `.de.md` |
 
 ---
 
@@ -266,6 +319,12 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 ---
 
 ## 8. Offene Punkte / nächste Schritte
+
+0. **Pipeline deployen:** Daemon-Build mit Migrationen 17/18 installieren
+   (`sudo install … dockweaved`), Gateway muss als admin-Peer laufen, sonst
+   meldet das Speichern `pipeline_sync.error`. Agent-Zuordnung
+   `DOCKWEAVE_PAPERCLIP_AGENT_MAP` für wake/rework anlegen. Legacy-Ziele
+   `dockweave-<cid>` umgehen die Pipeline (deprecated).
 
 1. **`todo/archive/gate-enforcement.json`:** 20 Tasks `done`; offen nur die bewussten
    Non-Goals `gate-040` (keine zweite Dependency-DB) und `gate-041` (kein
