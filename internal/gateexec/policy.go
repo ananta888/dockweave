@@ -133,11 +133,11 @@ func scanSecrets(root string, changed []string) []string {
 				break
 			}
 		}
-		if matched {
+		if matched || isLockfile(rel) {
 			continue
 		}
-		if highEntropyToken(text) != "" {
-			found = append(found, rel+": "+highEntropyToken(text))
+		if label := highEntropyToken(text); label != "" {
+			found = append(found, rel+": "+label)
 		}
 	}
 	sort.Strings(found)
@@ -148,7 +148,35 @@ func scanSecrets(root string, changed []string) []string {
 // unusually high Shannon entropy — a common signal for generated secrets.
 var highEntropyRe = regexp.MustCompile(`[A-Za-z0-9+/_-]{24,}`)
 
+// hashDigestRe matches well-known content-hash notations (go.sum "h1:" and
+// Subresource-Integrity "sha512-…" values). They are high-entropy by design
+// but never secrets, so they are removed before the entropy check.
+var hashDigestRe = regexp.MustCompile(`(?:\bh1:|\bsha(?:1|256|384|512)-)[A-Za-z0-9+/_=-]+`)
+
+// lockfileNames are generated dependency lockfiles. They consist mostly of
+// hashes, so the entropy fallback is skipped for them (the pattern scan for
+// known credential shapes still applies).
+var lockfileNames = map[string]bool{
+	"go.sum":              true,
+	"package-lock.json":   true,
+	"npm-shrinkwrap.json": true,
+	"yarn.lock":           true,
+	"pnpm-lock.yaml":      true,
+	"bun.lock":            true,
+	"Cargo.lock":          true,
+	"poetry.lock":         true,
+	"Pipfile.lock":        true,
+	"uv.lock":             true,
+	"composer.lock":       true,
+	"Gemfile.lock":        true,
+}
+
+func isLockfile(rel string) bool {
+	return lockfileNames[path.Base(filepath.ToSlash(rel))]
+}
+
 func highEntropyToken(text string) string {
+	text = hashDigestRe.ReplaceAllString(text, " ")
 	for _, m := range highEntropyRe.FindAllString(text, -1) {
 		if len(m) > 64 { // long base64 blobs are usually not secrets
 			continue
@@ -258,22 +286,41 @@ func goModRequires(raw []byte) map[string]bool {
 	return out
 }
 
+// normalizePythonName reduces a PEP 508 requirement string to its PEP 503
+// normalised project name: extras, version specifiers, URLs and environment
+// markers are dropped, the name is lower-cased and runs of "-", "_" and "."
+// collapse to a single "-". This keeps version bumps from looking like new
+// dependencies.
+func normalizePythonName(spec string) string {
+	spec = strings.TrimSpace(spec)
+	if i := strings.IndexByte(spec, ';'); i >= 0 {
+		spec = spec[:i]
+	}
+	end := len(spec)
+	for i, c := range spec {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_' || c == '.') {
+			end = i
+			break
+		}
+	}
+	name := strings.ToLower(spec[:end])
+	return pythonSepRe.ReplaceAllString(strings.Trim(name, "-_."), "-")
+}
+
+var pythonSepRe = regexp.MustCompile(`[-_.]+`)
+
 // requirementsNames extracts requirement names from a pip requirements file.
 func requirementsNames(raw []byte) map[string]bool {
 	out := map[string]bool{}
 	for _, line := range strings.Split(string(raw), "\n") {
 		line = strings.TrimSpace(line)
+		if i := strings.Index(line, " #"); i >= 0 {
+			line = line[:i]
+		}
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
 			continue
 		}
-		name := line
-		for _, sep := range []string{"==", ">=", "<=", "~=", "!=", ">", "<", "@", "["} {
-			if i := strings.Index(name, sep); i >= 0 {
-				name = name[:i]
-			}
-		}
-		name = strings.TrimSpace(name)
-		if name != "" {
+		if name := normalizePythonName(line); name != "" {
 			out[name] = true
 		}
 	}
@@ -282,41 +329,46 @@ func requirementsNames(raw []byte) map[string]bool {
 
 // pyprojectNames extracts dependency names from a pyproject.toml, covering both
 // the PEP 621 `[project] dependencies = [...]` form and the Poetry
-// `[tool.poetry.dependencies]` table form.
+// `[tool.poetry.dependencies]` table form. Names are PEP 503 normalised.
 func pyprojectNames(raw []byte) map[string]bool {
 	out := map[string]bool{}
+	add := func(spec string) {
+		if name := normalizePythonName(spec); name != "" {
+			out[name] = true
+		}
+	}
 	inProjectDeps := false
 	inPoetryDeps := false
 	for _, line := range strings.Split(string(raw), "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[") {
-			inProjectDeps = false
+		if strings.HasPrefix(trimmed, "[") && !inProjectDeps {
 			inPoetryDeps = strings.HasPrefix(trimmed, "[tool.poetry.dependencies") ||
 				(strings.HasPrefix(trimmed, "[tool.poetry.group.") && strings.HasSuffix(trimmed, ".dependencies]"))
 			continue
 		}
-		if strings.HasPrefix(trimmed, "dependencies") && strings.Contains(trimmed, "=") {
-			inProjectDeps = strings.Contains(trimmed, "[")
-			for _, m := range quotedStrings(trimmed) {
-				out[m] = true
+		if !inPoetryDeps && strings.HasPrefix(trimmed, "dependencies") && strings.Contains(trimmed, "=") {
+			_, value, _ := strings.Cut(trimmed, "=")
+			value = strings.TrimSpace(value)
+			inProjectDeps = strings.HasPrefix(value, "[") && !strings.Contains(stripQuoted(value), "]")
+			for _, m := range quotedStrings(value) {
+				add(m)
 			}
 			continue
 		}
 		if inProjectDeps {
-			if trimmed == "]" {
-				inProjectDeps = false
-				continue
-			}
 			for _, m := range quotedStrings(trimmed) {
-				out[m] = true
+				add(m)
+			}
+			if strings.Contains(stripQuoted(trimmed), "]") {
+				inProjectDeps = false
 			}
 			continue
 		}
 		if inPoetryDeps {
 			if idx := strings.Index(trimmed, "="); idx > 0 {
-				name := strings.TrimSpace(trimmed[:idx])
-				if name != "" && !strings.ContainsAny(name, " \t\"'") {
-					out[name] = true
+				key := strings.Trim(strings.TrimSpace(trimmed[:idx]), "\"'")
+				if key != "" && key != "python" && !strings.ContainsAny(key, " \t") {
+					add(key)
 				}
 			}
 		}
@@ -324,31 +376,79 @@ func pyprojectNames(raw []byte) map[string]bool {
 	return out
 }
 
-// cargoNames extracts dependency names from a Cargo.toml dependency table.
+// cargoTableRe classifies a Cargo.toml table header (without brackets):
+// group 1 is the dependency table kind, group 2 the crate name of the
+// `[dependencies.<name>]` form. Target-specific tables
+// (`target.'cfg(unix)'.dependencies`) are included.
+var cargoTableRe = regexp.MustCompile(`^(?:target\.(?:'[^']*'|"[^"]*"|[^.'"]+)\.)?(dependencies|dev-dependencies|build-dependencies)(?:\.(.+))?$`)
+
+// cargoNames extracts dependency names from the dependency tables of a
+// Cargo.toml: inline entries (`serde = "1"`, `serde.workspace = true`) and the
+// table form (`[dependencies.serde]`).
 func cargoNames(raw []byte) map[string]bool {
 	out := map[string]bool{}
 	inDeps := false
 	for _, line := range strings.Split(string(raw), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "[") {
-			inDeps = trimmed == "[dependencies]" || trimmed == "[dev-dependencies]" ||
-				trimmed == "[build-dependencies]" ||
-				strings.HasPrefix(trimmed, "[dependencies.") ||
-				strings.HasPrefix(trimmed, "[dev-dependencies.") ||
-				strings.HasPrefix(trimmed, "[build-dependencies.")
+			inDeps = false
+			header := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "["), "]"))
+			if i := strings.Index(header, "]"); i >= 0 { // trailing comment
+				header = strings.TrimSpace(header[:i])
+			}
+			m := cargoTableRe.FindStringSubmatch(header)
+			if m == nil {
+				continue
+			}
+			if m[2] != "" {
+				if name := strings.Trim(strings.TrimSpace(m[2]), "\"'"); name != "" {
+					out[name] = true
+				}
+				continue
+			}
+			inDeps = true
 			continue
 		}
 		if !inDeps || trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 		if idx := strings.Index(trimmed, "="); idx > 0 {
-			name := strings.TrimSpace(trimmed[:idx])
-			if name != "" && !strings.ContainsAny(name, " \t\"'") {
-				out[name] = true
+			key := strings.TrimSpace(trimmed[:idx])
+			if !strings.HasPrefix(key, "\"") && !strings.HasPrefix(key, "'") {
+				if i := strings.IndexByte(key, '.'); i > 0 { // serde.workspace = true
+					key = key[:i]
+				}
+			}
+			key = strings.Trim(strings.TrimSpace(key), "\"'")
+			if key != "" && !strings.ContainsAny(key, " \t") {
+				out[key] = true
 			}
 		}
 	}
 	return out
+}
+
+// stripQuoted removes quoted strings from a line so that brackets inside a
+// requirement (extras such as "pkg[extra]") are not taken as array syntax.
+func stripQuoted(line string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '#':
+			return b.String()
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // quotedStrings extracts the first single- or double-quoted string of each

@@ -78,3 +78,64 @@ func TestTailLines(t *testing.T) {
 		t.Fatalf("tailLines = %q", got)
 	}
 }
+
+func TestPythonDependencyNamesAreNormalised(t *testing.T) {
+	before := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.0\",\n  \"Flask[async] ~= 3.0 ; python_version >= '3.9'\",\n]\n"))
+	after := pyprojectNames([]byte("[project]\nname = \"x\"\ndependencies = [\n  \"requests>=2.1\",\n  \"flask[async]>=3.1\",\n]\n\n[tool.other]\nkey = \"v\"\n"))
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("version bump changed pyproject names: before=%v after=%v", before, after)
+	}
+	if !reflect.DeepEqual(after, map[string]bool{"requests": true, "flask": true}) {
+		t.Fatalf("pyproject names = %v", after)
+	}
+	inline := pyprojectNames([]byte("[project]\ndependencies = [\"a-b>=1\", \"Zope.Interface\"]\n"))
+	if !reflect.DeepEqual(inline, map[string]bool{"a-b": true, "zope-interface": true}) {
+		t.Fatalf("inline pyproject names = %v", inline)
+	}
+	poetry := pyprojectNames([]byte("[tool.poetry.dependencies]\npython = \"^3.10\"\nRequests = \"^2\"\n"))
+	if !reflect.DeepEqual(poetry, map[string]bool{"requests": true}) {
+		t.Fatalf("poetry names = %v", poetry)
+	}
+	req := requirementsNames([]byte("# c\nDjango_REST.framework==3.0 ; python_version<\"3.8\"\nnumpy>=1 # pinned\n-r other.txt\npkg @ https://x/y.whl\n"))
+	if !reflect.DeepEqual(req, map[string]bool{"django-rest-framework": true, "numpy": true, "pkg": true}) {
+		t.Fatalf("requirements names = %v", req)
+	}
+}
+
+func TestCargoNamesTableForm(t *testing.T) {
+	before := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\nfeatures = [\"derive\"]\n"))
+	after := cargoNames([]byte("[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies.serde]\nversion = \"1\"\n\n[dependencies.tokio]\nversion = \"1\"\n\n" +
+		"[target.'cfg(unix)'.dependencies]\nlibc = \"0.2\"\n\n[target.\"cfg(windows)\".dev-dependencies.winapi]\nversion = \"0.3\"\n\n[dependencies]\nanyhow.workspace = true\n\"quoted\" = \"1\"\n"))
+	if !reflect.DeepEqual(before, map[string]bool{"serde": true}) {
+		t.Fatalf("cargo before = %v", before)
+	}
+	want := map[string]bool{"serde": true, "tokio": true, "libc": true, "winapi": true, "anyhow": true, "quoted": true}
+	if !reflect.DeepEqual(after, want) {
+		t.Fatalf("cargo after = %v, want %v", after, want)
+	}
+}
+
+func TestScanSecretsIgnoresLockfilesAndHashes(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"go.sum":            "github.com/foo/bar v1.2.3 h1:Xk3vF9qWm2Lp8zR1tYb6NcJ0aEuHs4dGoQiV7wKyT5M=\n",
+		"package-lock.json": `{"integrity": "sha1-Q2uJp8vXk7Rz0mW3LcN9aYfB4tE="}`,
+		"vendor.txt":        "dep sha512-Q2uJp8vXk7Rz0mW3LcN9aYfB4tE9fK2mLp\nmod h1:Xk3vF9qWm2Lp8zR1tYb6NcJ0aEuHs4dGoQiV7wKyT5M=\n",
+		"config.env":        "TOKEN=q8Zr2Lm9Xv4Tb7Kp1Wn6Yc3Hd5Fs0Gj\n",
+		"lock-leak/go.sum":  "key=AKIAABCDEFGHIJKLMNOP\n",
+	}
+	for name, content := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := scanSecrets(dir, []string{"go.sum", "package-lock.json", "vendor.txt", "config.env", "lock-leak/go.sum"})
+	want := []string{"config.env: high-entropy-token", "lock-leak/go.sum: aws-access-key"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scanSecrets = %v, want %v", got, want)
+	}
+}
