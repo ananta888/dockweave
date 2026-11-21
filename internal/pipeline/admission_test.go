@@ -35,6 +35,24 @@ func (f *fakeStore) RecentGateRuns(_ context.Context, ws string, _ int) ([]*mode
 	return f.runs[ws], f.runsErr
 }
 
+func (f *fakeStore) RelevantGateRuns(_ context.Context, ws, _ string) ([]*model.GateRun, error) {
+	return f.runs[ws], f.runsErr
+}
+
+func (f *fakeStore) ConsumePipelineOverridesAudited(ctx context.Context, ids []string, at time.Time, _, _ string) error {
+	for _, id := range ids {
+		if f.consumed[id] {
+			return errors.New("already used")
+		}
+	}
+	for _, id := range ids {
+		if err := f.ConsumePipelineOverride(ctx, id, at); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *fakeStore) ListPipelineOverrides(_ context.Context, agent string, at time.Time) ([]*model.PipelineOverride, error) {
 	var out []*model.PipelineOverride
 	for _, o := range f.overrides {

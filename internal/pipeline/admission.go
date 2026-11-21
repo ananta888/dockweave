@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,9 +22,9 @@ import (
 // Store is the persistence subset the evaluator needs.
 type Store interface {
 	EdgesForDownstream(ctx context.Context, agentID string) ([]*model.PipelineEdge, int, error)
-	RecentGateRuns(ctx context.Context, workspace string, limit int) ([]*model.GateRun, error)
+	RelevantGateRuns(ctx context.Context, workspace, gateID string) ([]*model.GateRun, error)
 	ListPipelineOverrides(ctx context.Context, agentID string, activeAt time.Time) ([]*model.PipelineOverride, error)
-	ConsumePipelineOverride(ctx context.Context, id string, at time.Time) error
+	ConsumePipelineOverridesAudited(ctx context.Context, ids []string, at time.Time, actor, issue string) error
 }
 
 // FingerprintFunc computes the current fingerprint of a canonical workspace.
@@ -35,8 +36,11 @@ type Evaluator struct {
 	Fingerprint FingerprintFunc
 	// Now is the clock (tests); nil uses time.Now.
 	Now func() time.Time
-	// RunScan is how many recent runs per workspace are searched for the
-	// gate (default 200).
+	// WorkActor and WorkIssue identify the real admission in atomic audit events.
+	WorkActor string
+	WorkIssue string
+	// RunScan is retained for source compatibility; indexed relevant-run
+	// lookup no longer truncates evidence by an arbitrary history window.
 	RunScan int
 }
 
@@ -62,12 +66,23 @@ func (e *Evaluator) Admit(ctx context.Context, agentID string) *model.Admission 
 		return adm
 	}
 	at := e.now()
-	for i := range adm.Edges {
-		ed := &adm.Edges[i]
-		if ed.Code != model.AdmitOverride || ed.OverrideID == "" {
-			continue
+	var ids []string
+	seen := map[string]bool{}
+	for _, ed := range adm.Edges {
+		if ed.Code == model.AdmitOverride && ed.OverrideID != "" && !seen[ed.OverrideID] {
+			ids = append(ids, ed.OverrideID)
+			seen[ed.OverrideID] = true
 		}
-		if err := e.Store.ConsumePipelineOverride(ctx, ed.OverrideID, at); err != nil {
+	}
+	if len(ids) == 0 {
+		return adm
+	}
+	if err := e.Store.ConsumePipelineOverridesAudited(ctx, ids, at, e.WorkActor, e.WorkIssue); err != nil {
+		for i := range adm.Edges {
+			ed := &adm.Edges[i]
+			if ed.Code != model.AdmitOverride || ed.OverrideID == "" {
+				continue
+			}
 			ed.Satisfied = false
 			ed.Code = model.AdmitDenied
 			ed.Message = "override could not be used: " + err.Error()
@@ -82,6 +97,11 @@ func (e *Evaluator) evaluate(ctx context.Context, agentID string) *model.Admissi
 	adm := &model.Admission{AgentID: agentID, CheckedAt: e.now(), Edges: []model.AdmissionEdge{}}
 	if e == nil || e.Store == nil {
 		adm.Edges = append(adm.Edges, internalEdge("pipeline evaluator is not configured"))
+		finalize(adm)
+		return adm
+	}
+	if err := ctx.Err(); err != nil {
+		adm.Edges = append(adm.Edges, internalEdge(err.Error()))
 		finalize(adm)
 		return adm
 	}
@@ -124,12 +144,13 @@ func (e *Evaluator) evaluate(ctx context.Context, agentID string) *model.Admissi
 	runsErr := map[string]error{}
 
 	for _, edge := range edges {
-		runs, ok := runsCache[edge.Workspace]
+		cacheKey := edge.Workspace + "\x00" + edge.GateID
+		runs, ok := runsCache[cacheKey]
 		if !ok {
-			runs, err = e.Store.RecentGateRuns(ctx, edge.Workspace, e.runScan())
-			runsCache[edge.Workspace], runsErr[edge.Workspace] = runs, err
+			runs, err = e.Store.RelevantGateRuns(ctx, edge.Workspace, edge.GateID)
+			runsCache[cacheKey], runsErr[cacheKey] = runs, err
 		}
-		ae := e.evalEdge(edge, runs, runsErr[edge.Workspace], fingerprint, adm.CheckedAt)
+		ae := e.evalEdge(edge, runs, runsErr[cacheKey], fingerprint, adm.CheckedAt)
 		if !ae.Satisfied && ae.Code != model.AdmitTamper {
 			if overrideErr == nil {
 				if o := findOverride(overrides, edge.GateID); o != nil {
@@ -153,11 +174,74 @@ func (e *Evaluator) evaluate(ctx context.Context, agentID string) *model.Admissi
 	return adm
 }
 
-func (e *Evaluator) runScan() int {
-	if e.RunScan > 0 {
-		return e.RunScan
+// Admissions evaluates one immutable edge snapshot with request-local
+// fingerprint caching. Nothing is shared with subsequent real admissions.
+func (e *Evaluator) Admissions(ctx context.Context, state *model.PipelineState) []*model.Admission {
+	copy := *e
+	copy.Store = &snapshotStore{Store: e.Store, state: state, runs: map[string]cachedRuns{}}
+	at := e.now()
+	copy.Now = func() time.Time { return at }
+	type result struct {
+		fp  string
+		err error
 	}
-	return 200
+	cache := map[string]result{}
+	copy.Fingerprint = func(ctx context.Context, ws string) (string, error) {
+		if r, ok := cache[ws]; ok {
+			return r.fp, r.err
+		}
+		if e.Fingerprint == nil {
+			return "", fmt.Errorf("fingerprinting is not configured")
+		}
+		fp, err := e.Fingerprint(ctx, ws)
+		cache[ws] = result{fp, err}
+		return fp, err
+	}
+	ids := map[string]bool{}
+	for _, edge := range state.Edges {
+		ids[edge.DownstreamAgentID] = true
+	}
+	ordered := make([]string, 0, len(ids))
+	for id := range ids {
+		ordered = append(ordered, id)
+	}
+	sort.Strings(ordered)
+	out := make([]*model.Admission, 0, len(ordered))
+	for _, id := range ordered {
+		out = append(out, copy.Admission(ctx, id))
+	}
+	return out
+}
+
+type snapshotStore struct {
+	Store
+	state *model.PipelineState
+	runs  map[string]cachedRuns
+}
+
+type cachedRuns struct {
+	runs []*model.GateRun
+	err  error
+}
+
+func (s *snapshotStore) RelevantGateRuns(ctx context.Context, workspace, gateID string) ([]*model.GateRun, error) {
+	key := workspace + "\x00" + gateID
+	if r, ok := s.runs[key]; ok {
+		return r.runs, r.err
+	}
+	runs, err := s.Store.RelevantGateRuns(ctx, workspace, gateID)
+	s.runs[key] = cachedRuns{runs, err}
+	return runs, err
+}
+
+func (s *snapshotStore) EdgesForDownstream(_ context.Context, id string) ([]*model.PipelineEdge, int, error) {
+	var out []*model.PipelineEdge
+	for _, e := range s.state.Edges {
+		if e.DownstreamAgentID == id {
+			out = append(out, e)
+		}
+	}
+	return out, s.state.Revision, nil
 }
 
 func findOverride(list []*model.PipelineOverride, gateID string) *model.PipelineOverride {
@@ -201,12 +285,21 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 	if run.Tamper {
 		return block(model.AdmitTamper, "protected gate files changed during run "+run.ID)
 	}
+	if run.FinishedAt.IsZero() {
+		return block(model.AdmitError, "gate run has not durably completed")
+	}
 	res := resultFor(run, edge.GateID)
 	if res == nil {
-		if run.Status == model.GateError && len(run.Results) == 0 {
+		if (run.Status == model.GateError || run.Status == model.GateFailed) && len(run.Results) == 0 {
 			return block(model.AdmitError, firstNonEmpty(run.Reason, "gate run failed before any gate ran"))
 		}
 		return block(model.AdmitUnknownGate, fmt.Sprintf("gate %q is not configured in %s (run %s)", edge.GateID, edge.Workspace, run.ID))
+	}
+	if run.FinishedAt.After(now.Add(time.Minute)) || (!run.StartedAt.IsZero() && run.FinishedAt.Before(run.StartedAt)) {
+		return block(model.AdmitError, "gate completion time is invalid")
+	}
+	if edge.MaxAgeSec < 0 || edge.MaxAgeSec > model.MaxPipelineAgeSec {
+		return block(model.AdmitError, "max_age_sec is out of range")
 	}
 	switch {
 	case res.Status == "error" || run.Status == model.GateError:
@@ -229,6 +322,7 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 	if current != run.WorkspaceFingerprint {
 		return block(model.AdmitStale, "workspace changed since passing run "+run.ID)
 	}
+	ae.Action, ae.Reason = tAct.String(), tReason
 	if !tAct.Allows() {
 		return block(model.AdmitDenied, "on_true action "+tAct.String()+" does not release the agent")
 	}
@@ -245,7 +339,7 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 // skipped, so a pre_run-only run never hides the last after_run verdict.
 func relevantRun(runs []*model.GateRun, gateID string) *model.GateRun {
 	for _, r := range runs {
-		if r.Tamper || resultFor(r, gateID) != nil || len(r.Phases) == 0 {
+		if r.Tamper || resultFor(r, gateID) != nil || len(r.Phases) == 0 || r.FinishedAt.IsZero() || (len(r.Results) == 0 && (r.Status == model.GateFailed || r.Status == model.GateError)) {
 			return r
 		}
 	}

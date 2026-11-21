@@ -24,11 +24,22 @@ import (
 // explains why. Only a self edge (target == upstream) is dropped, because it
 // would deadlock the agent that has to fix its own gate.
 func DerivePipeline(raw []byte, roots []string) ([]model.PipelineEdge, []string, error) {
+	edges, _, warnings, err := DerivePipelineBindings(raw, roots)
+	return edges, warnings, err
+}
+
+// DerivePipelineBindings also returns the daemon edge ID for each connector.
+func DerivePipelineBindings(raw []byte, roots []string) ([]model.PipelineEdge, map[string]string, []string, error) {
 	var doc Document
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, nil, fmt.Errorf("graph document is not JSON: %w", err)
+		return nil, nil, nil, fmt.Errorf("graph document is not JSON: %w", err)
+	}
+	doc, err := canonicalDocument(doc, roots)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	_, refs, _ := deriveGroups(doc)
+	bindings := map[string]string{}
 
 	var (
 		edges    []model.PipelineEdge
@@ -45,8 +56,7 @@ func DerivePipeline(raw []byte, roots []string) ([]model.PipelineEdge, []string,
 		}
 		ref, ok := refs[c.ID]
 		if !ok {
-			warnings = append(warnings, fmt.Sprintf("gate %q: invalid contract; the proceed edge to %q is not enforced", c.Name, target))
-			continue
+			return nil, nil, warnings, &ContractError{c.ID, target, fmt.Errorf("gate reference could not be derived")}
 		}
 		upstream := strings.TrimSpace(c.AgentID)
 		if upstream != "" && upstream == target {
@@ -82,6 +92,7 @@ func DerivePipeline(raw []byte, roots []string) ([]model.PipelineEdge, []string,
 			MaxAgeSec:         max(ct.MaxAgeSec, 0),
 		}
 		e.ID = edgeID(e)
+		bindings[c.ID] = e.ID
 		if seen[e.ID] {
 			continue
 		}
@@ -90,7 +101,7 @@ func DerivePipeline(raw []byte, roots []string) ([]model.PipelineEdge, []string,
 	}
 	sort.Slice(edges, func(i, j int) bool { return edges[i].ID < edges[j].ID })
 	warnings = append(warnings, pipelineCycles(edges)...)
-	return edges, warnings, nil
+	return edges, bindings, warnings, nil
 }
 
 // gateID0 is the id a command-less gate would get (no de-duplication).

@@ -13,6 +13,7 @@
 package gatesync
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -90,6 +91,7 @@ type Contract struct {
 	Protected             []string `json:"protected"`
 	AllowPaths            []string `json:"allow_paths"`
 	DenyNewDependencies   bool     `json:"deny_new_dependencies"`
+	DependencyManifests   []string `json:"dependency_manifests,omitempty"`
 	SecretScan            bool     `json:"secret_scan"`
 	Budget                *Budget  `json:"budget"`
 }
@@ -120,6 +122,7 @@ type Config struct {
 	Protected           []string `json:"protected,omitempty"`
 	AllowPaths          []string `json:"allow_paths,omitempty"`
 	DenyNewDependencies bool     `json:"deny_new_dependencies,omitempty"`
+	DependencyManifests []string `json:"dependency_manifests,omitempty"`
 	SecretScan          bool     `json:"secret_scan,omitempty"`
 	Budget              *Budget  `json:"budget,omitempty"`
 }
@@ -253,6 +256,7 @@ func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string
 		cfg.Protected = mergeUnique(cfg.Protected, ct.Protected)
 		cfg.AllowPaths = mergeUnique(cfg.AllowPaths, ct.AllowPaths)
 		cfg.DenyNewDependencies = cfg.DenyNewDependencies || ct.DenyNewDependencies
+		cfg.DependencyManifests = mergeUnique(cfg.DependencyManifests, ct.DependencyManifests)
 		cfg.SecretScan = cfg.SecretScan || ct.SecretScan
 		if ct.Budget != nil && cfg.Budget == nil {
 			cfg.Budget = ct.Budget
@@ -326,6 +330,10 @@ func Sync(raw []byte, roots []string) Result {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Result{Error: "graph document is not JSON: " + err.Error()}
 	}
+	doc, err := canonicalDocument(doc, roots)
+	if err != nil {
+		return Result{Error: err.Error()}
+	}
 	if doc.Paperclip == nil {
 		return Result{Skipped: true, Reason: "no paperclip settings in the graph document"}
 	}
@@ -362,6 +370,10 @@ func SyncAll(raw, previous []byte, roots []string) ([]Result, []string) {
 	var doc Document
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return []Result{{Error: "graph document is not JSON: " + err.Error()}}, nil
+	}
+	doc, err := canonicalDocument(doc, roots)
+	if err != nil {
+		return []Result{{Error: err.Error()}}, nil
 	}
 	if doc.Paperclip == nil {
 		return []Result{{Skipped: true, Reason: "no paperclip settings in the graph document"}}, nil
@@ -456,6 +468,7 @@ func mergeConfigs(a, b Config) Config {
 	out.Protected = unionStrings(a.Protected, b.Protected)
 	out.AllowPaths = unionStrings(a.AllowPaths, b.AllowPaths)
 	out.DenyNewDependencies = a.DenyNewDependencies || b.DenyNewDependencies
+	out.DependencyManifests = unionStrings(a.DependencyManifests, b.DependencyManifests)
 	out.SecretScan = a.SecretScan || b.SecretScan
 	if out.Budget == nil {
 		out.Budget = b.Budget
@@ -494,8 +507,11 @@ func writeConfig(canonical string, cfg Config, warnings []string) Result {
 	path := filepath.Join(canonical, filepath.FromSlash(gatesRelPath))
 
 	var existing Config
-	if old, err := os.ReadFile(path); err == nil {
+	old, readErr := os.ReadFile(path)
+	if readErr == nil {
 		_ = json.Unmarshal(old, &existing)
+	} else if !os.IsNotExist(readErr) {
+		return Result{Workspace: canonical, Path: path, Error: "read gates: " + readErr.Error()}
 	}
 	ownsFile := existing.GeneratedBy == GeneratedBy
 	derived := graphDerived(cfg)
@@ -533,6 +549,16 @@ func writeConfig(canonical string, cfg Config, warnings []string) Result {
 
 	cfg.Version = 1
 	cfg.GeneratedBy = GeneratedBy
+	if ownsFile {
+		cfg.GeneratedAt = existing.GeneratedAt
+		candidate, err := json.MarshalIndent(cfg, "", "  ")
+		if err == nil && bytes.Equal(append(candidate, '\n'), old) {
+			status := statusWorkspace(canonical)
+			if status.Error == "" && !status.Drifted {
+				return Result{Skipped: true, Reason: "gate configuration unchanged", Workspace: canonical, Path: path, Gates: len(cfg.Gates), Hash: status.Hash, WrittenAt: cfg.GeneratedAt}
+			}
+		}
+	}
 	cfg.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -554,8 +580,10 @@ func writeConfig(canonical string, cfg Config, warnings []string) Result {
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
 	// Sidecar for drift detection: it records the hash of the file we wrote.
-	_ = os.WriteFile(filepath.Join(filepath.Dir(path), ".gates.dockweave.json"),
-		[]byte(fmt.Sprintf("{\"hash\":%q,\"generatedAt\":%q}\n", hash, cfg.GeneratedAt)), 0o644)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), ".gates.dockweave.json"),
+		[]byte(fmt.Sprintf("{\"hash\":%q,\"generatedAt\":%q}\n", hash, cfg.GeneratedAt)), 0o644); err != nil {
+		return Result{Workspace: canonical, Path: path, Error: "write gate fingerprint sidecar: " + err.Error()}
+	}
 
 	return Result{
 		Written:       true,
@@ -601,6 +629,10 @@ func Status(raw []byte, roots []string) StatusResult {
 	if err != nil {
 		return StatusResult{Enabled: true, Workspace: workspace, Error: err.Error()}
 	}
+	return statusWorkspace(canonical)
+}
+
+func statusWorkspace(canonical string) StatusResult {
 	path := filepath.Join(canonical, filepath.FromSlash(gatesRelPath))
 	out := StatusResult{Enabled: true, Workspace: canonical, Path: path}
 	data, err := os.ReadFile(path)
