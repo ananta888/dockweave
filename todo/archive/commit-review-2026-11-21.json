@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "owner": "dockweave-developer-agent",
+  "track": "commit-review-2026-11-21",
+  "purpose": "Befunde aus der Analyse der Commits vom 21.11.2026 (747b366, 5a17bfb, 9dd1ea8, e0624ee, 03c6a7e, c379308) beheben: Fehlalarme und Luecken in den Policy-Gates, Ausdrucks-Semantik, Fail-open beim Budget, Schein-Attribution bei Reviews, Race beim Graph-Speichern, Multi-Workspace-Sync, Retention-Semantik und veraltete Doku.",
+  "goal": "Alle bestaetigten Befunde sind behoben und durch Tests abgesichert; gofmt/vet/test sind sauber; Doku (EN + DE) beschreibt das tatsaechliche Verhalten.",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Policy-Gates korrekt (Abhaengigkeiten, Secrets)",
+      "task_ids": [
+        "CR-001",
+        "CR-002",
+        "CR-003",
+        "CR-004"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Ausdruecke und Budget fail-closed",
+      "task_ids": [
+        "CR-005",
+        "CR-006"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "title": "API, Web-Gateway, Sync, Persistenz",
+      "task_ids": [
+        "CR-007",
+        "CR-008",
+        "CR-009",
+        "CR-010"
+      ],
+      "status": "done"
+    },
+    {
+      "id": "M4",
+      "title": "Doku nachziehen",
+      "task_ids": [
+        "CR-011"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "CR-001",
+      "milestone": "M1",
+      "type": "chore",
+      "priority": "P0",
+      "risk": "low",
+      "status": "done",
+      "title": "gofmt-Verstoesse beheben",
+      "description": "internal/gateexec/runner.go (record() auf einer Zeile mit if) und expression_test.go sind nicht gofmt-sauber (AGENTS.md-Konvention).",
+      "acceptance_criteria": [
+        "gofmt -l ./internal ./cmd liefert keine Dateien."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "gofmt -w auf runner.go und expression_test.go."
+    },
+    {
+      "id": "CR-002",
+      "milestone": "M1",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "medium",
+      "status": "done",
+      "title": "Python-Abhaengigkeitsnamen normalisieren (pyproject.toml, requirements.txt)",
+      "description": "pyprojectNames speichert PEP-621-Eintraege samt Versionsangabe (requests>=2.0), dadurch meldet deny_new_dependencies jeden Version-Bump als neue Abhaengigkeit. requirementsNames ignoriert Environment-Marker (;) und normalisiert nicht nach PEP 503.",
+      "acceptance_criteria": [
+        "Version-Bump in [project].dependencies erzeugt keine neue Abhaengigkeit.",
+        "Extras, Versionsangaben und Environment-Marker werden abgeschnitten (pyproject und requirements).",
+        "Namen werden PEP-503-normalisiert (Kleinschreibung, -/_/. gleichwertig).",
+        "Unit-Tests decken Bump, Extras, Marker und Gross-/Kleinschreibung ab."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "normalizePythonName (PEP 508/503) in requirementsNames und pyprojectNames; stripQuoted fuer Array-Ende mit Extras; Test TestPythonDependencyNamesAreNormalised."
+    },
+    {
+      "id": "CR-003",
+      "milestone": "M1",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "high",
+      "status": "done",
+      "title": "Cargo-Tabellenform [dependencies.<name>] erkennen",
+      "description": "cargoNames uebernimmt bei [dependencies.serde] nur die inneren Schluessel (version, features), nicht den Crate-Namen. Eine neue Tabellen-Abhaengigkeit bleibt unentdeckt (Policy-Luecke). Target-spezifische Tabellen fehlen ebenfalls.",
+      "acceptance_criteria": [
+        "[dependencies.<name>] / [dev-dependencies.<name>] / [build-dependencies.<name>] liefern <name>.",
+        "Schluessel innerhalb einer Tabellen-Abhaengigkeit werden nicht als Abhaengigkeit gezaehlt.",
+        "[target.'cfg(...)'.dependencies] (inkl. Tabellenform) wird erfasst.",
+        "Unit-Test: neue Tabellen-Abhaengigkeit wird als neu gemeldet."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "cargoTableRe klassifiziert Tabellen-Header inkl. target-Tabellen und [dependencies.<name>]; Dotted Keys (serde.workspace) und Quoted Keys; Test TestCargoNamesTableForm."
+    },
+    {
+      "id": "CR-004",
+      "milestone": "M1",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Entropie-Fallback: keine Fehlalarme bei Lockfiles und Hashes",
+      "description": "highEntropyToken meldet h1:-Hashes in go.sum und sha1-/sha512-Integrity-Werte in package-lock.json als Secret. Ausserdem wird die Funktion pro Datei doppelt aufgerufen.",
+      "acceptance_criteria": [
+        "Lockfiles (go.sum, package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, poetry.lock, ...) werden vom Entropie-Fallback ausgenommen (Muster-Scan bleibt aktiv).",
+        "Bekannte Hash-Praefixe (h1:, sha1-, sha256-, sha384-, sha512-) werden in beliebigen Dateien nicht als Entropie-Treffer gewertet.",
+        "highEntropyToken wird pro Datei nur einmal ausgewertet.",
+        "Unit-Tests: go.sum-Zeile und npm-Integrity kein Treffer; zufaelliger Token weiterhin Treffer."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "isLockfile ueberspringt Entropie-Fallback fuer Lockfiles, hashDigestRe entfernt h1:/sha*-Digests, einmalige Auswertung; Test TestScanSecretsIgnoresLockfilesAndHashes."
+    },
+    {
+      "id": "CR-005",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "high",
+      "status": "done",
+      "title": "Ausdrucks-Semantik: expression bestimmt das Gate-Urteil",
+      "description": "Bisher kann eine expression ein Gate nur scheitern lassen; bei exit != 0 bleibt es failed, auch wenn der Ausdruck true ist (command != 0 wirkungslos). on_true wird nie genutzt, negative Zahlen sind nicht parsebar.",
+      "acceptance_criteria": [
+        "Ist eine expression gesetzt, ersetzt ihr Ergebnis das Exit-Code-Urteil (true = passed, false = failed).",
+        "on_true wird bei PASS als Reason gesetzt, on_false bei FAIL.",
+        "Unaeres Minus wird unterstuetzt (exit == -1).",
+        "Unit-Tests fuer Runner-Logik (Urteil) und Parser (negatives Literal)."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "gateVerdict (runner.go) - expression ersetzt das Exit-Code-Urteil, on_true/on_false als Reason; unaeres Minus im Parser; Tests TestGateVerdict, TestEvaluateUnaryMinus."
+    },
+    {
+      "id": "CR-006",
+      "milestone": "M2",
+      "type": "backend",
+      "priority": "P0",
+      "risk": "high",
+      "status": "done",
+      "title": "budget-Variable fail-closed",
+      "description": "Ohne konfiguriertes Budget oder bei nicht erreichbarem Broker (on_unavailable: warn) ist budget = 0, budget < N damit immer wahr. Das widerspricht dem Fail-closed-Grundsatz.",
+      "acceptance_criteria": [
+        "Referenziert ein Ausdruck budget und liegt kein gueltiger Budget-Snapshot vor, endet das Gate mit status error und klarem Grund.",
+        "Ausdruecke ohne budget sind davon nicht betroffen.",
+        "Unit-Tests fuer: kein Budget, Budget unavailable, Budget vorhanden."
+      ],
+      "depends_on": [
+        "CR-005"
+      ],
+      "progress_percent": 100,
+      "implementation_note": "ExprEnv mit BudgetAvailable; model.GateBudget.Unavailable wird in checkBudget gesetzt; budgetExprEnv macht budget ohne Snapshot unlesbar (Fehler statt 0); Tests TestEvaluateBudgetUnavailableFailsClosed, TestBudgetExprEnv."
+    },
+    {
+      "id": "CR-007",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Review-Attribution ehrlich machen",
+      "description": "Nur admin kann POST erreichen (monitor wird von der Middleware abgewiesen); der Nicht-Admin-Zweig ist toter Code, assigned_reviewer ist eine vom Client behauptete Angabe. Der Kommentar verspricht eine Pruefung, die es nicht gibt.",
+      "acceptance_criteria": [
+        "createGateReview verlangt explizit die admin-Rolle (Defense-in-Depth, wie prune).",
+        "assigned_reviewer wird als unverifizierte Metadatenangabe des Wrappers gespeichert und so dokumentiert (Code-Kommentare, Modell, Doku).",
+        "Tests: monitor -> 403, admin mit/ohne assigned_reviewer -> 200, Feld wird persistiert."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "createGateReview verlangt admin; toter Nicht-Admin-Zweig entfernt; assigned_reviewer als unverifizierte Metadaten in Kommentar, Modell und CLI-Hilfe; Test TestCreateGateReviewRequiresAdmin."
+    },
+    {
+      "id": "CR-008",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "medium",
+      "status": "done",
+      "title": "Graph-PUT: atomare Revisionspruefung, verlustfreies Stempeln",
+      "description": "Lesen/Vergleichen/Schreiben in putGraph ist nicht serialisiert (zwei parallele PUTs kommen durch). Eine bestehende Datei ohne revision wird nicht geprueft. stampRevision konvertiert ueber map[string]any (grosse Ganzzahlen werden float64).",
+      "acceptance_criteria": [
+        "putGraph haelt fuer Revisionspruefung, Schreiben und Sync einen Mutex.",
+        "Existiert die Datei, muss die Client-Revision exakt der gespeicherten entsprechen (auch 0).",
+        "stampRevision erhaelt alle anderen Werte unveraendert (json.RawMessage).",
+        "Tests: veraltete Revision -> 409, parallele PUTs mit gleicher Revision -> genau einer erfolgreich, grosse Ganzzahl bleibt erhalten."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "Server.graphMu serialisiert Check/Write/Sync; Revision muss bei existierender Datei exakt passen; stampRevision ueber map[string]json.RawMessage; Tests in internal/webui/graph_test.go (inkl. 16 parallele PUTs, -race)."
+    },
+    {
+      "id": "CR-009",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P1",
+      "risk": "high",
+      "status": "done",
+      "title": "SyncAll: kanonisch gruppieren, verwaiste Workspaces leeren, Warnungen",
+      "description": "Workspaces werden vor dem Kanonisieren gruppiert (zwei Schreibweisen -> gegenseitiges Ueberschreiben). Entfernte Workspace-Overrides hinterlassen eine aktive gates.json. Gates ohne Default-Workspace werden still verworfen; Warnungen erscheinen pro Workspace mehrfach.",
+      "acceptance_criteria": [
+        "Gruppen mit gleichem kanonischen Pfad werden vor dem Schreiben zusammengefuehrt.",
+        "Workspaces, die im vorherigen Graph-Stand Gates hatten und jetzt keine mehr, bekommen eine leere DockWeave-generierte Config (Hand-Configs bleiben unangetastet).",
+        "Gates ohne Ziel-Workspace erzeugen eine Warnung.",
+        "Globale Warnungen erscheinen in der aggregierten Antwort nur einmal.",
+        "Unit-Tests fuer alle vier Faelle."
+      ],
+      "depends_on": [
+        "CR-008"
+      ],
+      "progress_percent": 100,
+      "implementation_note": "SyncAll(raw, previous, roots) gruppiert kanonisch (mergeConfigs), leert Workspaces aus dem vorherigen Stand, warnt bei Gates ohne Ziel und liefert Dokument-Warnungen einmalig; Tests TestSyncAllMergesSameCanonicalWorkspace, TestSyncAllClearsWorkspaceDroppedSincePreviousSave, TestSyncAllWarnsAboutUnroutedGatesOnce."
+    },
+    {
+      "id": "CR-010",
+      "milestone": "M3",
+      "type": "backend",
+      "priority": "P2",
+      "risk": "low",
+      "status": "done",
+      "title": "PruneGateRuns: neueste N Runs insgesamt behalten",
+      "description": "ROW_NUMBER() wird erst nach dem Altersfilter berechnet; behalten werden die neuesten N alten Runs statt der neuesten N insgesamt (Ueberretention, weicht von Doku ab).",
+      "acceptance_criteria": [
+        "Ranking ueber alle Runs pro Workspace, geloescht wird nur rn > keep UND started_at < cutoff.",
+        "Test: Workspace mit 25 neuen und 10 alten Runs, keep=20 -> alle 10 alten geloescht."
+      ],
+      "depends_on": [],
+      "progress_percent": 100,
+      "implementation_note": "Ranking ueber alle Runs pro Workspace, Loeschen nur bei rn > keep UND started_at < cutoff; bestehender Test korrigiert (schrieb Ueberretention fest) und TestPruneGateRunsKeepsNewestOverall ergaenzt."
+    },
+    {
+      "id": "CR-011",
+      "milestone": "M4",
+      "type": "docs",
+      "priority": "P1",
+      "risk": "low",
+      "status": "done",
+      "title": "Doku und Kommentare an das tatsaechliche Verhalten anpassen (EN + DE)",
+      "description": "Contract-Kommentar und Warntext nennen expression 'descriptive only', obwohl sie mit command ausgewertet wird. gate-model.de.md fehlen Phasen- und Retention-Abschnitt; Ausdruecke, Budget-Fail-closed, Multi-Manifest-Pruefung und Review-Attribution sind in keiner Sprache beschrieben.",
+      "acceptance_criteria": [
+        "gatesync.Contract-Kommentar und Warnung beschreiben die echte Semantik.",
+        "docs/gate-model.md und docs/gate-model.de.md enthalten gleichwertige Abschnitte zu Phasen, Retention, Ausdruecken, Budget (on_unavailable), Abhaengigkeits-Manifesten und Review-Attribution."
+      ],
+      "depends_on": [
+        "CR-005",
+        "CR-006",
+        "CR-007",
+        "CR-010"
+      ],
+      "progress_percent": 100,
+      "implementation_note": "Contract-Kommentar und Warntext korrigiert; docs/gate-model.md und .de.md mit gleichwertigen Abschnitten zu Phasen, Retention, Ausdruecken, Budget, Abhaengigkeits-Manifesten, Secret-Scan, Multi-Workspace-Sync und Review-Attribution."
+    }
+  ],
+  "critical_path_tasks": [
+    "CR-003",
+    "CR-005",
+    "CR-006",
+    "CR-009"
+  ],
+  "definition_of_done": [
+    "Alle Tasks done; go build, go vet, gofmt und go test ./... sauber.",
+    "Doku in beiden Sprachen aktualisiert.",
+    "Track-Datei nach Abschluss nach todo/archive/ verschoben."
+  ],
+  "implementation_notes": [
+    "Quelle: Analyse der Commits vom 21.11.2026.",
+    "internal/mounts ist nicht betroffen; kein Eintrag in docs/security-decisions.md noetig."
+  ],
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 11,
+    "milestones_done": 4,
+    "milestones_total": 4
+  },
+  "tasks_status_summary": {
+    "total": 11,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 11
+    },
+    "progress_percent_done": 100.0,
+    "by_priority": {
+      "P0": 5,
+      "P1": 5,
+      "P2": 1,
+      "P3": 0
+    },
+    "by_risk": {
+      "low": 3,
+      "medium": 4,
+      "high": 4,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 4,
+      "done": 4,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 4,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 4
+    }
+  },
+  "tasks_type_summary": {
+    "total": 11,
+    "by_type": {
+      "chore": {
+        "total": 1,
+        "done": 1,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 1
+        }
+      },
+      "backend": {
+        "total": 9,
+        "done": 9,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 9
+        }
+      },
+      "docs": {
+        "total": 1,
+        "done": 1,
+        "partial": 0,
+        "blocked": 0,
+        "progress_percent": 100.0,
+        "by_status": {
+          "todo": 0,
+          "in_progress": 0,
+          "partial": 0,
+          "blocked": 0,
+          "done": 1
+        }
+      }
+    }
+  },
+  "summary_notes": [
+    "Angelegt aus der Commit-Analyse vom 21.11.2026; alle 11 Tasks am selben Tag abgeschlossen.",
+    "Verifikation: go build ./..., go vet ./..., go test -race ./... gruen; gofmt fuer alle geaenderten Dateien sauber.",
+    "staticcheck ist auf dem Entwicklungsrechner nicht installiert und wurde nicht ausgefuehrt.",
+    "gofmt meldet unabhaengig davon examples/credential-broker/fake-provider/main.go, tests/integration/agents_prune_test.go und tests/integration/egress_network_test.go: CRLF in der Arbeitskopie (core.autocrlf), nicht Teil dieses Tracks."
+  ],
+  "end_summaries": [
+    {
+      "summary_id": "ES-1",
+      "title": "Ergebnis",
+      "items": [
+        "Policy-Gates: keine Fehlalarme mehr bei Python-Version-Bumps und Lockfiles; Cargo-Tabellen-Abhaengigkeiten werden erkannt.",
+        "Ausdruecke bestimmen das Gate-Urteil; budget ist fail-closed.",
+        "Review-Verdicts nur noch fuer admin; assigned_reviewer ehrlich als unverifizierte Metadaten.",
+        "Graph-Speichern serialisiert; Sync gruppiert kanonisch und raeumt verwaiste Workspaces auf.",
+        "Retention behaelt die neuesten N Runs insgesamt.",
+        "Breaking (intern): gatesync.SyncAll hat jetzt die Signatur (raw, previous, roots) ([]Result, []string)."
+      ]
+    }
+  ]
+}

@@ -95,8 +95,9 @@ statt zu scheitern).
   (Draft 2020-12) für Aufgabenstände; aus dem Ananta-Projekt übernommen
 - `todo/todo.*.json` — aktive, maschinenlesbare Aufgabenstände im
   Track-Format (validierbar gegen `todo.track.schema.json`)
-- `todo/archive/*.json` — abgeschlossene Aufgabenstände im Legacy-Format
-  (alle Tasks `done`/`deferred`)
+- `todo/archive/*.json` — abgeschlossene Aufgabenstände (alle Tasks
+  `done`/`deferred`); ältere im Legacy-Format, abgeschlossene Track-Dateien
+  unverändert im Track-Format
 - `tests/integration` — privilegierte Tests
 
 ## Docker-Label-Konvention

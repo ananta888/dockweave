@@ -28,7 +28,7 @@ Paperclip.
 | Broker credentials and LLM budgets | no | yes |
 | Tamper detection of gate/test files | no | yes |
 | Diff scope, dependency and secret policy | no | yes |
-| Review PASS attribution | transport (comments/interactions) | audit record, identity check |
+| Review PASS attribution | transport (comments/interactions), assignment check | audit record (admin peer), assignee stored as metadata |
 | Human approval role | transport (interaction) | OIDC role + audit |
 | Audit chain | no | yes |
 
@@ -77,6 +77,43 @@ exactly like `after_run`; an unknown phase is a configuration error.
 `dockweave gate prune` (daemon endpoint `POST /api/v1/gates/prune`, admin only)
 deletes `gate_runs` older than a cutoff (default 30 days) while always keeping
 the newest runs per workspace (default 20), bounding the audit table's growth.
+The newest runs are ranked over *all* runs of a workspace: a run is deleted
+only if it is older than the cutoff **and** not among the newest N. A
+workspace without recent runs therefore keeps its newest N old runs.
+
+### Gate expressions
+
+A gate may carry an `expression` plus optional `on_true`/`on_false` texts.
+After the command has run, the runner evaluates the expression
+deterministically:
+
+| Variable | Type | Meaning |
+|---|---|---|
+| `command`, `exit` | int | exit code of the gate command |
+| `budget` | float | the day's cost in USD from the broker usage snapshot |
+
+Operators: `==`, `!=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `!`, unary `-` and
+parentheses; a bare value counts as true when non-zero.
+
+- Without an expression the exit code decides (0 = passed).
+- With an expression, **its result replaces the exit-code verdict**:
+  `command != 0` can express an expected failure. `on_true` becomes the reason
+  on pass, `on_false` on failure.
+- An invalid expression ends the gate with status `error`.
+- `budget` is fail-closed: if no budget is configured for the workspace, or
+  the broker could not be queried, an expression that references `budget`
+  ends with status `error` instead of comparing against 0.
+- An expression without a `command` generates no gate; the graph sync emits a
+  warning.
+
+### Budget
+
+`budget` (`grant_id` plus `max_requests_day`/`max_tokens_day`/
+`max_cost_day_usd`) is checked against the credential broker before and after
+the gates. If the broker is not configured or unreachable, the run **fails**
+by default. `"on_unavailable": "warn"` downgrades that case to a warning; the
+usage snapshot is then marked `unavailable` and the `budget` expression
+variable stays unusable.
 
 ### Tamper and policy checks
 
@@ -85,8 +122,18 @@ the newest runs per workspace (default 20), bounding the audit table's growth.
 - after the run the original and the copy are diffed (dependency/build trees
   ignored). Optional policies:
   - `allow_paths`: changed files must match the list
-  - `deny_new_dependencies`: new entries in `package.json` fail the run
-  - `secret_scan`: changed files are scanned for common credential patterns
+  - `deny_new_dependencies`: a dependency that is new in `package.json`,
+    `go.mod`, `requirements.txt`, `pyproject.toml` (PEP 621 and Poetry) or
+    `Cargo.toml` (including `[dependencies.<name>]` and `target` tables)
+    fails the run. Python names are PEP 503 normalised, so version bumps,
+    extras and environment markers do not count as new dependencies.
+  - `secret_scan`: changed files are scanned for known credential shapes
+    (AWS, GitHub, OpenAI, Slack, Google, Stripe, GitLab, npm, JWT, bearer
+    tokens, private keys …). If none matches, a Shannon-entropy check flags
+    compact high-entropy tokens. Lockfiles (`go.sum`, `package-lock.json`,
+    `yarn.lock`, `Cargo.lock`, …) and content-hash notations (`h1:`,
+    `sha512-` …) are excluded from the entropy check, not from the pattern
+    scan.
 - every run is stored in `gate_runs` and appended to the audit hash chain
   (`gate.run`).
 
@@ -112,13 +159,26 @@ the newest runs per workspace (default 20), bounding the audit table's growth.
 ```
 
 The same fields are derived from the 2D graph by `internal/gatesync`; see
-`docs/paperclip-delegation.md`.
+`docs/paperclip-delegation.md`. A gate connector may set its own `workspace`
+in the contract; the web gateway then writes one `gates.json` per target
+workspace. Targets are grouped by canonical path (symlinks and different
+spellings of the same directory are merged). When a save removes all gates
+from a workspace that the previous graph state fed, its DockWeave-generated
+`gates.json` is emptied; hand-maintained configs are never touched. Gates
+without any target workspace are reported as a warning. A stable `gate_id`
+in the contract keeps the gate identity across renames.
 
 ## Review and approval
 
 - A review PASS counts only when it is attributed to the review issue's
   assigned agent or to a human board user. Unattributed board comments are
   rejected unless `DOCKWEAVE_ALLOW_UNATTRIBUTED_REVIEW=1` is set explicitly.
+  This assignment check happens in the Paperclip wrapper.
+- Recording the verdict in DockWeave (`dockweave gate review`,
+  `POST /api/v1/gates/reviews`) requires the admin role; the authenticated
+  peer is stored as `actor`. The wrapper may pass the assignee
+  (`--assignee` / `assigned_reviewer`); DockWeave cannot verify Paperclip's
+  assignment and stores it as **unverified metadata**.
 - Every accepted verdict is recorded exactly once as review evidence
   (`kind=review`, one idempotency key per issue). A later contradictory verdict
   is rejected as a conflict (`409`) and audited as `gate.review`.
@@ -147,5 +207,9 @@ The same fields are derived from the 2D graph by `internal/gatesync`; see
   gate; it does **not** silently execute commands on the host. Host execution
   requires `DOCKWEAVE_GATE_HOST_FALLBACK=1`.
 - Missing image: the run fails; it does not fall back to the host.
+- Configured budget but broker missing or unreachable: the run fails unless
+  `on_unavailable` is `warn`.
+- Invalid gate expression, or an expression that needs an unavailable
+  `budget`: the gate ends with status `error`.
 - Tamper, scope, dependency or secret violation: the run fails even if the
   command exited 0.
