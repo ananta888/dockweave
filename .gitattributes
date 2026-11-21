@@ -1,0 +1,5 @@
+# Force LF line endings for files whose shebang or syntax breaks under CRLF
+# (a global `core.autocrlf=true` otherwise checks them out as CRLF on Windows).
+*.sh text eol=lf
+*.py text eol=lf
+Makefile text eol=lf
