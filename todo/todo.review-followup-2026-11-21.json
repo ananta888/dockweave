@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 92.5,
+      "progress_percent": 93.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2603,10 +2603,10 @@
       "milestone": "M6",
       "type": "build",
       "title": "Go-Toolchain in Modul, Container, CI und Dokumentation konsistent deklarieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "go.mod verlangt Go 1.27.3, der Daemon-Dockerfile baut mit golang:1.24 und AGENTS.md nennt >=1.24; READMEs und CI nennen 1.27. Automatischer Toolchain-Download kann den Widerspruch verdecken.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -2659,12 +2659,11 @@
         "Nur Build prüfen; dadurch kein Image veröffentlichen oder produktiven Container ersetzen."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Container-Build nicht verifiziert"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: HANDOFF.md auf 1.27.3; CI-Job test mit GOTOOLCHAIN=local"
+          "2026-11-21: HANDOFF.md auf 1.27.3; CI-Job test mit GOTOOLCHAIN=local",
+          "Erledigt 2026-11-21: go.mod 'go 1.27.3'; deployments/Dockerfile und Dockerfile.integration (Digest-gepinnt) mit golang:1.27.3 und GOTOOLCHAIN=local, CI-Job test mit GOTOOLCHAIN=local, AGENTS.md/READMEs/HANDOFF/install.sh einheitlich 1.27.3. Container-Build lokal geprüft (docker build -f deployments/Dockerfile ., Binaries dockweave/dockweaved im Image ausführbar, Testimage danach entfernt). Zu alter Compiler: Go meldet mit GOTOOLCHAIN=local 'go.mod requires go >= 1.27.3' (Standardverhalten des go-Kommandos; nicht mit altem Compiler nachgestellt)."
         ]
       }
     },
@@ -3122,11 +3121,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 27,
+      "partial": 26,
       "blocked": 0,
-      "done": 17
+      "done": 18
     },
-    "progress_percent_done": 37.78,
+    "progress_percent_done": 40.0,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3141,8 +3140,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 4,
-      "remaining": 19
+      "done": 5,
+      "remaining": 18
     },
     "milestones": {
       "total": 7,
@@ -3171,9 +3170,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 27,
+    "partial": 26,
     "blocked": 0,
-    "done": 17
+    "done": 18
   },
   "evidence_summary": {
     "by_level": {
