@@ -618,6 +618,9 @@ interface GraphEdge {
                 <p class="muted">Gate-Connectoren mit Ziel-Agent werden beim Speichern an den Daemon übertragen. Der Ziel-Agent arbeitet nur, wenn das Gate auf dem aktuellen Workspace-Stand bestanden ist.</p>
                 @if (pipelineSync(); as ps) {
                   @if (ps.error) { <div class="notice error" role="alert">{{ ps.error }}</div> }
+                  @if (ps.invalid_connector; as ic) {
+                    <div class="notice error invalid-connector" role="alert">Ungültiger Gate-Vertrag in Connector „{{ connectorName(ic.connector_id) }}“{{ ic.target_agent_id ? ' → ' + ic.target_agent_id : '' }}: {{ ic.message }}. Die bisher erzwungene Pipeline bleibt unverändert.</div>
+                  }
                   @else { <p class="muted mono">Übertragen: {{ ps.edges }} Kante(n)</p> }
                   @for (w of ps.warnings || []; track w) { <div class="notice warn">{{ w }}</div> }
                 }
@@ -1532,6 +1535,10 @@ export class GraphComponent implements OnChanges, OnDestroy {
     if (this.pipelinePoll) clearInterval(this.pipelinePoll);
     if (this.saveTimer) clearTimeout(this.saveTimer);
     for (const t of Object.values(this.exprTimers)) clearTimeout(t);
+  }
+
+  connectorName(id: string): string {
+    return this.connectors().find(c => c.id === id)?.name || id;
   }
 
   /** The daemon enforces a different graph revision than the saved one. */

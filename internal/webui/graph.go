@@ -160,6 +160,16 @@ type PipelineSync struct {
 	Edges    int      `json:"edges"`
 	Warnings []string `json:"warnings,omitempty"`
 	Error    string   `json:"error,omitempty"`
+	// InvalidConnector names the gate connector whose contract stopped the
+	// sync; the previously enforced edges stay in place (RF-001).
+	InvalidConnector *InvalidConnector `json:"invalid_connector,omitempty"`
+}
+
+// InvalidConnector is the structured form of gatesync.ContractError.
+type InvalidConnector struct {
+	ConnectorID   string `json:"connector_id"`
+	TargetAgentID string `json:"target_agent_id,omitempty"`
+	Message       string `json:"message"`
 }
 
 // syncPipeline derives the gate -> agent edges and pushes them to the daemon

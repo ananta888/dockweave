@@ -333,3 +333,19 @@ test('revision drift is shown as unsynchronized, not as an outage', async ({ pag
   await expect(page.locator('.edge-label.edge-proceed')).toHaveClass(/edge-state-unsynced/);
   await expect(page.locator('.pipeline-drift')).toContainText('Revision 0');
 });
+
+test('an invalid gate contract names the connector and keeps enforcement', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  await page.route('**/graph', route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      saved: true, body: graphDoc, revision: 1, pipeline_bindings: {},
+      pipeline_sync: { pushed: false, edges: 0, error: 'connector "conn-1" to agent "ag_b": invalid gate contract',
+        invalid_connector: { connector_id: 'conn-1', target_agent_id: 'ag_b', message: 'unexpected end of JSON input' } } }) });
+  });
+  await openGraph(page);
+  await workspaceInput(page);
+  await expect(page.locator('.invalid-connector')).toContainText('„Tests“ → ag_b');
+  await expect(page.locator('.invalid-connector')).toContainText('bleibt unverändert');
+});

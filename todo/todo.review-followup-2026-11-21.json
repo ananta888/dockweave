@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 70.0,
+      "progress_percent": 72.5,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -202,7 +202,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 60,
+      "progress_percent": 75,
       "description": "deriveGroups überspringt ungültiges Contract-JSON; DerivePipeline lässt dessen Kante weg und syncPipeline überträgt trotzdem die reduzierte Gesamtliste. Der zuvor gesperrte Folge-Agent kann dadurch ohne Gate arbeiten.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "today",
@@ -250,10 +250,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "ContractError nur als String in pipeline_sync.error/gates.error, kein strukturiertes Objekt mit Connector-/Zielreferenz",
           "Kein End-to-End-Nachweis, dass Admission gegen echten Store gesperrt bleibt",
-          "Kein GET-/UI-Sichtbarkeitstest nach Reload",
           "Kein webui-Test mit mehreren bzw. deaktiviertem Connector"
+        ],
+        "resolved": [
+          "2026-11-21: pipeline_sync.invalid_connector {connector_id, target_agent_id, message} (PUT und nach Reload per GET, TestInvalidContractPreservesEnforcedPipeline); UI nennt Connector und Ziel und dass die Pipeline unverändert bleibt (e2e 'an invalid gate contract names the connector and keeps enforcement')"
         ]
       }
     },

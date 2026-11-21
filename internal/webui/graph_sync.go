@@ -3,6 +3,7 @@ package webui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -66,6 +67,10 @@ func (s *Server) synchronizeGraph(ctx context.Context, path string, body, previo
 		out.Pipeline = s.syncPipeline(ctx, body, rev, reset)
 	}
 	out.PendingReset = reset && !out.Pipeline.Pushed
+	var ce *gatesync.ContractError
+	if errors.As(err, &ce) {
+		out.Pipeline.InvalidConnector = &InvalidConnector{ConnectorID: ce.ConnectorID, TargetAgentID: ce.TargetAgentID, Message: ce.Err.Error()}
+	}
 	data, err := json.Marshal(out)
 	if err == nil {
 		err = os.WriteFile(path+".sync.json.tmp", data, 0o600)

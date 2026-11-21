@@ -136,9 +136,19 @@ func TestInvalidContractPreservesEnforcedPipeline(t *testing.T) {
 	if out.PipelineSync.Error == "" {
 		t.Fatal("missing sync error")
 	}
+	if ic := out.PipelineSync.InvalidConnector; ic == nil || ic.ConnectorID != "g1" || ic.TargetAgentID != "b" || ic.Message == "" {
+		t.Fatalf("missing structured connector error: %s", rec.Body)
+	}
 	path, _ := graphPath()
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatal(err)
+	}
+	// The error survives a reload (GET) until the contract is fixed.
+	get := httptest.NewRecorder()
+	s.getGraph(get, httptest.NewRequest(http.MethodGet, "/graph", nil))
+	out.PipelineSync = PipelineSync{}
+	if err := json.Unmarshal(get.Body.Bytes(), &out); err != nil || out.PipelineSync.InvalidConnector == nil {
+		t.Fatalf("connector error lost after reload: %s", get.Body)
 	}
 }
 
