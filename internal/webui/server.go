@@ -28,6 +28,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/oidc"
 	"github.com/ananta888/dockweave/pkg/sdk"
 )
@@ -72,6 +73,9 @@ type Server struct {
 	oidcSvc     *oidc.Service
 	// graphMu serialises graph saves (revision check, write, gate sync).
 	graphMu sync.Mutex
+	// pushPipeline transfers the derived pipeline edges to the daemon
+	// (nil: no daemon configured, edges are not enforced).
+	pushPipeline func(ctx context.Context, rev int, reset bool, edges []model.PipelineEdge) error
 }
 
 // loginLimiter throttles failed /login attempts per client address.
@@ -149,6 +153,11 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.proxy = newUnixProxy(cfg.DaemonSocket)
 	s.loginLim = newLoginLimiter()
+	daemon := sdk.New(cfg.DaemonSocket)
+	s.pushPipeline = func(ctx context.Context, rev int, reset bool, edges []model.PipelineEdge) error {
+		_, err := daemon.PutPipelines(ctx, rev, reset, edges)
+		return err
+	}
 	if cfg.OIDC != nil && cfg.OIDC.Issuer != "" {
 		// Discovery must never block the whole gateway: bound it and fall back
 		// to the static token if the IdP is unreachable.
@@ -205,6 +214,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /graph", s.getGraph)
 	mux.HandleFunc("PUT /graph", s.putGraph)
 	mux.HandleFunc("GET /graph/gates/status", s.getGateStatus)
+	mux.HandleFunc("POST /graph/validate-expression", s.validateExpression)
 	mux.HandleFunc("GET /paperclip/config", s.paperclipConfig)
 	mux.HandleFunc("GET /paperclip/status", s.paperclipStatus)
 	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)

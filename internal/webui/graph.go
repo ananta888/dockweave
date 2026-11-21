@@ -1,13 +1,17 @@
 package webui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
+	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/gatesync"
 )
 
@@ -163,9 +167,80 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	pipelineSync := s.syncPipeline(r.Context(), body, nextRev, previous == nil)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"saved": true, "body": body, "revision": nextRev, "gates": aggregate, "gates_all": results,
+		"pipeline_sync": pipelineSync,
 	})
+}
+
+// PipelineSync reports the transfer of the derived pipeline edges.
+type PipelineSync struct {
+	Pushed   bool     `json:"pushed"`
+	Edges    int      `json:"edges"`
+	Warnings []string `json:"warnings,omitempty"`
+	Error    string   `json:"error,omitempty"`
+}
+
+// syncPipeline derives the gate -> agent edges and pushes them to the daemon
+// with the new graph revision (reset when the graph file was recreated). A
+// failure never loses the saved graph; it is logged and reported so the UI
+// can show that enforcement is out of date.
+func (s *Server) syncPipeline(ctx context.Context, body []byte, rev int, reset bool) PipelineSync {
+	edges, warnings, err := gatesync.DerivePipeline(body, s.browseRoots)
+	out := PipelineSync{Edges: len(edges), Warnings: warnings}
+	if err != nil {
+		out.Error = err.Error()
+	} else if s.pushPipeline == nil {
+		if len(edges) > 0 {
+			out.Error = "no daemon configured: pipeline edges are not enforced"
+		}
+	} else {
+		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := s.pushPipeline(pctx, rev, reset, edges); err != nil {
+			out.Error = "pipeline transfer to the daemon failed: " + err.Error()
+		} else {
+			out.Pushed = true
+		}
+	}
+	if out.Error != "" && s.cfg.Logger != nil {
+		s.cfg.Logger.Warn("pipeline_sync.error", "error", out.Error, "revision", rev, "edges", len(edges))
+	} else if out.Pushed && s.cfg.Logger != nil {
+		s.cfg.Logger.Info("pipeline synced", "revision", rev, "edges", len(edges))
+	}
+	return out
+}
+
+// validateExpression checks a gate expression for the editor without running
+// anything: syntax and variable names, plus whether it needs a budget.
+func (s *Server) validateExpression(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Expression       string `json:"expression"`
+		BudgetConfigured bool   `json:"budget_configured"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&req); err != nil {
+		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
+		return
+	}
+	out := map[string]any{"ok": true, "uses_budget": false}
+	if strings.TrimSpace(req.Expression) == "" {
+		// Empty means "the exit code decides" and is always valid.
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	v, err := gateexec.Validate(req.Expression)
+	if err != nil {
+		out["ok"] = false
+		out["error"] = err.Error()
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out["uses_budget"] = v.UsesBudget
+	if v.UsesBudget && !req.BudgetConfigured {
+		out["warning"] = "the expression reads budget, but the contract has no budget; the gate will end with status error at run time (fail-closed)"
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // graphRevision reads the revision field of a graph document (default 0).
