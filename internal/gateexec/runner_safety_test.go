@@ -123,3 +123,26 @@ func TestRecordCompletesAfterRequestCancellation(t *testing.T) {
 		t.Fatalf("completion missing: %v %+v", err, runs)
 	}
 }
+
+// RF-011: an unreadable part of the workspace makes the snapshot/baseline
+// incomplete; the run must end as an error, never as PASS.
+func TestRunWithUnreadableWorkspaceNeverPasses(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission bits do not restrict root")
+	}
+	runner, _ := newTestRunner(t, nil)
+	workspace := writeWorkspace(t, `{"version":1,"gates":[{"id":"check","command":"true"}]}`)
+	writeTree(t, workspace, map[string]string{"locked/secret.txt": "x"})
+	locked := filepath.Join(workspace, "locked")
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	run, err := runner.Run(context.Background(), Request{Workspace: workspace})
+	if run != nil && run.Status == model.GatePassed {
+		t.Fatalf("incomplete baseline produced PASS: %+v", run)
+	}
+	if err == nil && (run == nil || run.Status != model.GateError) {
+		t.Fatalf("want an error result, got %+v", run)
+	}
+}

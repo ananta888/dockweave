@@ -163,6 +163,8 @@ type treeEntry struct {
 	link string
 }
 
+const dirBatch = 512
+
 func (r *rootedFS) walk(ctx context.Context, ignore map[string]bool, visit func(treeEntry) error) error {
 	var walk func(string) error
 	walk = func(rel string) error {
@@ -174,11 +176,21 @@ func (r *rootedFS) walk(ctx context.Context, ignore map[string]bool, visit func(
 			return err
 		}
 		defer dir.Close()
-		entries, err := dir.ReadDir(-1)
-		if err != nil {
-			return fmt.Errorf("read directory %q: %w", rel, err)
-		}
-		for _, entry := range entries {
+		// Read in batches so a huge directory neither has to fit in memory
+		// nor delays cancellation and limits until it is fully listed.
+		var entries []os.DirEntry
+		for {
+			if len(entries) == 0 {
+				entries, err = dir.ReadDir(dirBatch)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("read directory %q: %w", rel, err)
+				}
+			}
+			entry := entries[0]
+			entries = entries[1:]
 			if ignore[entry.Name()] {
 				continue
 			}

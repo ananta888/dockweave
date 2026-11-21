@@ -421,8 +421,9 @@ chmod or read files outside the workspace, and a file swapped between
    opened `O_NONBLOCK` and must be the same inode as the enumerated entry
    (`os.SameFile`). A replaced root, directory or file aborts the operation.
 4. Byte limits count bytes actually read, and size/mtime/ctime are rechecked
-   after reading; the fingerprint limits (files, bytes, time) fail closed and
-   never grant a pass.
+   after reading; the fingerprint limits (entries including directories,
+   bytes, time) fail closed and never grant a pass. Directories are listed in
+   batches of 512 entries, so a huge directory is never loaded at once.
 5. The executed gate configuration, the before/after fingerprint and the
    policy baseline all come from the same private snapshot, so a PASS is
    bound to the content that actually ran (RF-010/RF-011).

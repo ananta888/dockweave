@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 79.58,
+      "progress_percent": 87.92,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -620,10 +620,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Fingerprint-Zugriffe an eine validierte Workspace-Wurzel binden",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 70,
+      "progress_percent": 100,
       "description": "Fingerprint prüft die Wurzel mit os.Stat, traversiert anschließend per Pfad und öffnet Dateien erneut per os.Open. Datei- oder Verzeichnisaustausch zwischen diesen Schritten ist nicht ausgeschlossen; für eine durch Symlink ersetzte Wurzel unterscheiden sich Stat- und WalkDir-Verhalten.",
       "evidence_level": "investigation_required",
       "scope_origin": "today",
@@ -672,9 +672,10 @@
         "go test -race ./internal/gateexec ./internal/pipeline ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Swap-Test zwischen Aufzählung und Öffnen innerhalb des Fingerprint-Walks fehlt"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: internal/gateexec/walk_faults_test.go mit deterministischer Injektion über den visit-Callback: Datei nach Aufzählung gegen FIFO (abgewiesen) bzw. Symlink nach außen (nur Linktext, nie geöffnet), Unterverzeichnis gegen Symlink (kein Abstieg), Wurzel während des Walks ersetzt (Fehler); dazu TestRootedAccessRejectsDirectoryAndFileReplacement, TestFingerprintRejectsSymlinkRoot, TestFingerprintSymlinkNotFollowed; fingerprint_unavailable in admission_test."
         ]
       }
     },
@@ -683,10 +684,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Fingerprint-Limits auf tatsächlich gelesene Daten und blockierende Zugriffe anwenden",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 100,
       "description": "MaxBytes addiert die Dateigröße vor dem Lesen, während hashFileCtx bis EOF liest. Wachsende Dateien können die Grenze überschreiten; ein später gegen FIFO ausgetauschter Eintrag kann schon beim Öffnen blockieren. Timeout-Prüfungen finden nur zwischen Leseoperationen statt.",
       "evidence_level": "investigation_required",
       "scope_origin": "today",
@@ -728,14 +729,11 @@
         "go test -race ./internal/gateexec ./internal/pipeline"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein Test mit wachsender Datei während Fingerprint",
-          "FIFO-Swap nach stat ungetestet",
-          "Verzeichnisse zählen nicht zu MaxFiles, ReadDir(-1) unbegrenzt"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: Garantien und kooperativer Timeout in SD-021 dokumentiert"
+          "2026-11-21: Garantien und kooperativer Timeout in SD-021 dokumentiert",
+          "Erledigt 2026-11-21: wachsende Datei während des Lesens -> Fehler (TestWalkRejectsFileGrowingDuringRead); FIFO-Tausch nach Aufzählung -> Fehler; Verzeichnisse zählen gegen MaxFiles (TestFingerprintCountsDirectoriesTowardMaxFiles, vorher gescheitert); ReadDir in 512er-Blöcken statt ReadDir(-1); Abbruch im großen Verzeichnis (TestWalkHonoursCancellationInLargeDirectory); TestFingerprintLimitsFailClosed, TestBoundedReadCountsActualBytesAndCancellation; Garantien in SD-021 und FingerprintLimits-Doku."
         ]
       }
     },
@@ -805,10 +803,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Policy- und Tamper-Prüfungen mit vollständigen Daten und stabilem Ausgangsstand ausführen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 100,
       "description": "hashPaths/walkHashes unterdrücken Lese- und Traversierungsfehler; Run ignoriert zurückgegebene Fehler. Der Nachhervergleich verwendet außerdem den inzwischen veränderbaren Live-Workspace als Ausgangsstand.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -853,10 +851,10 @@
         "go test -tags integration ./tests/integration -run TestPipelineEndToEnd"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Keine Fehlerinjektion (EACCES/readdir) für zuvor verschluckte Pfade",
-          "Kein Runner-Test, dass Baseline-Fehler nicht PASS ergibt"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: unlesbares Verzeichnis/Datei lässt hashSelected und Fingerprint scheitern statt 'fehlt' (TestUnreadableDirectoryFailsHashingAndFingerprint); Runner mit unlesbarem Workspace-Teil endet als Fehler, nie PASS (TestRunWithUnreadableWorkspaceNeverPasses, Docker-Runner, lokal mit DOCKWEAVE_GATE_INTEGRATION=1 als Nicht-root ausgeführt; als root übersprungen); TestHashingReportsInvalidPathsAndSpecialFiles; eingefrorene Baseline TestRunPolicyBaselineIgnoresConcurrentLiveChanges."
         ]
       }
     },
@@ -3120,11 +3118,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 35,
+      "partial": 32,
       "blocked": 0,
-      "done": 9
+      "done": 12
     },
-    "progress_percent_done": 20.0,
+    "progress_percent_done": 26.67,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3139,8 +3137,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 1,
-      "remaining": 22
+      "done": 3,
+      "remaining": 20
     },
     "milestones": {
       "total": 7,
@@ -3169,9 +3167,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 35,
+    "partial": 32,
     "blocked": 0,
-    "done": 9
+    "done": 12
   },
   "evidence_summary": {
     "by_level": {

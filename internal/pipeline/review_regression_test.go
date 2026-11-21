@@ -34,7 +34,6 @@ func TestWildcardOverrideConsumesOnceForMultipleEdges(t *testing.T) {
 	}
 }
 
-
 func TestPhaseSetupFailureDoesNotReuseOldPass(t *testing.T) {
 	for _, status := range []model.GateRunStatus{model.GateError, model.GateFailed} {
 		t.Run(string(status), func(t *testing.T) {

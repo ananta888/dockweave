@@ -15,9 +15,12 @@ import (
 // time. Kernel-blocked disk/network filesystems may delay cancellation; FIFO,
 // device and socket entries are rejected before reading.
 type FingerprintLimits struct {
+	// MaxFiles bounds the visited entries: files, symlinks and directories.
 	MaxFiles int
+	// MaxBytes bounds the bytes actually read (link texts included).
 	MaxBytes int64
-	Timeout  time.Duration
+	// Timeout is cooperative: checked between reads (see SD-021).
+	Timeout time.Duration
 }
 
 var DefaultFingerprintLimits = FingerprintLimits{MaxFiles: 100_000, MaxBytes: 2 << 30, Timeout: 60 * time.Second}
@@ -45,12 +48,16 @@ func Fingerprint(ctx context.Context, root string, lim FingerprintLimits) (strin
 	type entry struct{ rel, sum string }
 	var entries []entry
 	remaining := lim.MaxBytes
+	visited := 0
 	err = r.walk(ctx, defaultIgnore, func(e treeEntry) error {
+		// Every entry counts, directories included, so a tree of empty
+		// directories is bounded by MaxFiles and not only by the timeout.
+		visited++
+		if visited > lim.MaxFiles {
+			return ErrFingerprintLimit
+		}
 		if e.info.IsDir() {
 			return nil
-		}
-		if len(entries) >= lim.MaxFiles {
-			return ErrFingerprintLimit
 		}
 		var sum string
 		if e.info.Mode()&fs.ModeSymlink != 0 {
