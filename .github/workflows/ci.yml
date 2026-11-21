@@ -17,7 +17,7 @@ jobs:
           python-version: '3.12'
       - run: make test-wrapper
       - run: python3 -m pip install jsonschema==4.26.0
-      - run: python3 -B scripts/validate_todos.py
+      - run: python3 -B scripts/validate_todos.py --archives
       - run: python3 -B -m unittest discover -s scripts/tests
 
   web:
@@ -55,6 +55,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      # Build with exactly the declared toolchain; never auto-download another.
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -17,7 +17,7 @@ Credentials und den Agenten-Lebenszyklus. Zusätzlich: Produktivitätsschicht,
 OIDC-Login, privilegierter Mount-Helper (`dockweave-mountd`) und eine
 Paperclip-Anbindung für Goal-Delegation inkl. **sandboxed Gate-Ausführung**.
 
-**Toolchain:** Go ≥ 1.27, Node 24, Angular 20, Docker, systemd, SQLite
+**Toolchain:** Go 1.27.3 (go.mod, GOTOOLCHAIN=local), Node 24, Angular 20, Docker, systemd, SQLite
 (pure Go), Keycloak 26.1.
 
 ---

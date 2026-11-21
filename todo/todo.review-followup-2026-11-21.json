@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 53.0,
+      "progress_percent": 54.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -185,7 +185,7 @@
       "id": "M7",
       "title": "Dokumentation, Track-Validierung und Gesamtabnahme",
       "status": "in_progress",
-      "progress_percent": 28.33,
+      "progress_percent": 33.33,
       "task_ids": [
         "RF-041",
         "RF-042",
@@ -2592,7 +2592,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 75,
+      "progress_percent": 90,
       "description": "go.mod verlangt Go 1.27.3, der Daemon-Dockerfile baut mit golang:1.24 und AGENTS.md nennt >=1.24; READMEs und CI nennen 1.27. Automatischer Toolchain-Download kann den Widerspruch verdecken.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -2647,9 +2647,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "HANDOFF.md nennt noch 'Go ≥ 1.27'",
-          "CI-Job test ohne GOTOOLCHAIN=local",
           "Container-Build nicht verifiziert"
+        ],
+        "resolved": [
+          "2026-11-21: HANDOFF.md auf 1.27.3; CI-Job test mit GOTOOLCHAIN=local"
         ]
       }
     },
@@ -2729,10 +2730,10 @@
       "milestone": "M7",
       "type": "test",
       "title": "TODO-Tracks auf Schema, Referenzen und konsistente Zusammenfassungen validieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "low",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "description": "Das vorhandene Track-Schema erlaubt viele freie Zusatzfelder und prüft allein weder gültige depends_on-IDs noch Zyklen, Statussummen oder die eindeutige Zuordnung von Tasks zu Meilensteinen.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2770,9 +2771,10 @@
         "Validator und Aufruf erst im Task implementieren; für die vorliegende Datei wird bereits eine einmalige Schema- und Konsistenzprüfung ausgeführt."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "CI ruft Validator ohne --archives auf"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: scripts/validate_todos.py (Schema Draft 2020-12, IDs, Abhängigkeiten/Zyklen, Milestones, kritischer Pfad, Summen, done<->100%) mit Negativ-Fixtures in scripts/tests/test_validate_todos.py; CI-Job wrapper ruft den Validator mit --archives auf (aktiver Track + Legacy-Archive), lokal 18x PASS."
         ]
       }
     },
@@ -3103,11 +3105,11 @@
     "by_status": {
       "todo": 5,
       "in_progress": 0,
-      "partial": 38,
+      "partial": 37,
       "blocked": 0,
-      "done": 2
+      "done": 3
     },
-    "progress_percent_done": 4.44,
+    "progress_percent_done": 6.67,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3152,9 +3154,9 @@
     "state": "in_progress",
     "todo_remaining": 5,
     "in_progress": 0,
-    "partial": 38,
+    "partial": 37,
     "blocked": 0,
-    "done": 2
+    "done": 3
   },
   "evidence_summary": {
     "by_level": {
