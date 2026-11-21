@@ -28,6 +28,7 @@ The Paperclip <-> DockWeave agent mapping is explicit; an unmapped agent is
 reported (UNMAPPED) and never guessed.
 """
 import hashlib
+import time
 import fcntl
 import json
 import os
@@ -178,13 +179,41 @@ def save_state(path, data):
         os.close(directory)
 
 
+def reconcile_window():
+    """Seconds an unknown outcome ('pending') is trusted to still be settling.
+
+    After the window a pending marker no longer blocks: the caller either
+    re-checks an authoritative source (rework: tagged issue lookup) or accepts
+    one possible duplicate (wake, comment) instead of blocking forever.
+    """
+    try:
+        return max(0, int(os.environ.get("DOCKWEAVE_PIPELINE_RECONCILE_SEC", "600")))
+    except ValueError:
+        return 600
+
+
+def pending(now=None):
+    return {"status": "pending", "since": int(now if now is not None else time.time())}
+
+
+def pending_blocks(state):
+    """True while a pending marker is inside the reconcile window. Markers
+    without a timestamp come from older versions and count as expired."""
+    if state.get("status") != "pending":
+        return False
+    since = state.get("since")
+    if not isinstance(since, (int, float)):
+        return False
+    return time.time() - since < reconcile_window()
+
+
 def perform_once(key, command):
     with action_state(key) as (path, state):
         if state.get("status") == "done":
             return True, ""
-        if state.get("status") == "pending":
+        if pending_blocks(state):
             return False, "previous attempt has unknown outcome; reconcile before retry"
-        save_state(path, {"status": "pending"})
+        save_state(path, pending())
         result = run(command)
         if result.returncode == 0:
             save_state(path, {"status": "done"})
@@ -208,13 +237,15 @@ def report_blocked(adm, issue):
     args = ["issue", "update", issue, "--status", status, "--json"]
     key = "blocked|%s|%s" % (issue, codes)
     with action_state(key) as (path, state):
-        if state.get("status") == "pending":
-            print("ERR\tcomment outcome unknown; reconcile before retry", file=sys.stderr)
-            return
-        comment = state.get("status") != "done"
+        # While an earlier comment has an unknown outcome, still re-queue the
+        # issue (status only) but do not risk a duplicate comment.
+        unknown = pending_blocks(state)
+        if unknown:
+            print("WARN\tcomment outcome unknown; status update only until reconciled", file=sys.stderr)
+        comment = state.get("status") != "done" and not unknown
         if comment:
             args[4:4] = ["--comment", text + "\n\nDer Agent arbeitet erst, wenn das Gate auf dem aktuellen Stand bestanden ist."]
-            save_state(path, {"status": "pending"})
+            save_state(path, pending())
         result = run([pc] + args)
         if comment and result.returncode != 124:
             save_state(path, {"status": "done" if result.returncode == 0 else "retry"})
@@ -333,7 +364,7 @@ def rework(pc_upstream, company, parent, gate, run_id, reason):
                     break
             if ident:
                 save_state(path, {"status": "done", "id": ident})
-            elif state.get("status") == "pending":
+            elif pending_blocks(state):
                 return "", "creation outcome unknown; reconcile before retry"
             else:
                 args = [pc, "issue", "create", "-C", company,
@@ -342,7 +373,7 @@ def rework(pc_upstream, company, parent, gate, run_id, reason):
                         "--assignee-agent-id", pc_upstream, "--json"]
                 if parent:
                     args += ["--parent-id", parent]
-                save_state(path, {"status": "pending"})
+                save_state(path, pending())
                 created = run(args)
                 if created.returncode != 0:
                     if created.returncode != 124:

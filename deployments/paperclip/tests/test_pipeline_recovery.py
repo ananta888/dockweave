@@ -98,6 +98,51 @@ class PipelineRecoveryTest(unittest.TestCase):
         self.assertEqual(self.route().returncode, 0)
         self.assertEqual(len(self.calls(["issue", "create"])), 1)
 
+    def test_blocked_update_timeout_keeps_requeueing(self):
+        # A timed-out comment must not stop the status re-queue forever; the
+        # comment itself is retried only after the reconcile window.
+        self.f.set("dw", {"admissions": {"beta": adm("beta", "ag_b", False, [BLOCKED_EDGE])}})
+        self.f.set("pc", {"update_exit": 124})
+        self.f.py("pipeline.py", "precheck", "beta", "--issue", "DOC-1")
+        self.f.set("pc", {})
+        result = self.f.py("pipeline.py", "precheck", "beta", "--issue", "DOC-1")
+        self.assertEqual(result.returncode, 3)
+        updates = self.calls(["issue", "update"])
+        self.assertEqual(len(updates), 2, "status update must still run while the comment is unknown")
+        self.assertNotIn("--comment", updates[-1])
+        self.assertIn("comment outcome unknown", result.stderr)
+        result = self.f.py("pipeline.py", "precheck", "beta", "--issue", "DOC-1",
+                           DOCKWEAVE_PIPELINE_RECONCILE_SEC="0")
+        self.assertIn("--comment", self.calls(["issue", "update"])[-1])
+        result = self.f.py("pipeline.py", "precheck", "beta", "--issue", "DOC-1")
+        self.assertNotIn("--comment", self.calls(["issue", "update"])[-1], "confirmed comment is not repeated")
+
+    def test_pending_creation_recovers_after_reconcile_window(self):
+        self.route_setup()
+        self.f.set("pc", {"create_exit": 124})
+        self.assertNotEqual(self.route().returncode, 0)
+        self.f.set("pc", {})
+        # Inside the window: still reconciling, no second create.
+        self.assertNotEqual(self.route().returncode, 0)
+        self.assertEqual(len(self.calls(["issue", "create"])), 1)
+        # Window elapsed and the authoritative lookup shows no tagged issue.
+        result = self.route(DOCKWEAVE_PIPELINE_RECONCILE_SEC="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.calls(["issue", "create"])), 2)
+        self.assertEqual(self.route().returncode, 0)
+        self.assertEqual(len(self.calls(["issue", "create"])), 2)
+
+    def test_pending_wake_recovers_after_reconcile_window(self):
+        self.route_setup(dict(BLOCKED_EDGE, satisfied=True, code="ok", action="allow"), True)
+        self.f.set("pc", {"wake_exit": 124})
+        self.assertNotEqual(self.route().returncode, 0)
+        self.f.set("pc", {})
+        self.assertNotEqual(self.route().returncode, 0)
+        self.assertEqual(len(self.calls(["agent", "wake"])), 1)
+        self.assertEqual(self.route(DOCKWEAVE_PIPELINE_RECONCILE_SEC="0").returncode, 0)
+        self.assertEqual(self.route().returncode, 0)
+        self.assertEqual(len(self.calls(["agent", "wake"])), 2)
+
     def test_concurrent_routes_never_duplicate_confirmed_create(self):
         self.route_setup()
         args = [sys.executable, "-I", os.path.join(DIR, "pipeline.py"), "route", "--upstream", "alpha"]
@@ -107,6 +152,19 @@ class PipelineRecoveryTest(unittest.TestCase):
             child.communicate(timeout=60)
         self.assertEqual(self.route().returncode, 0)
         self.assertEqual(len(self.calls(["issue", "create"])), 1)
+
+    def test_concurrent_prechecks_comment_once(self):
+        self.f.set("dw", {"admissions": {"beta": adm("beta", "ag_b", False, [BLOCKED_EDGE])}})
+        args = [sys.executable, "-I", os.path.join(DIR, "pipeline.py"), "precheck", "beta", "--issue", "DOC-1"]
+        children = [subprocess.Popen(args, env=self.f.env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    for _ in range(4)]
+        for child in children:
+            _, err = child.communicate(timeout=60)
+            self.assertNotEqual(child.returncode, 0, "a blocked agent is never admitted")
+            self.assertNotIn("Traceback", err)
+        self.f.py("pipeline.py", "precheck", "beta", "--issue", "DOC-1")
+        comments = [c for c in self.calls(["issue", "update"]) if "--comment" in c]
+        self.assertEqual(len(comments), 1, comments)
 
     def test_invalid_admission_never_permits(self):
         for invalid in [dict(adm("beta", "ag_b", True), edges="bad"),

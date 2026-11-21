@@ -75,6 +75,8 @@ FAKE_PC = textwrap.dedent('''\
         print(json.dumps({"id": "new-1", "identifier": "DOC-99"})); sys.exit(0)
     if a[:2] == ["agent", "wake"] and cfg.get("wake_exit"):
         sys.exit(cfg["wake_exit"])
+    if a[:2] == ["issue", "update"] and cfg.get("update_exit"):
+        sys.exit(cfg["update_exit"])
     print("{}"); sys.exit(0)
 ''')
 

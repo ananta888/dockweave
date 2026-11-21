@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 52.5,
+      "progress_percent": 58.33,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -155,7 +155,7 @@
       "id": "M5",
       "title": "Paperclip-Wrapper und zuverlässiges Routing",
       "status": "in_progress",
-      "progress_percent": 52.5,
+      "progress_percent": 55.0,
       "task_ids": [
         "RF-027",
         "RF-028",
@@ -441,7 +441,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 90,
       "description": "rework reserviert den dauerhaften once-Marker vor issue create und entfernt ihn bei Fehlern nicht. report_blocked markiert einen Kommentar ebenfalls vor dem ungeprüften Update. Eine spätere Wiederholung unterdrückt damit nie erfolgreich ausgeführte Aktionen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -482,9 +482,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Crash nach 'pending' ohne Recovery: Rework-Routing hängt dauerhaft bei 'reconcile before retry'",
-          "report_blocked: Timeout (124) bei issue update lässt 'pending' stehen, spätere Aufrufe kehren früh zurück",
-          "Keine nebenläufigen Kommentar-Aufrufe getestet"
+          "Abgleichfenster-Semantik (bewusst mögliches Duplikat bei Wake/Kommentar statt Dauerblockade) bei Abnahme bestätigen"
+        ],
+        "resolved": [
+          "2026-11-21: pending-Marker tragen Zeitstempel; Abgleichfenster DOCKWEAVE_PIPELINE_RECONCILE_SEC (Default 600 s, README). Danach: Rework nach erneuter Tag-Suche neu anlegen, Wake/Kommentar wiederholen. report_blocked re-queued den Status auch bei unbekanntem Kommentar-Ausgang. Tests: test_blocked_update_timeout_keeps_requeueing, test_pending_creation_recovers_after_reconcile_window, test_pending_wake_recovers_after_reconcile_window, test_concurrent_prechecks_comment_once"
         ]
       }
     },
@@ -1818,7 +1819,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 60,
+      "progress_percent": 70,
       "description": "cmd_route weckt bei jedem Aufruf erneut, meldet nach ERR/UNMAPPED dennoch Exit 0 und ignoriert einen fehlgeschlagenen Wake nach Rework-Erstellung. dockweave-run.sh unterdrückt zusätzlich Routing-Fehler.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1869,8 +1870,10 @@
         "remaining_gaps": [
           "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl",
           "Kein Test mit mehreren Zielen",
-          "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)",
-          "Zweite Hälfte 'neuer Lauf weckt erneut' ungetestet"
+          "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)"
+        ],
+        "resolved": [
+          "2026-11-21: Wake-Wiederholung nach unbekanntem Ausgang über Abgleichfenster (test_pending_wake_recovers_after_reconcile_window)"
         ]
       }
     },

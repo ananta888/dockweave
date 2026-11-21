@@ -112,6 +112,7 @@ nutzen dieselben Variablen.
 | `DOCKWEAVE_BLOCKED_CHECK_FAIL_OPEN` | nein | `1` lässt `blocked-check.py` bei CLI-/JSON-Fehlern durch (Default: blockiert) |
 | `DOCKWEAVE_PIPELINE_BLOCKED_STATUS` | nein (Default `todo`) | Paperclip-Status eines durch die Pipeline gesperrten Issues (nie `blockedBy`) |
 | `DOCKWEAVE_PIPELINE_STATE_DIR` | nein (Default `$XDG_STATE_HOME/dockweave/pipeline`) | Idempotenz-Marker für Sperr-Kommentare und Rework-Issues |
+| `DOCKWEAVE_PIPELINE_RECONCILE_SEC` | nein (Default `600`) | Abgleichfenster für Aktionen mit unbekanntem Ausgang (Timeout/Absturz): solange wird weder neu geweckt noch neu angelegt oder kommentiert. Danach wird ein Rework-Issue nach erneuter Tag-Suche angelegt, Wake und Sperr-Kommentar werden wiederholt (ggf. ein Duplikat statt dauerhafter Blockade). Der Status-Re-Queue gesperrter Issues läuft auch innerhalb des Fensters weiter. |
 | `PAPERCLIP_API_URL`, `PAPERCLIP_API_KEY`, `PAPERCLIP_AGENT_ID`, `PAPERCLIP_COMPANY_ID` | von Paperclip gesetzt | Inbox, Agent- und Company-Kontext |
 
 ## Pipeline (Gate → Agent)
