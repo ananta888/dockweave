@@ -12,7 +12,7 @@ import (
 )
 
 func TestGraphRejectsNonObjectsAndInvalidRevisions(t *testing.T) {
-	for _, body := range []string{"null", "[]", `"graph"`, "1", "{} {}", `{"revision":null}`, `{"revision":1.5}`, `{"revision":-1}`, `{"revision":"1"}`} {
+	for _, body := range []string{"null", "[]", `"graph"`, "1", "true", "false", "{} {}", `{"revision":null}`, `{"revision":1.5}`, `{"revision":-1}`, `{"revision":"1"}`} {
 		t.Run(body, func(t *testing.T) {
 			t.Setenv("XDG_DATA_HOME", t.TempDir())
 			defer func() {
@@ -130,5 +130,63 @@ func TestInvalidContractPreservesEnforcedPipeline(t *testing.T) {
 	path, _ := graphPath()
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// RF-006: an invalid PUT on an existing graph changes neither the stored
+// graph, the gate file nor the enforced pipeline edges.
+func TestInvalidGraphPutLeavesExistingStateUntouched(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	ws := t.TempDir()
+	fp := &fakePusher{}
+	s := &Server{browseRoots: []string{ws}, pushPipeline: fp.push}
+	valid := strings.Replace(pipelineGraph(t, ws, 0, true), `"syncGates":false`, `"syncGates":true`, 1)
+	if rec := putGraphReq(s, valid); rec.Code != http.StatusOK {
+		t.Fatalf("valid graph: %d %s", rec.Code, rec.Body)
+	}
+	path, _ := graphPath()
+	gates := filepath.Join(ws, ".paperclip", "gates.json")
+	graphBefore, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gatesBefore, err := os.ReadFile(gates)
+	if err != nil {
+		t.Fatalf("gate file not written: %v", err)
+	}
+	pushes := len(fp.calls)
+	for _, body := range []string{"null", "[]", "true", `"x"`, "{} {}", `{"revision":-1}`, `{"revision":null}`} {
+		if rec := putGraphReq(s, body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: want 400, got %d", body, rec.Code)
+		}
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(graphBefore) {
+		t.Fatalf("graph changed:\n%s\n%s", graphBefore, after)
+	}
+	if after, _ := os.ReadFile(gates); string(after) != string(gatesBefore) {
+		t.Fatal("gates.json changed")
+	}
+	if len(fp.calls) != pushes {
+		t.Fatalf("pipeline pushed %d extra times", len(fp.calls)-pushes)
+	}
+}
+
+func TestInvalidGraphPutLeavesLegacyGraphUntouched(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	path, _ := graphPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte(`{"nodes":[],"connectors":[]}`)
+	if err := os.WriteFile(path, legacy, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{"null", "false", `{"revision":"1"}`} {
+		if rec := putGraphReq(&Server{}, body); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: want 400, got %d", body, rec.Code)
+		}
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(legacy) {
+		t.Fatalf("legacy graph changed: %s", after)
 	}
 }

@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 62.5,
+      "progress_percent": 70.0,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -494,10 +494,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "Graph-Eingaben an beiden HTTP-Grenzen als JSON-Objekte validieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 55,
+      "progress_percent": 100,
       "description": "JSON null wird beim Unmarshal in eine Map nicht als Fehler behandelt. Der Gateway-Pfad panikt anschließend in stampRevision; der getrennte Daemon-Graphpfad akzeptiert null bereits vor den heutigen Änderungen.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "interaction",
@@ -538,11 +538,10 @@
         "go test ./internal/webui ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Keine Tests für Daemon-PUT /api/v1/graph",
-          "Boolean-Fall fehlt",
-          "Kein Test, dass bestehender Graph/Gate-Dateien/Kanten unverändert bleiben"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: Daemon internal/api/graph_test.go (TestPutGraphValidatesInputAndKeepsStoredDocument: null/Array/String/Zahl/true/false/leer/abgeschnitten/zwei Dokumente/Müll/ungültige Revisionen -> strukturiertes 400 code=invalid, gespeichertes Dokument inkl. großer Integer unverändert; TestPutGraphOnFreshStoreRejectsNullWithoutPanic); Gateway TestGraphRejectsNonObjectsAndInvalidRevisions (+true/false), TestInvalidGraphPutLeavesExistingStateUntouched (Graph, gates.json, keine Pipeline-Pushes), TestInvalidGraphPutLeavesLegacyGraphUntouched; TestStampRevisionPreservesValues. Commit: siehe git log 'test(api): graph input validation'."
         ]
       }
     },
@@ -3091,11 +3090,11 @@
     "by_status": {
       "todo": 5,
       "in_progress": 0,
-      "partial": 39,
+      "partial": 38,
       "blocked": 0,
-      "done": 1
+      "done": 2
     },
-    "progress_percent_done": 2.22,
+    "progress_percent_done": 4.44,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3140,9 +3139,9 @@
     "state": "in_progress",
     "todo_remaining": 5,
     "in_progress": 0,
-    "partial": 39,
+    "partial": 38,
     "blocked": 0,
-    "done": 1
+    "done": 2
   },
   "evidence_summary": {
     "by_level": {
