@@ -38,6 +38,7 @@ export interface GraphDocumentResponse {
   gates?: GraphGateSyncResult;
   /** Transfer of the derived gate -> agent edges to the daemon (ADR 0002). */
   pipeline_sync?: { pushed: boolean; edges: number; warnings?: string[]; error?: string };
+  pipeline_bindings?: Record<string, string>;
 }
 
 export interface GateSyncStatus {
@@ -64,6 +65,10 @@ export class GraphService {
 
   save(doc: GraphDocument): Observable<GraphDocumentResponse> {
     return this.http.put<GraphDocumentResponse>('/graph', doc);
+  }
+
+  retrySync(revision: number): Observable<GraphDocumentResponse> {
+    return this.http.post<GraphDocumentResponse>('/graph/sync', { revision });
   }
 
   gateStatus(): Observable<GateSyncStatus> {

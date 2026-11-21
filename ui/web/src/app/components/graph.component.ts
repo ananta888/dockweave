@@ -1,9 +1,11 @@
 import { Component, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, computed, inject, output, signal } from '@angular/core';
+import { Subject, takeUntil } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { FCanvasComponent, FFlowModule, FMinimapComponent } from '@foblex/flow';
 import { ApiService } from '../core/api.service';
-import { GateSyncStatus, GraphGateSyncResult, GraphService } from '../core/services/graph.service';
+import { GateSyncStatus, GraphDocument, GraphDocumentResponse, GraphGateSyncResult, GraphService } from '../core/services/graph.service';
 import { GateReviewView, GateRunView, GateService } from '../core/services/gate.service';
 import { PaperclipService } from '../core/services/paperclip.service';
 import { Admission, AdmissionEdge, ExpressionCheck, PipelineService, PipelineSyncResult } from '../core/services/pipeline.service';
@@ -146,6 +148,20 @@ interface GraphEdge {
         <button class="small" (click)="fit()">Fit</button>
       </div>
 
+        <div class="notice graph-save-status" role="status">
+          Graph: {{ graphSaveState() === 'saved' ? 'gespeichert' : graphSaveState() === 'saving' ? 'wird gespeichert' : graphSaveState() === 'loading' ? 'wird geladen' : 'ungespeicherte Änderungen' }}
+          @if (graphSaveError()) { <span role="alert">{{ graphSaveError() }}</span> }
+          @if (graphSaveState() === 'error') { <button class="small" (click)="retryGraphSave()">Speichern erneut versuchen</button> }
+          @if (graphSaveState() === 'conflict') { <button class="small" (click)="loadGraph(true)">Serverstand laden</button> }
+          @if (recoveryAvailable()) { <button class="small" (click)="exportRecovery()">Lokalen Entwurf exportieren</button> }
+        </div>
+        @if (pipelineError()) { <div class="notice warn" role="status">{{ pipelineError() }}</div> }
+        @if (pipelineSync()?.error) {
+          <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSync()?.error }}</div>
+        }
+        @if (pipelineSync()?.error || (pipelineRevision >= 0 && pipelineRevision !== graphRevision)) {
+          <button class="small" [disabled]="graphSaveState() !== 'saved' || syncBusy()" (click)="retryPipelineSync()">Synchronisierung erneut versuchen</button>
+        }
       <div class="graph-body" [class.drop-target]="draggingPalette()" (dragover)="onDragOver($event)" (drop)="onPaletteDrop($event)">
         @if (computing()) {
           <div class="layout-spinner">
@@ -158,9 +174,6 @@ interface GraphEdge {
             Verbindungstyp <b>{{ connectingType() }}</b> · Ziel-Node anklicken (Quelle: {{ src.title }})
             <button class="small" (click)="cancelConnect()">Abbrechen</button>
           </div>
-        }
-        @if (pipelineSync()?.error) {
-          <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSync()?.error }}</div>
         }
         @if (selectedEdge(); as edge) {
           <div class="edge-toolbar" [style.left.px]="edgeToolbarPos()?.x ?? 100" [style.top.px]="edgeToolbarPos()?.y ?? 100">
@@ -705,6 +718,7 @@ interface GraphEdge {
                         <option value="allow">allow – Ziel-Agent darf arbeiten</option>
                         <option value="wake">wake – Agent wecken</option>
                         <option value="deny">deny – nicht freigeben</option>
+                        <option value="rework">rework – Nacharbeit an den Upstream-Agenten</option>
                       </select>
                     </label>
                     @if (gateTrue === 'wake') {
@@ -844,6 +858,7 @@ interface GraphEdge {
                         <option value="allow">allow – Ziel-Agent darf arbeiten</option>
                         <option value="wake">wake – Agent wecken</option>
                         <option value="deny">deny – nicht freigeben</option>
+                        <option value="rework">rework – Nacharbeit an den Upstream-Agenten</option>
                       </select>
                     </label>
                     @if (ecTrue === 'wake') {
@@ -932,6 +947,7 @@ interface GraphEdge {
     .mode-switch button.active { border-color:#58a6ff; color:#58a6ff; background:#1f6feb1a; }
     .muted { color:#8b949e; }
     .spacer { flex:1; }
+    .graph-save-status { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
     .graph-body { flex:1; min-height:0; display:flex; }
     .graph-body.drop-target { outline:2px dashed #58a6ff; outline-offset:-4px; }
     .node-palette { width:150px; border-right:1px solid #30363d; background:#0f141b; padding:.6rem .5rem; display:flex; flex-direction:column; gap:.25rem; overflow:auto; }
@@ -1247,7 +1263,25 @@ export class GraphComponent implements OnChanges, OnDestroy {
   readonly pipelineError = signal('');
   /** Last expression check per editor ('add' | 'edit'), keyed with the text it checked. */
   readonly exprChecks = signal<Record<string, (ExpressionCheck & { expr: string }) | null>>({});
-  private graphRevision = 0;
+  graphRevision = 0;
+  private readonly destroyed$ = new Subject<void>();
+  private destroyed = false;
+  private graphLoaded = false;
+  private saveInFlight = false;
+  private editVersion = 0;
+  private savedVersion = 0;
+  private pipelineRequest = 0;
+  private gateStatusRequest = 0;
+  private healthRequest = 0;
+  pipelineRevision = -1;
+  private bindings: Record<string, string> = {};
+  private exprGeneration: Record<string, number> = {};
+  readonly graphSaveState = signal<'loading' | 'pending' | 'saving' | 'saved' | 'conflict' | 'error'>('loading');
+  readonly graphSaveError = signal('');
+  readonly recoveryAvailable = signal(false);
+  readonly syncBusy = signal(false);
+  private readonly recoveryKey = 'dockweave.graphRecovery';
+
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
   readonly paperclipWorkspace = signal('');
   readonly paperclipSync = signal(false);
@@ -1272,14 +1306,27 @@ export class GraphComponent implements OnChanges, OnDestroy {
   constructor() {
     // The gateway is the shared source of truth; localStorage stays as a
     // fallback when the gateway has no document yet.
-    this.paperclip.status().subscribe({
+    this.paperclip.status().pipe(takeUntil(this.destroyed$)).subscribe({
       next: (st) => this.paperclipIssues.set(st?.issues || []),
       error: () => { /* paperclip offline */ },
     });
-    this.graphService.load().subscribe({
-      next: (res) => {
-        this.graphRevision = res?.revision ?? 0;
-        const doc = (res?.saved ? res.body : null) as Record<string, unknown> | null;
+    this.loadGraph();
+    try {
+      this.paperclipWorkspace.set(localStorage.getItem('dockweave.paperclipWorkspace') || '');
+      this.paperclipSync.set(localStorage.getItem('dockweave.paperclipSync') === '1');
+    } catch { /* ignore */ }
+    this.loadGateSyncStatus();
+    this.loadGateHealth();
+    this.loadPipelineStatus();
+    // Pipeline status follows gate runs without a page reload.
+    this.pipelinePoll = setInterval(() => { this.loadPipelineStatus(); this.loadGateHealth(); this.loadGateSyncStatus(); }, 15000);
+    // Gate runs are now also fetched eagerly so the 2D graph can reflect each
+    // gate's last run on the node itself; a missing endpoint on an older daemon
+    // only sets an error signal and adds no console noise.
+  }
+
+  private applyGraph(res: GraphDocumentResponse): void {
+        const doc = res.saved ? res.body : null;
         if (!doc) return;
         const apply = <T>(key: string, value: T | undefined, target: { set: (v: T) => void }) => {
           if (value === undefined) return;
@@ -1300,21 +1347,95 @@ export class GraphComponent implements OnChanges, OnDestroy {
           this.paperclipSync.set(!!pc.syncGates);
           this.persistPaperclipSettings();
         }
+    this.undoStack = [];
+    this.redoStack = [];
+    this.layoutNonce.update(v => v + 1);
+  }
+
+  loadGraph(discard = false): void {
+    if (this.saveInFlight) return;
+    if (discard && this.editVersion !== this.savedVersion) this.persistRecovery();
+    this.graphLoaded = false;
+    this.graphSaveState.set('loading');
+    const startedVersion = this.editVersion;
+    this.graphService.load().pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => {
+        this.graphLoaded = true;
+        this.graphRevision = res.revision ?? 0;
+        this.pipelineSync.set(res.pipeline_sync ?? null);
+        this.bindings = res.pipeline_bindings ?? {};
+        if (this.editVersion !== startedVersion || (!discard && this.editVersion !== this.savedVersion)) {
+          this.graphSaveState.set('conflict');
+          this.graphSaveError.set('Während des Ladens geändert. Lokalen Entwurf exportieren oder Serverstand laden.');
+          this.persistRecovery();
+          return;
+        }
+        this.applyGraph(res);
+        this.savedVersion = this.editVersion;
+        this.graphSaveState.set('saved');
+        this.graphSaveError.set('');
+        try { this.recoveryAvailable.set(localStorage.getItem(this.recoveryKey) !== null); }
+        catch { this.graphSaveError.set('Lokale Wiederherstellung nicht verfügbar.'); }
+        this.loadGateSyncStatus();
+        this.loadGateHealth();
+        this.loadPipelineStatus();
       },
-      error: () => { /* offline: keep the local copy */ },
+      error: () => {
+        this.graphSaveState.set('error');
+        this.graphSaveError.set('Graph konnte nicht geladen werden. Lokale Änderungen bleiben erhalten.');
+      },
     });
+  }
+
+  private graphDocument(): GraphDocument {
+    return {
+      version: 1, revision: this.graphRevision, schema: this.schema(),
+      connectors: this.connectors(), customEdges: this.customEdges(), ghosts: this.ghosts(),
+      positions: this.manualPositions,
+      paperclip: { workspace: this.paperclipWorkspace().trim(), syncGates: this.paperclipSync() },
+    };
+  }
+
+  private persistRecovery(): void {
     try {
-      this.paperclipWorkspace.set(localStorage.getItem('dockweave.paperclipWorkspace') || '');
-      this.paperclipSync.set(localStorage.getItem('dockweave.paperclipSync') === '1');
-    } catch { /* ignore */ }
-    this.loadGateSyncStatus();
-    this.loadGateHealth();
-    this.loadPipelineStatus();
-    // Pipeline status follows gate runs without a page reload.
-    this.pipelinePoll = setInterval(() => { this.loadPipelineStatus(); this.loadGateHealth(); }, 15000);
-    // Gate runs are now also fetched eagerly so the 2D graph can reflect each
-    // gate's last run on the node itself; a missing endpoint on an older daemon
-    // only sets an error signal and adds no console noise.
+      localStorage.setItem(this.recoveryKey, JSON.stringify(this.graphDocument()));
+      this.recoveryAvailable.set(true);
+    } catch { this.graphSaveError.set('Entwurf konnte lokal nicht gesichert werden. Bitte vor dem Verlassen exportieren.'); }
+  }
+
+  exportRecovery(): void {
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(this.recoveryKey); }
+    catch { this.graphSaveError.set('Lokale Wiederherstellung nicht verfügbar; aktueller Entwurf wird exportiert.'); }
+    const url = URL.createObjectURL(new Blob([raw ?? JSON.stringify(this.graphDocument(), null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'dockweave-graph-draft.json'; link.click(); URL.revokeObjectURL(url);
+  }
+
+  retryGraphSave(): void {
+    if (!this.graphLoaded) { this.loadGraph(); return; }
+    if (this.graphSaveState() === 'conflict') return;
+    this.graphSaveState.set('pending');
+    this.pushGraph();
+  }
+
+  retryPipelineSync(): void {
+    if (!this.graphLoaded || this.graphSaveState() !== 'saved' || this.syncBusy()) return;
+    this.syncBusy.set(true);
+    this.graphService.retrySync(this.graphRevision).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => {
+        this.syncBusy.set(false);
+        this.pipelineSync.set(res.pipeline_sync ?? null);
+        this.bindings = res.pipeline_bindings ?? {};
+        this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+        this.loadGateSyncStatus(); this.loadPipelineStatus();
+      },
+      error: (err: unknown) => {
+        this.syncBusy.set(false);
+        this.pipelineSync.set({ pushed: false, edges: 0, error: err instanceof HttpErrorResponse && err.status === 409
+          ? 'Graph wurde geändert. Serverstand laden, bevor die Synchronisierung wiederholt wird.' : 'Synchronisierung nicht verfügbar. Erneut versuchen.' });
+      },
+    });
   }
 
   setPaperclipWorkspace(value: string): void {
@@ -1337,20 +1458,22 @@ export class GraphComponent implements OnChanges, OnDestroy {
   }
 
   loadGateSyncStatus(): void {
-    this.graphService.gateStatus().subscribe({
-      next: (status) => this.gateSyncStatus.set(status),
-      error: () => this.gateSyncStatus.set(null),
+    const request = ++this.gateStatusRequest;
+    this.graphService.gateStatus().pipe(takeUntil(this.destroyed$)).subscribe({
+      next: status => { if (request === this.gateStatusRequest) this.gateSyncStatus.set(status); },
+      error: () => { if (request === this.gateStatusRequest) this.gateSyncStatus.set({ error: 'Gate-Synchronisationsstatus nicht verfügbar' }); },
     });
   }
 
   loadGateHealth(): void {
-    this.gateService.runs(this.paperclipWorkspace().trim(), 8).subscribe({
-      next: (res) => { this.gateRuns.set(res?.runs ?? []); this.gateRunError.set(''); },
-      error: () => { this.gateRuns.set([]); this.gateRunError.set('Gate-Historie nicht verfügbar'); },
+    const request = ++this.healthRequest;
+    this.gateService.runs(this.paperclipWorkspace().trim(), 8).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => { if (request === this.healthRequest) { this.gateRuns.set(res?.runs ?? []); this.gateRunError.set(''); } },
+      error: () => { if (request === this.healthRequest) { this.gateRuns.set([]); this.gateRunError.set('Gate-Historie nicht verfügbar'); } },
     });
-    this.gateService.reviews(8).subscribe({
-      next: (res) => this.gateReviews.set(res?.reviews ?? []),
-      error: () => this.gateReviews.set([]),
+    this.gateService.reviews(8).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => { if (request === this.healthRequest) this.gateReviews.set(res?.reviews ?? []); },
+      error: () => { if (request === this.healthRequest) this.gateReviews.set([]); },
     });
   }
 
@@ -1363,15 +1486,28 @@ export class GraphComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.editVersion !== this.savedVersion) this.persistRecovery();
+    this.destroyed = true;
+    this.destroyed$.next(); this.destroyed$.complete();
     if (this.pipelinePoll) clearInterval(this.pipelinePoll);
     if (this.saveTimer) clearTimeout(this.saveTimer);
     for (const t of Object.values(this.exprTimers)) clearTimeout(t);
   }
 
   loadPipelineStatus(): void {
-    this.pipelineService.admissions().subscribe({
-      next: (res) => { this.pipelineAdmissions.set(res?.admissions ?? []); this.pipelineError.set(''); },
-      error: () => { this.pipelineAdmissions.set([]); this.pipelineError.set('Pipeline-Status nicht verfügbar'); },
+    const request = ++this.pipelineRequest;
+    this.pipelineService.admissions().pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => {
+        if (request !== this.pipelineRequest) return;
+        this.pipelineAdmissions.set(res?.admissions ?? []);
+        this.pipelineRevision = res.revision;
+        this.pipelineError.set(res.revision === this.graphRevision ? '' : 'Pipeline-Stand weicht vom gespeicherten Graphen ab.');
+      },
+      error: () => {
+        if (request !== this.pipelineRequest) return;
+        this.pipelineAdmissions.set([]);
+        this.pipelineError.set('Pipeline-Status nicht verfügbar; Freigabe unbekannt.');
+      },
     });
   }
 
@@ -1387,7 +1523,9 @@ export class GraphComponent implements OnChanges, OnDestroy {
   /** Badge with a text alternative for gated agents; undefined for ungated ones. */
   pipelineBadge(agentId: string): { blocked: boolean; label: string; title: string } | undefined {
     const adm = this.admissionFor(agentId);
-    if (!adm || !adm.edges.length) return undefined;
+    const gated = this.connectors().some(c => c.enabled && c.kind === 'gate' && c.targetAgentId === agentId);
+    if (gated && (this.pipelineError() || this.pipelineRevision < 0)) return { blocked: true, label: 'Status unbekannt', title: this.pipelineError() || 'Pipeline-Status wird geladen' };
+    if (!adm || !adm.edges.length) return gated ? { blocked: true, label: 'Nicht synchronisiert', title: 'Gate-Regeln noch nicht bestätigt' } : undefined;
     if (adm.allowed) return { blocked: false, label: 'Pipeline frei', title: 'Pipeline frei: alle Gates bestanden' };
     const reasons = adm.edges.filter(e => !e.satisfied).map(e => `${e.gate_id || 'pipeline'}: ${pipelineCodeText(e.code)}`);
     return { blocked: true, label: '⛔ blockiert', title: 'Pipeline blockiert – ' + reasons.join('; ') };
@@ -1395,12 +1533,18 @@ export class GraphComponent implements OnChanges, OnDestroy {
 
   /** State of a proceed edge from the downstream agent's admission (GP-008). */
   private proceedState(c: ConnectorConfig): { label: string; state?: string; tooltip: string } {
-    const gid = this.existingGateId(c.contract) || slug(c.name);
     let expr = '';
     try { expr = (JSON.parse(c.contract || '{}') as { expression?: string }).expression || ''; } catch { /* ignore */ }
     const adm = this.admissionFor(c.targetAgentId || '');
-    const edge: AdmissionEdge | undefined = adm?.edges.find(e => e.gate_id === gid);
+    const binding = this.bindings[c.id];
+    const edge: AdmissionEdge | undefined = binding ? adm?.edges.find(e => e.edge_id === binding) : undefined;
     const exprText = `Ausdruck: ${expr || '(Exit-Code)'}`;
+    if (this.pipelineError() || this.pipelineRevision < 0) {
+      return { label: 'proceed · Status unbekannt', state: 'unavailable', tooltip: this.pipelineError() || 'Status wird geladen' };
+    }
+    if (this.editVersion !== this.savedVersion || this.pipelineRevision !== this.graphRevision) {
+      return { label: 'proceed · veralteter Stand', state: 'unsynced', tooltip: 'Graph und erzwungene Pipeline sind noch nicht synchronisiert.' };
+    }
     if (!edge) {
       return { label: 'proceed · nicht übertragen', state: 'unsynced',
         tooltip: `proceed: im Daemon noch nicht bekannt (speichern) · ${exprText}` };
@@ -1426,36 +1570,50 @@ export class GraphComponent implements OnChanges, OnDestroy {
   /** Debounced server-side validation (POST /graph/validate-expression). */
   checkExpression(which: string, expr: string, budgetConfigured: boolean): void {
     if (this.exprTimers[which]) clearTimeout(this.exprTimers[which]);
+    const generation = (this.exprGeneration[which] ?? 0) + 1;
+    this.exprGeneration[which] = generation;
+    this.exprChecks.update(m => ({ ...m, [which]: null }));
     const text = (expr || '').trim();
-    if (!text) { this.exprChecks.update(m => ({ ...m, [which]: null })); return; }
+    if (!text) return;
     this.exprTimers[which] = setTimeout(() => {
-      this.pipelineService.validateExpression(text, budgetConfigured).subscribe({
-        next: (res) => this.exprChecks.update(m => ({ ...m, [which]: { ...res, expr: text } })),
-        error: () => this.exprChecks.update(m => ({ ...m, [which]: null })),
+      this.pipelineService.validateExpression(text, budgetConfigured).pipe(takeUntil(this.destroyed$)).subscribe({
+        next: res => { if (this.exprGeneration[which] === generation) this.exprChecks.update(m => ({ ...m, [which]: { ...res, expr: text } })); },
+        error: () => { if (this.exprGeneration[which] === generation) this.exprChecks.update(m => ({ ...m, [which]: { ok: false, expr: text, error: 'Validierung nicht verfügbar' } })); },
       });
     }, 250);
   }
 
-  /** Runs fn only when the expression is empty or the gateway accepts it. */
+  private editorSnapshot(which: string): string {
+    return JSON.stringify(which === 'add'
+      ? [this.connectorAgent()?.id, this.connKind, this.connName, this.connTargetAgent, this.connURL, this.connContract, this.connDirection,
+        this.gateExpression, this.gateTrue, this.gateTrueWake, this.gateFalse, this.gateReasonTrue, this.gateReasonFalse,
+        this.gateMaxAge, this.gateCommand, this.gateCwd, this.gateTimeout, this.gateReview, this.gateHuman, this.gateWorkspace]
+      : [this.editConnectorId(), this.ecName, this.ecKind, this.ecDirection, this.ecTarget, this.ecURL, this.ecContract,
+        this.ecExpression, this.ecTrue, this.ecTrueWake, this.ecFalse, this.ecReasonTrue, this.ecReasonFalse, this.ecMaxAge,
+        this.ecBudget, this.ecCommand, this.ecCwd, this.ecTimeout, this.ecReview, this.ecHuman, this.ecWorkspace]);
+  }
+
   private ensureValidExpression(expr: string, budgetConfigured: boolean, which: string, fn: () => void): void {
     const text = (expr || '').trim();
+    const snapshot = this.editorSnapshot(which);
     const setErr = (msg: string) => which === 'add' ? this.schemaError.set(msg) : this.configError.set(msg);
     if (!text) { fn(); return; }
-    this.pipelineService.validateExpression(text, budgetConfigured).subscribe({
-      next: (res) => {
+    this.pipelineService.validateExpression(text, budgetConfigured).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => {
+        if (this.editorSnapshot(which) !== snapshot) { setErr('Formular inzwischen geändert. Bitte erneut speichern.'); return; }
         this.exprChecks.update(m => ({ ...m, [which]: { ...res, expr: text } }));
-        if (res.ok === false) { setErr('Ungültiger Ausdruck: ' + (res.error || '')); return; }
+        if (res.ok !== true) { setErr('Ungültiger Ausdruck: ' + (res.error || 'Validierung nicht bestätigt')); return; }
         fn();
       },
-      // An older gateway without the endpoint: the daemon still fails closed at run time.
-      error: () => fn(),
+      error: () => setErr('Ausdruck nicht verifiziert: Validierung nicht verfügbar. Bitte erneut versuchen.'),
     });
   }
 
   gateSyncLabel(): string {
     const s = this.gateSyncStatus();
-    if (!s || !s.enabled) return 'Sync inaktiv';
+    if (!s) return 'Synchronisationsstatus wird geladen';
     if (s.error) return 'Status: ' + s.error;
+    if (!s.enabled) return 'Sync inaktiv';
     if (!s.exists) return 'Noch keine gates.json';
     if (!s.managed) return 'Manuelle gates.json (nicht von DockWeave)';
     if (s.drifted) return 'Drift: gates.json wurde seit dem Sync verändert';
@@ -1471,46 +1629,51 @@ export class GraphComponent implements OnChanges, OnDestroy {
     return `Paperclip-Gates geschrieben${flags ? `: ${flags}` : ''}${result.path ? ` → ${result.path}` : ''}`;
   }
 
-  /** Debounced push of the whole graph document to the gateway. */
+  /** Coalesce edits but never overlap two revision-based writes. */
   private scheduleGraphSave(): void {
+    this.editVersion++;
+    this.persistRecovery();
+    if (this.graphSaveState() === 'conflict' || this.graphSaveState() === 'error') return;
+    this.graphSaveState.set('pending');
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => this.pushGraph(), 400);
+    this.saveTimer = setTimeout(() => { this.saveTimer = null; this.pushGraph(); }, 400);
   }
 
   private pushGraph(): void {
-    const doc = {
-      version: 1,
-      revision: this.graphRevision,
-      schema: this.schema(),
-      connectors: this.connectors(),
-      customEdges: this.customEdges(),
-      ghosts: this.ghosts(),
-      positions: this.manualPositions,
-      paperclip: {
-        workspace: this.paperclipWorkspace().trim(),
-        syncGates: this.paperclipSync(),
-      },
-      updatedAt: new Date().toISOString(),
-    };
-    this.graphService.save(doc).subscribe({
-      next: (res) => {
+    if (this.destroyed || !this.graphLoaded || this.saveInFlight || this.graphSaveState() === 'conflict') return;
+    if (this.editVersion === this.savedVersion) return;
+    const version = this.editVersion;
+    const doc = structuredClone(this.graphDocument());
+    this.saveInFlight = true;
+    this.graphSaveState.set('saving');
+    this.graphService.save(doc).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: res => {
+        this.saveInFlight = false;
         this.graphRevision = res.revision ?? this.graphRevision + 1;
-        if (this.paperclipSync()) this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+        this.savedVersion = version;
+        this.graphSaveError.set('');
         this.pipelineSync.set(res.pipeline_sync ?? null);
-        this.loadGateSyncStatus();
-        this.loadGateHealth();
-        this.loadPipelineStatus();
-      },
-      error: (err) => {
-        if (err?.status === 409) {
-          this.configError.set('Graph wurde zwischenzeitlich geändert (409). Bitte neu laden und erneut speichern.');
-          this.graphService.load().subscribe({
-            next: (res) => {
-              this.graphRevision = res.revision ?? this.graphRevision;
-            },
-            error: () => { /* ignore */ },
-          });
+        this.bindings = res.pipeline_bindings ?? {};
+        this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
+        this.loadGateSyncStatus(); this.loadGateHealth(); this.loadPipelineStatus();
+        if (this.editVersion !== version) {
+          this.graphSaveState.set('pending');
+          this.persistRecovery();
+          this.pushGraph();
+        } else {
+          this.graphSaveState.set('saved');
+          try { localStorage.removeItem(this.recoveryKey); this.recoveryAvailable.set(false); }
+          catch { this.graphSaveError.set('Graph gespeichert; lokaler Wiederherstellungseintrag konnte nicht entfernt werden.'); }
         }
+      },
+      error: (err: unknown) => {
+        this.saveInFlight = false;
+        this.persistRecovery();
+        const conflict = err instanceof HttpErrorResponse && err.status === 409;
+        this.graphSaveState.set(conflict ? 'conflict' : 'error');
+        this.graphSaveError.set(conflict
+          ? 'Graph wurde zwischenzeitlich geändert (409). Automatisches Speichern angehalten. Entwurf exportieren und Serverstand laden.'
+          : 'Graph nicht gespeichert. Lokaler Entwurf bleibt erhalten; Speichern erneut versuchen.');
       },
     });
   }
@@ -1706,7 +1869,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     if (!a) return;
     this.busy.set(true);
     this.avatarError.set('');
-    this.api.setAgentAvatar(a.id, this.editAvatar, this.editAvatarSVG).subscribe({
+    this.api.setAgentAvatar(a.id, this.editAvatar, this.editAvatarSVG).pipe(takeUntil(this.destroyed$)).subscribe({
       next: updated => {
         this.busy.set(false);
         this.editor.set(updated);
@@ -1947,12 +2110,12 @@ export class GraphComponent implements OnChanges, OnDestroy {
     }
     if (node.id.startsWith('mcp-')) {
       const m = this.mcpServers().find(x => 'mcp-' + x.id === node.id);
-      if (m) this.api.deleteMCP(m.agent_id, m.id).subscribe({ next: () => { this.loadAgentConfig(m.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
+      if (m) this.api.deleteMCP(m.agent_id, m.id).pipe(takeUntil(this.destroyed$)).subscribe({ next: () => { this.loadAgentConfig(m.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
       return;
     }
     if (node.id.startsWith('skill-')) {
       const sk = this.skills().find(x => 'skill-' + x.id === node.id);
-      if (sk) this.api.deleteSkill(sk.agent_id, sk.id).subscribe({ next: () => { this.loadAgentConfig(sk.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
+      if (sk) this.api.deleteSkill(sk.agent_id, sk.id).pipe(takeUntil(this.destroyed$)).subscribe({ next: () => { this.loadAgentConfig(sk.agent_id); this.changed.emit(); }, error: e => this.configError.set(e.message ?? String(e)) });
       return;
     }
     this.configError.set('dieser Node stammt aus den Agentendaten und kann hier nicht entfernt werden');
@@ -2070,7 +2233,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
         };
         this.ecExpression = g.expression || '';
         // Backwards compatible: free text from older contracts becomes the reason.
-        const t = parseRouting(g.on_true, g.reason_true, 'allow', ['allow', 'deny', 'wake']);
+        const t = parseRouting(g.on_true, g.reason_true, 'allow', ['allow', 'deny', 'wake', 'rework']);
         const f = parseRouting(g.on_false, g.reason_false, 'deny', ['deny', 'rework']);
         this.ecTrue = t.action;
         this.ecTrueWake = t.wake;
@@ -2119,7 +2282,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
         if (this.ecReasonFalse.trim()) gate['reason_false'] = this.ecReasonFalse.trim();
         if (Number(this.ecMaxAge) > 0) gate['max_age_sec'] = Number(this.ecMaxAge);
         // Keep contract fields this editor does not show (budget, policies ...).
-        for (const key of ['budget', 'runner_image', 'protected', 'allow_paths', 'deny_new_dependencies', 'secret_scan', 'when']) {
+        for (const key of ['budget', 'runner_image', 'protected', 'allow_paths', 'deny_new_dependencies', 'dependency_manifests', 'secret_scan', 'when']) {
           if (previous && previous[key] !== undefined) gate[key] = previous[key];
         }
         if (this.ecCommand.trim()) gate['command'] = this.ecCommand.trim();
@@ -2155,7 +2318,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   gateSummary(raw: string): string {
     try {
       const c = JSON.parse(raw) as { expression?: string; on_true?: string; on_false?: string; command?: string };
-      const t = parseRouting(c.on_true, '', 'allow', ['allow', 'deny', 'wake']);
+      const t = parseRouting(c.on_true, '', 'allow', ['allow', 'deny', 'wake', 'rework']);
       const f = parseRouting(c.on_false, '', 'deny', ['deny', 'rework']);
       const when = c.expression || (c.command ? 'exit 0' : 'kein Befehl');
       return `${when} · PASS→${composeRouting(t.action, t.wake)} · FAIL→${f.action}`;
@@ -2213,7 +2376,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     if (!a) return;
     this.busy.set(true);
     this.error.set('');
-    this.api.setAgentOrganization(a.id, this.editDisplay, this.editUnit, this.editRole).subscribe({
+    this.api.setAgentOrganization(a.id, this.editDisplay, this.editUnit, this.editRole).pipe(takeUntil(this.destroyed$)).subscribe({
       next: updated => {
         this.busy.set(false);
         this.message.set('Settings saved');
@@ -2244,7 +2407,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
 
   startAgent(a: Agent): void {
     this.busy.set(true);
-    this.api.startAgent(a.id).subscribe({
+    this.api.startAgent(a.id).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => { this.busy.set(false); this.changed.emit(); },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
     });
@@ -2252,7 +2415,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
 
   stopAgent(a: Agent): void {
     this.busy.set(true);
-    this.api.stopAgent(a.id).subscribe({
+    this.api.stopAgent(a.id).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => { this.busy.set(false); this.changed.emit(); },
       error: e => { this.busy.set(false); this.error.set(e.message ?? String(e)); },
     });
@@ -2705,7 +2868,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
       this.api.addMCP(a.id, {
         name: c.name, transport: c.transport, command: c.command, args: c.args, url: c.url,
         env_keys: c.envKeys || [], contract: JSON.stringify(c), enabled: true,
-      }).subscribe({
+      }).pipe(takeUntil(this.destroyed$)).subscribe({
         next: () => { added++; this.loadAgentConfig(a.id); },
         error: e => this.configError.set(e.message ?? String(e)),
       });
@@ -2813,7 +2976,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     const a = this.connectorAgent();
     if (!a) return;
     this.configBusy.set(true);
-    this.api.applyTypeDefaults(a.id).subscribe({
+    this.api.applyTypeDefaults(a.id).pipe(takeUntil(this.destroyed$)).subscribe({
       next: r => {
         this.configBusy.set(false);
         this.configError.set('');
@@ -2837,11 +3000,11 @@ export class GraphComponent implements OnChanges, OnDestroy {
     this.configError.set('');
     this.mcpServers.set([]);
     this.skills.set([]);
-    this.api.listMCP(agentId).subscribe({
+    this.api.listMCP(agentId).pipe(takeUntil(this.destroyed$)).subscribe({
       next: list => this.mcpServers.set(list ?? []),
       error: e => this.configError.set(e.message ?? String(e)),
     });
-    this.api.listSkills(agentId).subscribe({
+    this.api.listSkills(agentId).pipe(takeUntil(this.destroyed$)).subscribe({
       next: list => this.skills.set(list ?? []),
       error: e => this.configError.set(e.message ?? String(e)),
     });
@@ -2866,7 +3029,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
       name: this.mcpName.trim(), transport: this.mcpTransport,
       command: this.mcpCommand.trim(), args: this.mcpArgs.split('\n').map(s => s.trim()).filter(Boolean),
       url: this.mcpURL.trim(), contract, env_keys: [], enabled: true,
-    }).subscribe({
+    }).pipe(takeUntil(this.destroyed$)).subscribe({
       next: created => {
         this.configBusy.set(false);
         this.finishDraft('mcp', created.id);
@@ -2880,7 +3043,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   toggleMcp(m: AgentMCP): void {
     const a = this.connectorAgent();
     if (!a) return;
-    this.api.updateMCP(a.id, m.id, { ...m, enabled: !m.enabled }).subscribe({
+    this.api.updateMCP(a.id, m.id, { ...m, enabled: !m.enabled }).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => this.loadAgentConfig(a.id),
       error: e => this.configError.set(e.message ?? String(e)),
     });
@@ -2889,7 +3052,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   deleteMcp(m: AgentMCP): void {
     const a = this.connectorAgent();
     if (!a) return;
-    this.api.deleteMCP(a.id, m.id).subscribe({
+    this.api.deleteMCP(a.id, m.id).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => { this.loadAgentConfig(a.id); this.changed.emit(); },
       error: e => this.configError.set(e.message ?? String(e)),
     });
@@ -2907,7 +3070,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
     this.api.addSkill(a.id, {
       name: this.skillName.trim(), description: this.skillDescription.trim(),
       source_path: this.skillSource.trim(), config: this.skillConfig.trim(), enabled: true,
-    }).subscribe({
+    }).pipe(takeUntil(this.destroyed$)).subscribe({
       next: created => {
         this.configBusy.set(false);
         this.finishDraft('skill', created.id);
@@ -2921,7 +3084,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   toggleSkill(s: AgentSkill): void {
     const a = this.connectorAgent();
     if (!a) return;
-    this.api.updateSkill(a.id, s.id, { ...s, enabled: !s.enabled }).subscribe({
+    this.api.updateSkill(a.id, s.id, { ...s, enabled: !s.enabled }).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => this.loadAgentConfig(a.id),
       error: e => this.configError.set(e.message ?? String(e)),
     });
@@ -2930,7 +3093,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   deleteSkill(s: AgentSkill): void {
     const a = this.connectorAgent();
     if (!a) return;
-    this.api.deleteSkill(a.id, s.id).subscribe({
+    this.api.deleteSkill(a.id, s.id).pipe(takeUntil(this.destroyed$)).subscribe({
       next: () => { this.loadAgentConfig(a.id); this.changed.emit(); },
       error: e => this.configError.set(e.message ?? String(e)),
     });
