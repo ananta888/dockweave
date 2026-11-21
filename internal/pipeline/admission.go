@@ -313,8 +313,8 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 	}
 	res := resultFor(run, edge.GateID)
 	if res == nil {
-		if (run.Status == model.GateError || run.Status == model.GateFailed) && len(run.Results) == 0 {
-			return block(model.AdmitError, firstNonEmpty(run.Reason, "gate run failed before any gate ran"))
+		if run.Status == model.GateError || run.Status == model.GateFailed {
+			return block(model.AdmitError, firstNonEmpty(run.Reason, "gate run failed outside this gate (setup or workspace policy)"))
 		}
 		return block(model.AdmitUnknownGate, fmt.Sprintf("gate %q is not configured in %s (run %s)", edge.GateID, edge.Workspace, run.ID))
 	}
@@ -362,7 +362,7 @@ func (e *Evaluator) evalEdge(edge *model.PipelineEdge, runs []*model.GateRun, ru
 // skipped, so a pre_run-only run never hides the last after_run verdict.
 func relevantRun(runs []*model.GateRun, gateID string) *model.GateRun {
 	for _, r := range runs {
-		if r.Tamper || resultFor(r, gateID) != nil || len(r.Phases) == 0 || r.FinishedAt.IsZero() || (len(r.Results) == 0 && (r.Status == model.GateFailed || r.Status == model.GateError)) {
+		if resultFor(r, gateID) != nil || r.RelevantToAllGates() {
 			return r
 		}
 	}

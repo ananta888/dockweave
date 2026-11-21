@@ -74,7 +74,7 @@ func saveGateRunTx(ctx context.Context, tx *sql.Tx, r *model.GateRun) error {
 	for _, res := range r.Results {
 		ids[res.ID] = true
 	}
-	if r.Tamper || len(r.Phases) == 0 || r.FinishedAt.IsZero() || (len(r.Results) == 0 && (r.Status == model.GateFailed || r.Status == model.GateError)) {
+	if r.RelevantToAllGates() {
 		ids[""] = true
 	}
 	for id := range ids {

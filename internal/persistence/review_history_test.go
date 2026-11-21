@@ -96,3 +96,31 @@ func TestGateTimestampMigrationPreservesNanosecondsAndRetention(t *testing.T) {
 		t.Fatalf("newest rows lost: %+v %v", got, err)
 	}
 }
+
+// Migration 20: existing workspace-wide failures (failed run, no failed
+// gate) become relevant to every gate.
+func TestMigrationMarksExistingPolicyFailuresGlobal(t *testing.T) {
+	s, path := openPipelineStore(t)
+	ctx := context.Background()
+	at := time.Now().UTC()
+	if err := s.SaveGateRun(ctx, &model.GateRun{ID: "policy", Workspace: "/ws", Status: model.GateFailed, StartedAt: at, FinishedAt: at,
+		Phases: []string{"after_run"}, Results: []model.GateResult{{ID: "tests", Status: "passed"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM gate_run_relevance WHERE run_id='policy' AND gate_id=''`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE meta SET value='19' WHERE key='schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	runs, err := reopened.RelevantGateRuns(ctx, "/ws", "lint")
+	if err != nil || len(runs) != 1 || runs[0].ID != "policy" {
+		t.Fatalf("policy failure not relevant to other gates after migration: %+v %v", runs, err)
+	}
+}

@@ -209,6 +209,17 @@ dem aktuellen Workspace-Inhalt bestanden ist. Entscheidung:
 - **Gründe:** `ok`, `override`, `no_run`, `failed`, `error`, `stale`,
   `expired`, `tamper`, `fingerprint_unavailable`, `unknown_gate`, `denied`,
   `internal` — jeweils mit Gate-ID, Lauf-ID und Meldung.
+- **Welcher Lauf entscheidet:** der neueste Lauf mit einem Ergebnis für das
+  Gate oder der neueste Lauf, der alle Gates des Workspaces betrifft – je
+  nachdem, welcher neuer ist. Ein Lauf betrifft alle Gates, wenn er
+  manipuliert wurde (`tamper`), ohne Phasenbeschränkung lief, nie
+  abgeschlossen wurde (Absturz nach dem Startmarker) oder scheiterte, ohne
+  dass ein einzelnes Gate scheiterte (Setup-Fehler, Budget oder eine
+  workspace-weite Policy wie `secret_scan`, `deny_new_dependencies` oder
+  `allow_paths`). Ein phasenbegrenzter Lauf anderer Gates verdeckt nie ein
+  älteres Urteil; ein workspace-weiter Fehler immer (`error` bzw. `tamper`).
+  Hat die Retention die Nachweise gelöscht, sagt das die Meldung von
+  `no_run`.
 - **Frische:** Jeder Lauf speichert einen `workspace_fingerprint` (SHA-256
   über Pfade und Inhalte der Sandbox-Kopie, dieselben ignorierten Bäume wie
   der Diff). Die Admission berechnet ihn auf dem echten Workspace neu; jede

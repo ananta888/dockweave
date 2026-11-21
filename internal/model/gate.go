@@ -107,3 +107,23 @@ type GateApproval struct {
 	Note       string    `json:"note,omitempty"`
 	ApprovedAt time.Time `json:"approved_at"`
 }
+
+// RelevantToAllGates reports whether a run decides every gate of its
+// workspace, not only the gates it has results for: tampering, an
+// unrestricted (all-phase) run, a run that never completed, and a failed or
+// errored run in which no single gate failed (setup or workspace-wide policy
+// failure such as a secret, a new dependency or an out-of-scope change).
+func (r *GateRun) RelevantToAllGates() bool {
+	if r.Tamper || len(r.Phases) == 0 || r.FinishedAt.IsZero() {
+		return true
+	}
+	if r.Status != GateFailed && r.Status != GateError {
+		return false
+	}
+	for _, res := range r.Results {
+		if res.Status == "failed" || res.Status == "error" {
+			return false
+		}
+	}
+	return true
+}

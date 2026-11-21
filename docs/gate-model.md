@@ -200,6 +200,15 @@ workspace content. Decision record: `docs/adr/0002-pipeline-enforcement.md`.
 - **Reasons:** `ok`, `override`, `no_run`, `failed`, `error`, `stale`,
   `expired`, `tamper`, `fingerprint_unavailable`, `unknown_gate`, `denied`,
   `internal` — each with gate id, run id and message.
+- **Which run decides:** the newest run that has a result for the gate, or
+  the newest run that concerns every gate of the workspace, whichever is
+  newer. A run concerns every gate if it was tampered with, ran without a
+  phase restriction, never completed (crash after the start marker), or
+  failed without any failed gate (setup error, budget, or a workspace-wide
+  policy such as `secret_scan`, `deny_new_dependencies` or `allow_paths`).
+  A phase-limited run of other gates never hides an older verdict; a
+  workspace-wide failure always does (`error`, or `tamper`). If retention
+  removed the evidence, `no_run` says so in its message.
 - **Freshness:** every run stores a `workspace_fingerprint` (SHA-256 over
   paths and contents of the sandbox copy, same ignored trees as the diff).
   The admission recomputes it on the live workspace; any change means

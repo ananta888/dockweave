@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 19
+const schemaVersion = 20
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -382,6 +382,13 @@ var migrations = []string{
 	 OR (status IN ('failed','error') AND coalesce(json_array_length(detail,'$.results'),0)=0);
 	CREATE INDEX idx_gate_relevance_latest ON gate_run_relevance(workspace,gate_id,started_at DESC,run_id DESC);
 	CREATE INDEX idx_gate_runs_chronological ON gate_runs(started_at DESC,id DESC);`,
+	// 20: a failed/errored run in which no single gate failed (workspace-wide
+	// policy failure) is relevant to every gate (model.GateRun.RelevantToAllGates).
+	`INSERT OR IGNORE INTO gate_run_relevance
+	 SELECT r.id,r.workspace,'',r.started_at FROM gate_runs r
+	 WHERE r.status IN ('failed','error') AND NOT EXISTS (
+	  SELECT 1 FROM json_each(r.detail,'$.results') j
+	  WHERE json_extract(j.value,'$.status') IN ('failed','error'));`,
 }
 
 // Store is the DockWeave registry.

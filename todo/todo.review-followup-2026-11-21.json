@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 95.42,
+      "progress_percent": 97.5,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -922,10 +922,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Fehlgeschlagene phasenbegrenzte Läufe ohne Einzelergebnis korrekt berücksichtigen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "relevantRun ignoriert jeden phasenbegrenzten Lauf ohne Ergebnis für das gesuchte Gate, sofern kein Tamper vorliegt. Budget- oder Setup-Fehler entstehen in Run jedoch vor dem ersten Ergebnis; dadurch kann trotz neuerem Fehlschlag ein früherer PASS ausgewählt werden.",
       "evidence_level": "investigation_required",
       "scope_origin": "today",
@@ -970,11 +970,10 @@
         "go test -tags integration ./tests/integration -run TestPipelineEndToEnd"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Nur synthetische Runs, kein Runner-Test",
-          "Keine vollständige Matrix",
-          "Relevanzregeln nicht dokumentiert"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: Relevanzregel als model.GateRun.RelevantToAllGates zentralisiert (Relevanz-Tabelle und Auswertung identisch); Lücke behoben: ein phasenbegrenzter Lauf, der an einer workspace-weiten Policy scheitert (keine einzelne Gate-Niederlage), galt nur für die gelaufenen Gates – ein älterer PASS eines anderen Gates gab trotzdem frei. Jetzt global (Migration 20 für Bestandsläufe, TestMigrationMarksExistingPolicyFailuresGlobal). Matrix gegen echten Store: TestRelevanceMatrixWithRealStore (7 Fälle, Policy-Fall vorher gescheitert); TestPhaseSetupFailureDoesNotReuseOldPass; Regeln in gate-model EN/DE."
         ]
       }
     },
@@ -3116,11 +3115,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 14,
+      "partial": 13,
       "blocked": 0,
-      "done": 30
+      "done": 31
     },
-    "progress_percent_done": 66.67,
+    "progress_percent_done": 68.89,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3135,8 +3134,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 12,
-      "remaining": 11
+      "done": 13,
+      "remaining": 10
     },
     "milestones": {
       "total": 7,
@@ -3165,9 +3164,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 14,
+    "partial": 13,
     "blocked": 0,
-    "done": 30
+    "done": 31
   },
   "evidence_summary": {
     "by_level": {
