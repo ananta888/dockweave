@@ -1,5 +1,5 @@
 # DockWeave — Makefile
-# Requires: Go >= 1.27, Docker Engine
+# Requires: Go >= 1.27.3, Docker Engine
 
 GO        ?= $(shell command -v go 2>/dev/null || echo $(HOME)/.local/go/bin/go)
 GOFLAGS   ?=
@@ -36,24 +36,19 @@ test: test-wrapper
 # Paperclip wrapper helpers (pipeline precheck/routing, blocked-check) with
 # faked dockweave/paperclipai/curl binaries; needs only python3 and sh.
 test-wrapper:
-	python3 -m unittest discover -s deployments/paperclip/tests
+	python3 -B -m unittest discover -s deployments/paperclip/tests
 
 test-race:
 	$(GO) test -race ./...
 
 test-integration:
-	docker run --rm --privileged \
-		-v "$(CURDIR):/src" \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-w /src \
-		golang:1.27 \
-		bash -c "go test -tags integration -v ./tests/integration/..."
+	bash scripts/test-integration.sh
 
 vet:
 	$(GO) vet ./...
 
 lint: vet
-	@command -v staticcheck >/dev/null 2>&1 && staticcheck ./... || echo "staticcheck not installed; skipped"
+	@if command -v staticcheck >/dev/null 2>&1; then staticcheck ./...; else echo "staticcheck not installed; run make install-tools" >&2; exit 1; fi
 
 clean:
 	rm -rf $(BIN_DIR)

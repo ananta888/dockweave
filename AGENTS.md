@@ -50,7 +50,7 @@ Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
 
 ## Build & Test
 
-Voraussetzungen: Go ≥ 1.24, Docker Engine, Linux (Kernel ≥ 5.12 empfohlen).
+Voraussetzungen: Go ≥ 1.27.3, Docker Engine, Linux (Kernel ≥ 5.12 empfohlen).
 
 ```bash
 go build ./...                      # Build

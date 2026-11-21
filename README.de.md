@@ -145,7 +145,7 @@ Beide Skripte geben diese Hinweise am Ende auch selbst aus.
 <summary>Schritt für Schritt (was das Skript automatisiert)</summary>
 
 ```bash
-# Bauen — benötigt die Go-Toolchain (>= 1.27) im PATH oder unter
+# Bauen — benötigt die Go-Toolchain (>= 1.27.3) im PATH oder unter
 # ~/.local/go/bin/go (das Makefile findet sie dort automatisch)
 make build
 
@@ -170,7 +170,7 @@ Die Sockets sind `0660 root:SOCKET_GROUP` (Standard-Gruppe: `dockweave`).
 
 ### Problemlösung
 
-- `go: not found` beim Bauen: Go ≥ 1.27 installieren oder nach
+- `go: not found` beim Bauen: Go ≥ 1.27.3 installieren oder nach
   `~/.local/go/bin` legen (`export PATH="$HOME/.local/go/bin:$PATH"`,
   dauerhaft in `~/.bashrc` / `~/.profile`) — das Makefile greift auf
   diesen Pfad zurück.
@@ -241,7 +241,7 @@ Daemon-Einstellungen (KNOWLEDGE_DIR, …) als Hinweis für die
 `/etc/dockweave/dockweaved.conf` des Zielrechners.
 ## Voraussetzungen
 
-- Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27
+- Linux (Kernel ≥ 5.12), Docker Engine ≥ 24.0, Go ≥ 1.27.3
 - Root / `CAP_SYS_ADMIN` für den Daemon
 
 Windows, macOS und Docker Desktop werden **nicht unterstützt**.

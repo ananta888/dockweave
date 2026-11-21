@@ -30,7 +30,7 @@ echo "==> Building dockweave"
 # -buildvcs=false: the build must not depend on git metadata (releases get
 # their version from VERSION/make; containers may run as foreign root).
 if ! make build GOFLAGS="${GOFLAGS:-} -buildvcs=false"; then
-	echo "error: build failed — is the Go toolchain (>= 1.27) installed?" >&2
+	echo "error: build failed — is the Go toolchain (>= 1.27.3) installed?" >&2
 	echo "       make finds it on PATH or at ~/.local/go/bin/go" >&2
 	exit 1
 fi

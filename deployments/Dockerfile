@@ -3,7 +3,8 @@
 #   -v /var/lib/dockweave:/var/lib/dockweave \
 #   -v /run/dockweave:/run/dockweave \
 #   -v /var/run/docker.sock:/var/run/docker.sock dockweave/dockweaved
-FROM golang:1.24 AS build
+FROM golang:1.27.3 AS build
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

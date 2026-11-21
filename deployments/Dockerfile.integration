@@ -1,0 +1,5 @@
+FROM docker:29.4.3-cli AS dockercli
+FROM golang:1.27.3-bookworm
+ENV GOTOOLCHAIN=local
+COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+WORKDIR /src

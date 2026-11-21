@@ -164,7 +164,7 @@ The scripts also print these instructions when they finish.
 <summary>step by step (what the installer automates)</summary>
 
 ```bash
-# Build — needs the Go toolchain (>= 1.27) on your PATH or at
+# Build — needs the Go toolchain (>= 1.27.3) on your PATH or at
 # ~/.local/go/bin/go (the Makefile finds it there automatically)
 make build
 
@@ -189,7 +189,7 @@ The sockets are `0660 root:SOCKET_GROUP` (default group: `dockweave`).
 
 ### Troubleshooting
 
-- `go: not found` during build: install Go ≥ 1.27 or put it at
+- `go: not found` during build: install Go ≥ 1.27.3 or put it at
   `~/.local/go/bin` (`export PATH="$HOME/.local/go/bin:$PATH"` and persist
   it in `~/.bashrc` / `~/.profile`) — the Makefile falls back to that path.
 - `dockweave: command not found`: use `./bin/dockweave`, run `make install`,
@@ -231,7 +231,7 @@ created (per-entity result). The bundle records the daemon settings
 
 - **Linux** (Kernel ≥ 5.12, native or WSL2 with systemd)
 - **Docker Engine** ≥ 24.0
-- **Go** ≥ 1.27 (for building from source)
+- **Go** ≥ 1.27.3 (for building from source)
 - Root / `CAP_SYS_ADMIN` for the daemon (mount operations)
 
 Windows, macOS, and Docker Desktop are **not supported**. The daemon performs

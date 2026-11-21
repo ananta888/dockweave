@@ -18,6 +18,14 @@ import (
 
 const gateTestImage = "node:22-bookworm"
 
+func gatePrerequisite(t *testing.T, reason string) {
+	t.Helper()
+	if os.Getenv("DOCKWEAVE_INTEGRATION_REQUIRED") == "1" {
+		t.Fatal(reason)
+	}
+	t.Skip(reason)
+}
+
 // gateRunner builds a sandbox gate runner against the local Docker engine.
 // It skips (never fails) when Docker or the runner image is unavailable.
 // Gate runs only start unprivileged, network-less containers; they do not
@@ -25,14 +33,14 @@ const gateTestImage = "node:22-bookworm"
 func gateRunner(t *testing.T) (*gateexec.Runner, *persistence.Store, string) {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not available")
+		gatePrerequisite(t, "docker not available")
 	}
 	if err := exec.Command("docker", "image", "inspect", gateTestImage).Run(); err != nil {
-		t.Skipf("%s image not available", gateTestImage)
+		gatePrerequisite(t, gateTestImage+" image not available")
 	}
 	dc, err := dockerclient.New()
 	if err != nil {
-		t.Skipf("docker client: %v", err)
+		gatePrerequisite(t, "docker client: "+err.Error())
 	}
 	store, err := persistence.Open(filepath.Join(t.TempDir(), "registry.db"))
 	if err != nil {
