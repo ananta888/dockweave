@@ -148,7 +148,7 @@ func gateCmd() *cobra.Command {
 	}
 	review.Flags().StringVar(&verdict, "verdict", "", "PASS or FAIL")
 	review.Flags().StringVar(&reviewNote, "note", "", "review note")
-	review.Flags().StringVar(&reviewer, "assignee", "", "identity the review issue is assigned to")
+	review.Flags().StringVar(&reviewer, "assignee", "", "identity the review issue is assigned to in Paperclip (stored as unverified metadata)")
 	_ = review.MarkFlagRequired("verdict")
 
 	var reviewLimit int

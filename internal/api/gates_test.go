@@ -13,7 +13,7 @@ import (
 	"github.com/ananta888/dockweave/internal/persistence"
 )
 
-func TestCreateGateReviewRequiresAttribution(t *testing.T) {
+func TestCreateGateReviewRequiresAdmin(t *testing.T) {
 	store, err := persistence.Open(filepath.Join(t.TempDir(), "registry.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -21,30 +21,36 @@ func TestCreateGateReviewRequiresAttribution(t *testing.T) {
 	defer store.Close()
 	srv := &Server{Store: store}
 
-	call := func(role Role, name string, body string) int {
+	call := func(role Role, name string, body string) (int, model.GateReview) {
 		ctx := ContextWithPeer(context.Background(), name, 1000, role)
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/gates/reviews", strings.NewReader(body))
 		req = req.WithContext(ctx)
 		rec := httptest.NewRecorder()
 		srv.createGateReview(rec, req)
-		return rec.Code
+		var out model.GateReview
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
 	}
 
-	// A non-admin peer without an assigned reviewer is rejected.
-	if code := call(RoleMonitor, "someone", `{"issue_id":"DOC-2","verdict":"PASS"}`); code != http.StatusForbidden {
-		t.Fatalf("unattributed review: code=%d, want 403", code)
+	// A non-admin peer is rejected even when it claims to be the assignee.
+	if code, _ := call(RoleMonitor, "bob", `{"issue_id":"DOC-2","verdict":"PASS","assigned_reviewer":"bob"}`); code != http.StatusForbidden {
+		t.Fatalf("monitor review: code=%d, want 403", code)
 	}
-	// A non-admin peer who is not the assigned reviewer is rejected.
-	if code := call(RoleMonitor, "alice", `{"issue_id":"DOC-2","verdict":"PASS","assigned_reviewer":"bob"}`); code != http.StatusForbidden {
-		t.Fatalf("mismatched reviewer: code=%d, want 403", code)
+	if code, _ := call("", "nobody", `{"issue_id":"DOC-2","verdict":"PASS"}`); code != http.StatusForbidden {
+		t.Fatalf("unauthenticated review: code=%d, want 403", code)
 	}
-	// The assigned reviewer (non-admin) is accepted.
-	if code := call(RoleMonitor, "bob", `{"issue_id":"DOC-2","verdict":"PASS","assigned_reviewer":"bob"}`); code != http.StatusOK {
-		t.Fatalf("assigned reviewer: code=%d, want 200", code)
+	// An admin may record without an assignee.
+	if code, out := call(RoleAdmin, "admin", `{"issue_id":"DOC-2","verdict":"PASS"}`); code != http.StatusOK || out.Actor != "admin" {
+		t.Fatalf("admin review: code=%d %+v", code, out)
 	}
-	// An admin may record on behalf of the assigned reviewer.
-	if code := call(RoleAdmin, "admin", `{"issue_id":"DOC-3","verdict":"PASS","assigned_reviewer":"carol"}`); code != http.StatusOK {
-		t.Fatalf("admin review: code=%d, want 200", code)
+	// The assignee claim is stored as metadata; the actor stays the peer.
+	code, out := call(RoleAdmin, "admin", `{"issue_id":"DOC-3","verdict":"PASS","assigned_reviewer":"carol"}`)
+	if code != http.StatusOK || out.AssignedReviewer != "carol" || out.Actor != "admin" {
+		t.Fatalf("admin review with assignee: code=%d %+v", code, out)
+	}
+	stored, err := store.GetGateReview(context.Background(), "DOC-3")
+	if err != nil || stored == nil || stored.AssignedReviewer != "carol" {
+		t.Fatalf("assigned reviewer not persisted: %+v %v", stored, err)
 	}
 }
 

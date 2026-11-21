@@ -127,23 +127,18 @@ func (s *Server) createGateReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Attribution: a review verdict is only trustworthy when it comes from the
-	// issue's assigned reviewer or from an admin. The Paperclip wrapper verifies
-	// assignment before calling here and passes the assignee; the daemon
-	// re-checks it so a bare peer cannot record an unattributed verdict.
+	// Recording a verdict is an admin operation (the auth middleware already
+	// keeps read-only peers away from POST; this is defense in depth, like
+	// prune). The verdict is attributed to the authenticated peer (Actor).
+	// assigned_reviewer is metadata supplied by the Paperclip wrapper after it
+	// checked the issue assignment there; the daemon cannot verify Paperclip's
+	// assignment and stores it as an unverified claim.
 	role, _ := r.Context().Value(peerRoleKey{}).(Role)
+	if role != RoleAdmin {
+		writeErr(w, http.StatusForbidden, "forbidden", errors.New("only admins may record review verdicts"))
+		return
+	}
 	reviewer := strings.TrimSpace(body.AssignedReviewer)
-	isAdmin := role == RoleAdmin
-	if reviewer == "" && !isAdmin {
-		writeErr(w, http.StatusForbidden, "forbidden",
-			errors.New("reviews require an assigned reviewer or admin role"))
-		return
-	}
-	if reviewer != "" && !isAdmin && actor(r) != reviewer {
-		writeErr(w, http.StatusForbidden, "forbidden",
-			fmt.Errorf("review for issue %s is assigned to %s, not %s", body.IssueID, reviewer, actor(r)))
-		return
-	}
 
 	review := &model.GateReview{
 		IssueID:          body.IssueID,
