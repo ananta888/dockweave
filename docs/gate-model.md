@@ -147,6 +147,15 @@ variable stays unusable.
     `Cargo.toml` (including `[dependencies.<name>]` and `target` tables)
     fails the run. Python names are PEP 503 normalised, so version bumps,
     extras and environment markers do not count as new dependencies.
+    Cargo renames (`alias = { package = "crate" }`) count by the real
+    crate. **Scope:** only these files at the workspace root, plus the
+    relative paths in `dependency_manifests` (e.g.
+    `["ui/web/package.json"]`; no `..`, no absolute paths, no symlinks).
+    Other manifests are not checked; the run reports the checked scope as a
+    warning. A missing manifest is fine; an unreadable or unparsable one, or
+    an unsupported form (e.g. Python dependency-group includes), fails the
+    run. The baseline is taken from the private snapshot before the gates
+    run, and findings name packages only, never file contents.
   - `secret_scan`: changed files are scanned for known credential shapes
     (AWS, GitHub, OpenAI, Slack, Google, Stripe, GitLab, npm, JWT, bearer
     tokens, private keys …). If none matches, a Shannon-entropy check flags

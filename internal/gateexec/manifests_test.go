@@ -78,3 +78,21 @@ func TestSecretScanErrorsDoNotBecomeCleanResults(t *testing.T) {
 		t.Fatal("escaping changed path accepted")
 	}
 }
+
+// RF-043: Cargo renames (`alias = { package = "crate" }`) are identified by
+// the real crate, so pointing an existing key at a new crate is detected.
+func TestCargoPackageRenameIsANewDependency(t *testing.T) {
+	before := []byte("[dependencies]\nfoo = \"1\"\nalias = { package = \"serde\", version = \"1\" }\n")
+	names, err := cargoNames(before)
+	if err != nil || !names["foo"] || !names["serde"] || names["alias"] {
+		t.Fatalf("names: %v %v", names, err)
+	}
+	after := []byte("[dependencies]\nfoo = { package = \"evil-crate\", version = \"1\" }\nalias = { package = \"serde\", version = \"2\" }\n")
+	got, err := manifestDependencyNames("Cargo.toml", after)
+	if err != nil || !got["evil-crate"] || got["foo"] {
+		t.Fatalf("rename not tracked: %v %v", got, err)
+	}
+	if bad, err := cargoNames([]byte("[dependencies]\nx = { package = 7 }\n")); err == nil {
+		t.Fatalf("non-string package accepted: %v", bad)
+	}
+}

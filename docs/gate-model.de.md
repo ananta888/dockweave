@@ -152,7 +152,17 @@ Ausdrucksvariable `budget` bleibt unbenutzbar.
     `Cargo.toml` (inklusive `[dependencies.<name>]` und `target`-Tabellen)
     lässt den Lauf fehlschlagen. Python-Namen werden nach PEP 503
     normalisiert, sodass Versionssprünge, Extras und Environment-Marker
-    nicht als neue Abhängigkeit zählen.
+    nicht als neue Abhängigkeit zählen. Cargo-Umbenennungen
+    (`alias = { package = "crate" }`) zählen über die echte Crate.
+    **Umfang:** nur diese Dateien im Workspace-Wurzelverzeichnis sowie die
+    relativen Pfade aus `dependency_manifests` (z. B.
+    `["ui/web/package.json"]`; kein `..`, keine absoluten Pfade, keine
+    Symlinks). Andere Manifeste werden nicht geprüft; der Lauf meldet den
+    geprüften Umfang als Warnung. Ein fehlendes Manifest ist in Ordnung; ein
+    unlesbares, nicht parsebares oder nicht unterstütztes (z. B.
+    Python-Dependency-Group-Includes) lässt den Lauf fehlschlagen. Die
+    Baseline stammt aus dem privaten Snapshot vor den Gates, Befunde nennen
+    nur Paketnamen, nie Dateiinhalte.
   - `secret_scan`: geänderte Dateien werden auf bekannte Credential-Formen
     geprüft (AWS, GitHub, OpenAI, Slack, Google, Stripe, GitLab, npm, JWT,
     Bearer-Tokens, Private Keys …). Passt keine, markiert eine

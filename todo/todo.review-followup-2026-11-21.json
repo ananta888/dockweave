@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 93.75,
+      "progress_percent": 95.42,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -2794,10 +2794,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Manifest-Scope und Parserfehler der Dependency-Policy explizit behandeln",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "newDependenciesAcrossManifests liest fünf feste Dateien an der Workspace-Wurzel und ignoriert Lesefehler. Die handgeschriebenen Parser erfassen nur Teile der gültigen TOML-/Requirements-Syntax; ein Monorepo-Unterprojekt wie ui/web liegt außerhalb dieses Scopes.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -2852,10 +2852,10 @@
         "go test ./internal/gateexec"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Geprüfter Scope nicht in EN/DE-Doku",
-          "Cargo package-Renames nicht behandelt"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: Cargo-Umbenennungen zählen über die echte Crate, nicht-String package -> Fehler (TestCargoPackageRenameIsANewDependency, vorher gescheitert: ein bestehender Schlüssel konnte unbemerkt auf eine neue Crate zeigen); Manifest-Scope, Fehlersemantik und Baseline in docs/gate-model EN/DE; bestehende Tests TestManifestErrorsFailClosed, TestManifestBaselineIsStableAndIncludesDeclaredSubprojects, TestOptionalPythonAndCargoWorkspaceDependencies, TestPythonDependencyNamesAreNormalised."
         ]
       }
     },
@@ -3116,11 +3116,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 22,
+      "partial": 21,
       "blocked": 0,
-      "done": 22
+      "done": 23
     },
-    "progress_percent_done": 48.89,
+    "progress_percent_done": 51.11,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3165,9 +3165,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 22,
+    "partial": 21,
     "blocked": 0,
-    "done": 22
+    "done": 23
   },
   "evidence_summary": {
     "by_level": {

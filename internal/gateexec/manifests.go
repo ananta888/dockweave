@@ -255,9 +255,24 @@ func cargoNames(raw []byte) (map[string]bool, error) {
 		return nil, errors.New("invalid Cargo TOML")
 	}
 	out := map[string]bool{}
+	var bad error
 	add := func(d dependencies) {
 		for _, m := range []map[string]any{d.Dependencies, d.Dev, d.Build} {
-			for name := range m {
+			for key, spec := range m {
+				// A renamed dependency (`alias = { package = "crate" }`) is
+				// identified by the real crate; otherwise an existing key could
+				// silently point at a new crate.
+				name := key
+				if table, ok := spec.(map[string]any); ok {
+					if pkg, present := table["package"]; present {
+						s, ok := pkg.(string)
+						if !ok || strings.TrimSpace(s) == "" {
+							bad = errors.New("cargo dependency package must be a non-empty string")
+							continue
+						}
+						name = strings.TrimSpace(s)
+					}
+				}
 				out[name] = true
 			}
 		}
@@ -266,6 +281,9 @@ func cargoNames(raw []byte) (map[string]bool, error) {
 	add(doc.Workspace)
 	for _, d := range doc.Target {
 		add(d)
+	}
+	if bad != nil {
+		return nil, bad
 	}
 	return out, nil
 }
