@@ -95,7 +95,7 @@
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
       "status": "in_progress",
-      "progress_percent": 91.67,
+      "progress_percent": 95.83,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -199,10 +199,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "Ungültige Gate-Verträge dürfen bestehende Pipeline-Sperren nicht entfernen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "deriveGroups überspringt ungültiges Contract-JSON; DerivePipeline lässt dessen Kante weg und syncPipeline überträgt trotzdem die reduzierte Gesamtliste. Der zuvor gesperrte Folge-Agent kann dadurch ohne Gate arbeiten.",
       "evidence_level": "runtime_reproduced",
       "scope_origin": "today",
@@ -248,13 +248,11 @@
         "gate-pipeline:GP-016"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Kein End-to-End-Nachweis, dass Admission gegen echten Store gesperrt bleibt",
-          "Kein webui-Test mit mehreren bzw. deaktiviertem Connector"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: pipeline_sync.invalid_connector {connector_id, target_agent_id, message} (PUT und nach Reload per GET, TestInvalidContractPreservesEnforcedPipeline); UI nennt Connector und Ziel und dass die Pipeline unverändert bleibt (e2e 'an invalid gate contract names the connector and keeps enforcement')"
+          "2026-11-21: pipeline_sync.invalid_connector {connector_id, target_agent_id, message} (PUT und nach Reload per GET, TestInvalidContractPreservesEnforcedPipeline); UI nennt Connector und Ziel und dass die Pipeline unverändert bleibt (e2e 'an invalid gate contract names the connector and keeps enforcement')",
+          "Erledigt 2026-11-21: TestGraphSavesAgainstRealDaemonKeepEnforcement (Gateway -> SDK -> echter API-Server + Store): ohne PASS gesperrt; ein kaputter Vertrag unter mehreren veröffentlicht nichts, beide Kanten bleiben, invalid_connector nennt g1; bewusstes Deaktivieren entfernt genau diese Kante; Entfernen des letzten Gates gibt explizit frei. Dazu strukturierter Fehler über PUT/GET und UI-Anzeige (e2e)."
         ]
       }
     },
@@ -3109,11 +3107,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 9,
+      "partial": 8,
       "blocked": 0,
-      "done": 35
+      "done": 36
     },
-    "progress_percent_done": 77.78,
+    "progress_percent_done": 80.0,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3128,8 +3126,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 14,
-      "remaining": 9
+      "done": 15,
+      "remaining": 8
     },
     "milestones": {
       "total": 7,
@@ -3158,9 +3156,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 9,
+    "partial": 8,
     "blocked": 0,
-    "done": 35
+    "done": 36
   },
   "evidence_summary": {
     "by_level": {
