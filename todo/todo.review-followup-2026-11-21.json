@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 56.5,
+      "progress_percent": 65.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2131,10 +2131,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Pipeline-Enforcement an allen zugesagten Ausführungsendpunkten und Rollen prüfen",
-      "status": "todo",
+      "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 85,
       "description": "Vorhandene API-Tests prüfen OpenAI-Enforcement, aber die vollständige Kombination aus herdr, Streaming, Rollenpolicy und konkurrierender Override-Nutzung ist nicht nachgewiesen.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2187,7 +2187,10 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Nicht begonnen: herdr, Native.Prompt, Auth-Middleware mit Rollen, Endpoint-Nebenläufigkeit, Tamper/Ausnahmen"
+          "Kein Test, dass Terminal- und Start/Stop-Endpunkte für gesperrte Agenten nicht blockiert werden (benötigt Docker-Fake); aktuell nur durch die zwei Aufrufstellen von admitPipelineWork (openai.go, herdr.go) belegt"
+        ],
+        "resolved": [
+          "2026-11-21: internal/api/pipeline_endpoints_test.go: TestBlockedWorkNeverReachesNativeAdapter (OpenAI, OpenAI-Stream, herdr: 409 JSON mit Gate/Gründen vor jedem Stream, Native nie erreicht; nach PASS beide ausgeführt; ungated Agent frei; Gegenprobe ohne Sperre scheitert), TestPipelineEndpointsThroughRealAuthMiddleware (unbekannte UID, Monitor schreibgesperrt bei Override/Update/Review/Prune/Chat, Admin), TestConcurrentPromptsConsumeSingleUseOverrideOnce (8 parallel, genau 1 Ausführung, -race), TestOverrideNeverReleasesTamper"
         ]
       }
     },
@@ -3107,9 +3110,9 @@
   "tasks_status_summary": {
     "total": 45,
     "by_status": {
-      "todo": 4,
+      "todo": 3,
       "in_progress": 0,
-      "partial": 37,
+      "partial": 38,
       "blocked": 0,
       "done": 4
     },
@@ -3156,9 +3159,9 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 4,
+    "todo_remaining": 3,
     "in_progress": 0,
-    "partial": 37,
+    "partial": 38,
     "blocked": 0,
     "done": 4
   },
