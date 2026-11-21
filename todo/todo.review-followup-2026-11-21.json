@@ -1509,7 +1509,8 @@
         "verdict": "done",
         "remaining_gaps": [],
         "resolved": [
-          "Erledigt 2026-11-21: make openapi-check / scripts/validate_openapi.py validiert 23 echte Handler-Antworten (TestRecordPipelineResponsesForOpenAPI, echter Store) gegen docs/api/openapi.yaml; undokumentierte JSON-Antworten scheitern; Gegenprobe mit falschem Pflichtfeld scheitert. Fehlerantworten strukturiert (Error required code/message, Invalid/Forbidden/Internal, 409 stale_revision|revision_conflict), leere Sammelliste dokumentiert. CI-Job test führt die Prüfung aus. SDK-Verhalten durch pkg/sdk/pipelines_contract_test.go belegt; Nutzerdoku enthält keine abweichenden Beispiele."
+          "Erledigt 2026-11-21: make openapi-check / scripts/validate_openapi.py validiert 23 echte Handler-Antworten (TestRecordPipelineResponsesForOpenAPI, echter Store) gegen docs/api/openapi.yaml; undokumentierte JSON-Antworten scheitern; Gegenprobe mit falschem Pflichtfeld scheitert. Fehlerantworten strukturiert (Error required code/message, Invalid/Forbidden/Internal, 409 stale_revision|revision_conflict), leere Sammelliste dokumentiert. CI-Job test führt die Prüfung aus. SDK-Verhalten durch pkg/sdk/pipelines_contract_test.go belegt; Nutzerdoku enthält keine abweichenden Beispiele.",
+          "2026-11-21: CI-Lauf 44936900644 (8b04a37): make openapi-check im Job test grün"
         ]
       }
     },
@@ -2342,7 +2343,8 @@
           "Fehlender HOST_WORKSPACE im DONE-Pfad nicht im Wrapper-E2E"
         ],
         "resolved": [
-          "2026-11-21: tests/integration/wrapper_e2e_test.go TestWrapperDoneDrivesGateAndReleasesDownstream: echter dockweave-run.sh, gebaute CLI, Daemon-API auf Unix-Socket, Store, Admission, Sandbox-Gate-Runner; simuliert nur Modellantwort (scriptedSessions) und Paperclip (Inbox-HTTP, paperclipai-Skript). Deckt: Nicht-DONE ohne Abschlusslauf/Routing; DONE->PASS mit Upstream ag_a und Issue, Status done, Wake pc-b, B am echten Endpoint ausgeführt; Routing-Wiederholung ohne zweiten Wake; stale blockiert B; FAIL -> in_progress, genau ein Rework an pc-a, Wiederholung ohne Duplikat, B blockiert. Lokal über scripts/test-integration.sh PASS, volle Suite PASS. Daemon löst upstream_agent_id beim Gate-Lauf auf die stabile ID auf (TestGateRunRejectsUnknownUpstreamAgent)."
+          "2026-11-21: tests/integration/wrapper_e2e_test.go TestWrapperDoneDrivesGateAndReleasesDownstream: echter dockweave-run.sh, gebaute CLI, Daemon-API auf Unix-Socket, Store, Admission, Sandbox-Gate-Runner; simuliert nur Modellantwort (scriptedSessions) und Paperclip (Inbox-HTTP, paperclipai-Skript). Deckt: Nicht-DONE ohne Abschlusslauf/Routing; DONE->PASS mit Upstream ag_a und Issue, Status done, Wake pc-b, B am echten Endpoint ausgeführt; Routing-Wiederholung ohne zweiten Wake; stale blockiert B; FAIL -> in_progress, genau ein Rework an pc-a, Wiederholung ohne Duplikat, B blockiert. Lokal über scripts/test-integration.sh PASS, volle Suite PASS. Daemon löst upstream_agent_id beim Gate-Lauf auf die stabile ID auf (TestGateRunRejectsUnknownUpstreamAgent).",
+          "2026-11-21: CI-Lauf 44936900644 (8b04a37): TestWrapperDoneDrivesGateAndReleasesDownstream PASS im privilegierten Integrationsjob"
         ]
       }
     },
