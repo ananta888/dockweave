@@ -21,8 +21,8 @@ func TestBrokerOnlyNetworkIsolation(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not available")
 	}
-	if err := exec.Command("docker", "image", "inspect", "node:22-bookworm").Run(); err != nil {
-		t.Skip("node:22-bookworm image not available")
+	if err := exec.Command("docker", "image", "inspect", gateTestImage).Run(); err != nil {
+		t.Skip(gateTestImage + " image not available")
 	}
 	c, err := dockerclient.New()
 	if err != nil {
@@ -59,7 +59,7 @@ const t=setTimeout(()=>{console.log("TIMEOUT");process.exit(2)},4000);
 http.get("http://%s:%d/",r=>{clearTimeout(t);console.log("GATEWAY_OK");process.exit(0)}).on("error",e=>{clearTimeout(t);console.log("GATEWAY_FAIL "+e.code);process.exit(3)});
 `, gw, port)
 	out, err := exec.Command("docker", "run", "--rm", "--network", name,
-		"node:22-bookworm", "node", "-e", script).CombinedOutput()
+		gateTestImage, "node", "-e", script).CombinedOutput()
 	if err != nil {
 		t.Fatalf("host gateway not reachable: %v\n%s", err, out)
 	}
@@ -70,7 +70,7 @@ const t=setTimeout(()=>{console.log("TIMEOUT");process.exit(2)},5000);
 https.get("https://1.1.1.1/",()=>{clearTimeout(t);console.log("EXTERNAL_OK");process.exit(10)}).on("error",e=>{clearTimeout(t);console.log("EXTERNAL_BLOCKED");process.exit(0)});
 `
 	out, err = exec.Command("docker", "run", "--rm", "--network", name,
-		"node:22-bookworm", "node", "-e", script).CombinedOutput()
+		gateTestImage, "node", "-e", script).CombinedOutput()
 	if err != nil {
 		t.Fatalf("external egress was not blocked: %v\n%s", err, out)
 	}

@@ -28,8 +28,8 @@ func TestEgressBypassMatrix(t *testing.T) {
 	if _, err := exec.LookPath("nft"); err != nil {
 		t.Skip("nft not available")
 	}
-	if err := exec.Command("docker", "image", "inspect", "node:22-bookworm").Run(); err != nil {
-		t.Skip("node:22-bookworm image not available")
+	if err := exec.Command("docker", "image", "inspect", gateTestImage).Run(); err != nil {
+		t.Skip(gateTestImage + " image not available")
 	}
 	c, err := dockerclient.New()
 	if err != nil {
@@ -79,7 +79,7 @@ const t=setTimeout(()=>{console.log("PROVIDER_BLOCKED");process.exit(0)},4000);
 http.get("http://%s:18080/",r=>{clearTimeout(t);console.log("PROVIDER_REACHABLE");process.exit(10)}).on("error",e=>{clearTimeout(t);console.log("PROVIDER_BLOCKED "+e.code);process.exit(0)});
 `, gw)
 	out, err := exec.Command("docker", "run", "--rm", "--network", netName,
-		"node:22-bookworm", "node", "-e", providerScript).CombinedOutput()
+		gateTestImage, "node", "-e", providerScript).CombinedOutput()
 	if err != nil {
 		t.Fatalf("provider was reachable (egress bypass!): %v\n%s", err, out)
 	}
@@ -91,7 +91,7 @@ const t=setTimeout(()=>{console.log("BROKER_TIMEOUT");process.exit(2)},5000);
 http.get("http://%s:%d/",r=>{clearTimeout(t);console.log("BROKER_OK");process.exit(0)}).on("error",e=>{clearTimeout(t);console.log("BROKER_FAIL "+e.code);process.exit(3)});
 `, gw, 8787)
 	out, err = exec.Command("docker", "run", "--rm", "--network", netName,
-		"node:22-bookworm", "node", "-e", brokerScript).CombinedOutput()
+		gateTestImage, "node", "-e", brokerScript).CombinedOutput()
 	if err != nil {
 		t.Fatalf("broker not reachable: %v\n%s", err, out)
 	}

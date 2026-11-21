@@ -16,7 +16,14 @@ import (
 	"github.com/ananta888/dockweave/internal/persistence"
 )
 
-const gateTestImage = "node:22-bookworm"
+// gateTestImage runs gates and egress probes. scripts/test-integration.sh
+// passes a digest-pinned reference; the tag is the fallback for direct runs.
+var gateTestImage = func() string {
+	if v := os.Getenv("DOCKWEAVE_GATE_TEST_IMAGE"); v != "" {
+		return v
+	}
+	return "node:22-bookworm"
+}()
 
 func gatePrerequisite(t *testing.T, reason string) {
 	t.Helper()

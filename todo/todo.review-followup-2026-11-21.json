@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 87.0,
+      "progress_percent": 90.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2203,7 +2203,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 55,
+      "progress_percent": 85,
       "description": "Make und CI starten ein golang-Image mit Host-Socket, stellen aber Docker-CLI/Runner-Image nicht ausdrücklich bereit. Die neuen Tests skippen ohne diese Voraussetzungen und erzeugen Sandbox-Verzeichnisse im äußeren Container, deren Bind-Quellen der Host-Daemon nicht automatisch sehen kann.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -2260,12 +2260,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Images nicht per Digest gepinnt",
-          "Gate-Container werden bei Abbruch nicht aufgeräumt",
-          "egress-nftables- und SSH-Egress-Tests skippen weiterhin (nft fehlt im Runner-Image)"
+          "nftables-Egress-Tests (TestEgressTable*, TestEgressBypassMatrix) und SSH-Egress skippen bewusst: der Runner teilt wegen TestBrokerOnlyNetworkIsolation den Host-Netzwerk-Namespace, nft würde die Host-Firewall ändern; benötigt eigenen Netz-Namespace oder Wegwerf-VM"
         ],
         "resolved": [
-          "2026-11-21: CI-Lauf 44934096548 (551d7fd): TestGateExpressionPathInSandbox und TestPipelineEndToEnd PASS. TestBrokerOnlyNetworkIsolation lief erstmals (vorher still übersprungen, node-Image fehlte) und scheiterte am Netz-Namespace des Runners -> Runner mit --network host"
+          "2026-11-21: CI-Lauf 44934096548 (551d7fd): TestGateExpressionPathInSandbox und TestPipelineEndToEnd PASS. TestBrokerOnlyNetworkIsolation lief erstmals (vorher still übersprungen, node-Image fehlte) und scheiterte am Netz-Namespace des Runners -> Runner mit --network host",
+          "2026-11-21: Dockerfile.integration-Basisimages und Gate-/Probe-Image per Multi-Arch-Index-Digest gepinnt (DOCKWEAVE_GATE_TEST_IMAGE, lokales Tag bleibt unberührt); Launcher entfernt bei Abbruch nur Gate-Container, die aus dem Scratch-Baum dieses Laufs mounten; volle Suite lokal PASS, keine Gate-Container übrig"
         ]
       }
     },
