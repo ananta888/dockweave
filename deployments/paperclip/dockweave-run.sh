@@ -449,4 +449,3 @@ except Exception:
     python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true
   fi
 fi
-
