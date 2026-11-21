@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 98.0,
+      "progress_percent": 99.5,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2185,10 +2185,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Integrationstest-Umgebung mit echtem Docker-Client und gemeinsamen Sandbox-Pfaden herstellen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "description": "Make und CI starten ein golang-Image mit Host-Socket, stellen aber Docker-CLI/Runner-Image nicht ausdrücklich bereit. Die neuen Tests skippen ohne diese Voraussetzungen und erzeugen Sandbox-Verzeichnisse im äußeren Container, deren Bind-Quellen der Host-Daemon nicht automatisch sehen kann.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -2243,13 +2243,12 @@
         "Nur in der von AGENTS.md erlaubten wegwerfbaren privilegierten Umgebung ausführen; nicht direkt auf einem geteilten Host."
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "nftables-Egress-Tests (TestEgressTable*, TestEgressBypassMatrix) und SSH-Egress skippen bewusst: der Runner teilt wegen TestBrokerOnlyNetworkIsolation den Host-Netzwerk-Namespace, nft würde die Host-Firewall ändern; benötigt eigenen Netz-Namespace oder Wegwerf-VM"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
           "2026-11-21: CI-Lauf 44934096548 (551d7fd): TestGateExpressionPathInSandbox und TestPipelineEndToEnd PASS. TestBrokerOnlyNetworkIsolation lief erstmals (vorher still übersprungen, node-Image fehlte) und scheiterte am Netz-Namespace des Runners -> Runner mit --network host",
-          "2026-11-21: Dockerfile.integration-Basisimages und Gate-/Probe-Image per Multi-Arch-Index-Digest gepinnt (DOCKWEAVE_GATE_TEST_IMAGE, lokales Tag bleibt unberührt); Launcher entfernt bei Abbruch nur Gate-Container, die aus dem Scratch-Baum dieses Laufs mounten; volle Suite lokal PASS, keine Gate-Container übrig"
+          "2026-11-21: Dockerfile.integration-Basisimages und Gate-/Probe-Image per Multi-Arch-Index-Digest gepinnt (DOCKWEAVE_GATE_TEST_IMAGE, lokales Tag bleibt unberührt); Launcher entfernt bei Abbruch nur Gate-Container, die aus dem Scratch-Baum dieses Laufs mounten; volle Suite lokal PASS, keine Gate-Container übrig",
+          "Erledigt 2026-11-21: Harness-Images per Digest gepinnt, gemeinsame Scratch-Pfade, Aufräumen nur eigener Gate-Container, PASS-Nachweis der Pipeline-Tests in CI. nftables-Egress-Tests laufen nur in der CI-Wegwerf-VM (DOCKWEAVE_INTEGRATION_HOST_FIREWALL=1 bei CI=true; fehlendes nft ist dort ein Fehler) und bestanden erstmals in CI-Lauf 44941893391 (d3f6301): TestEgressBypassMatrix, TestEgressTableRoundTrip, TestEgressTableRulesInKernel; lokal begründetes Skip. TestSSHEgressBlockedDirectSSH bleibt ein bewusster Platzhalter (SSH-Broker Phase 5, außerhalb dieses Tracks)."
         ]
       }
     },
@@ -3102,11 +3101,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 4,
+      "partial": 3,
       "blocked": 0,
-      "done": 40
+      "done": 41
     },
-    "progress_percent_done": 88.89,
+    "progress_percent_done": 91.11,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3121,8 +3120,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 19,
-      "remaining": 4
+      "done": 20,
+      "remaining": 3
     },
     "milestones": {
       "total": 7,
@@ -3151,9 +3150,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 4,
+    "partial": 3,
     "blocked": 0,
-    "done": 40
+    "done": 41
   },
   "evidence_summary": {
     "by_level": {

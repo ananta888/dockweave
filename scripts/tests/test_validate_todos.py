@@ -40,6 +40,8 @@ class TrackValidationTest(unittest.TestCase):
             VALIDATOR.validate_track(self.track)
 
     def test_rejects_done_without_full_progress(self):
+        # Independent of the live track state: force an inconsistent pair.
         self.track["tasks"][0]["status"] = "done"
+        self.track["tasks"][0]["progress_percent"] = 50
         with self.assertRaises(VALIDATOR.TrackError):
             VALIDATOR.validate_track(self.track)
