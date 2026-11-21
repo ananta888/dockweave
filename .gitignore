@@ -17,3 +17,10 @@ coverage.*
 /dockweave
 /dockweave-tui
 /dockweaved
+
+# Python interpreter caches
+__pycache__/
+*.py[cod]
+
+# Local agent evidence/scratch (oh-my-opencode)
+.omo/
