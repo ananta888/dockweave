@@ -57,11 +57,13 @@ type Document struct {
 
 // Contract is the JSON stored in Connector.Contract for gate connectors.
 //
-// expression/on_true/on_false are descriptive only: DockWeave currently
-// executes the shell `command` and derives the verdict from its exit code
-// (plus the policy gates). A connector that carries an expression but no
-// command therefore describes intent that is not enforced; Derive surfaces a
-// warning for it rather than silently dropping it.
+// expression/on_true/on_false form the deterministic verdict contract: the
+// sandbox runner executes `command` and then evaluates `expression` over the
+// exit code (`command`/`exit`) and the day's budget cost (`budget`); its result
+// replaces the plain exit-code verdict and on_true/on_false become the reason
+// (see internal/gateexec.Evaluate). An expression only runs together with a
+// command: a connector with an expression but no command produces no gate,
+// and Derive reports a warning instead of dropping it silently.
 type Contract struct {
 	GateID                string   `json:"gate_id"`
 	Expression            string   `json:"expression"`
@@ -236,7 +238,7 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 		if command == "" {
 			if strings.TrimSpace(ct.Expression) != "" {
 				warnings = append(warnings, fmt.Sprintf(
-					"gate %q: expression %q is descriptive only (no command); it is not evaluated", c.Name, ct.Expression))
+					"gate %q: expression %q has no command to run; no gate is generated and the expression is not evaluated", c.Name, ct.Expression))
 			}
 			groups[ws] = cfg
 			continue
@@ -315,28 +317,40 @@ func Sync(raw []byte, roots []string) Result {
 }
 
 // SyncAll derives configs for every target workspace (the default paperclip
-// workspace plus any per-gate `workspace` overrides) and writes each one. It
-// returns one Result per configured workspace.
-func SyncAll(raw []byte, roots []string) []Result {
+// workspace plus any per-gate `workspace` overrides) and writes each one.
+//
+//   - Workspaces are grouped by their canonical path, so two spellings of the
+//     same directory produce one merged gates.json instead of overwriting
+//     each other.
+//   - previous is the graph document as it was before this save (nil if
+//     none). Workspaces that received gates from it but no longer do get an
+//     empty DockWeave-generated config, so removed overrides never leave
+//     stale gates enforced. Hand-maintained configs stay untouched.
+//   - Gates without any target workspace are reported as a warning.
+//
+// It returns one Result per written/attempted workspace plus the document
+// warnings (reported once, not per workspace).
+func SyncAll(raw, previous []byte, roots []string) ([]Result, []string) {
 	var doc Document
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return []Result{{Error: "graph document is not JSON: " + err.Error()}}
+		return []Result{{Error: "graph document is not JSON: " + err.Error()}}, nil
 	}
 	if doc.Paperclip == nil {
-		return []Result{{Skipped: true, Reason: "no paperclip settings in the graph document"}}
+		return []Result{{Skipped: true, Reason: "no paperclip settings in the graph document"}}, nil
 	}
 	if !doc.Paperclip.enabled() {
-		return []Result{{Skipped: true, Reason: "gate sync is disabled"}}
+		return []Result{{Skipped: true, Reason: "gate sync is disabled"}}, nil
 	}
 	groups, warnings := DeriveAll(doc)
-	workspaces := make([]string, 0, len(groups))
-	for ws := range groups {
-		workspaces = append(workspaces, ws)
+	if unrouted, ok := groups[""]; ok && graphDerived(unrouted) {
+		warnings = append(warnings, fmt.Sprintf(
+			"%d gate(s) have no target workspace (set paperclip.workspace or a per-gate workspace); they are not synced",
+			len(unrouted.Gates)))
 	}
-	sort.Strings(workspaces)
 
-	out := make([]Result, 0, len(workspaces))
-	for _, ws := range workspaces {
+	var out []Result
+	merged := map[string]Config{}
+	for _, ws := range sortedKeys(groups) {
 		if strings.TrimSpace(ws) == "" {
 			continue
 		}
@@ -345,12 +359,104 @@ func SyncAll(raw []byte, roots []string) []Result {
 			out = append(out, Result{Workspace: ws, Error: err.Error()})
 			continue
 		}
-		out = append(out, writeConfig(canonical, groups[ws], warnings))
+		if cfg, ok := merged[canonical]; ok {
+			merged[canonical] = mergeConfigs(cfg, groups[ws])
+		} else {
+			merged[canonical] = groups[ws]
+		}
+	}
+
+	// Workspaces that the previous graph state fed with gates but the current
+	// one does not: clear the DockWeave-generated config there.
+	if len(previous) > 0 {
+		var prevDoc Document
+		if err := json.Unmarshal(previous, &prevDoc); err == nil {
+			prevGroups, _ := DeriveAll(prevDoc)
+			for _, ws := range sortedKeys(prevGroups) {
+				if strings.TrimSpace(ws) == "" || !graphDerived(prevGroups[ws]) {
+					continue
+				}
+				canonical, err := validateWorkspace(ws, roots)
+				if err != nil {
+					continue // gone or no longer allowed: nothing we may touch
+				}
+				if _, still := merged[canonical]; !still {
+					merged[canonical] = Config{Version: 1, Gates: []Gate{}}
+				}
+			}
+		}
+	}
+
+	for _, canonical := range sortedKeys(merged) {
+		out = append(out, writeConfig(canonical, merged[canonical], nil))
 	}
 	if len(out) == 0 {
-		return []Result{{Skipped: true, Reason: "no gate workspace configured"}}
+		return []Result{{Skipped: true, Reason: "no gate workspace configured"}}, warnings
+	}
+	return out, warnings
+}
+
+// graphDerived reports whether a derived config carries anything the graph
+// defines (gates or review/approval requirements).
+func graphDerived(cfg Config) bool {
+	return len(cfg.Gates) > 0 || cfg.Review.Required || cfg.HumanApproval.Required
+}
+
+// mergeConfigs combines two configs that target the same canonical workspace.
+// Gates are concatenated (colliding IDs get a numeric suffix), requirements
+// and policy switches are OR-ed, list options are unioned and the first
+// non-empty scalar option wins.
+func mergeConfigs(a, b Config) Config {
+	out := a
+	out.Gates = append([]Gate{}, a.Gates...)
+	for _, g := range b.Gates {
+		base, id := g.ID, g.ID
+		for n := 2; hasGateID(out.Gates, id); n++ {
+			id = fmt.Sprintf("%s-%d", base, n)
+		}
+		g.ID = id
+		out.Gates = append(out.Gates, g)
+	}
+	out.Review.Required = a.Review.Required || b.Review.Required
+	if out.Review.IssueMatch == "" {
+		out.Review.IssueMatch = b.Review.IssueMatch
+	}
+	out.HumanApproval.Required = a.HumanApproval.Required || b.HumanApproval.Required
+	if out.RunnerImage == "" {
+		out.RunnerImage = b.RunnerImage
+	}
+	out.Protected = unionStrings(a.Protected, b.Protected)
+	out.AllowPaths = unionStrings(a.AllowPaths, b.AllowPaths)
+	out.DenyNewDependencies = a.DenyNewDependencies || b.DenyNewDependencies
+	out.SecretScan = a.SecretScan || b.SecretScan
+	if out.Budget == nil {
+		out.Budget = b.Budget
 	}
 	return out
+}
+
+func unionStrings(a, b []string) []string {
+	if len(a) == 0 && len(b) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range append(append([]string{}, a...), b...) {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func sortedKeys(m map[string]Config) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // writeConfig merges into and writes the gates.json for one canonical
@@ -364,9 +470,9 @@ func writeConfig(canonical string, cfg Config, warnings []string) Result {
 		_ = json.Unmarshal(old, &existing)
 	}
 	ownsFile := existing.GeneratedBy == GeneratedBy
-	graphDerived := len(cfg.Gates) > 0 || cfg.Review.Required || cfg.HumanApproval.Required
+	derived := graphDerived(cfg)
 
-	if !graphDerived && !ownsFile {
+	if !derived && !ownsFile {
 		return Result{
 			Skipped:   true,
 			Reason:    "no graph gates; existing hand-maintained config left untouched",
@@ -375,7 +481,7 @@ func writeConfig(canonical string, cfg Config, warnings []string) Result {
 		}
 	}
 
-	if graphDerived && !ownsFile {
+	if derived && !ownsFile {
 		// First write over a hand-maintained file: keep gates and flags that
 		// the graph does not define (e.g. a manually configured "tests" gate),
 		// so turning the sync on never silently drops existing checks.

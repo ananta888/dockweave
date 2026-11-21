@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/ananta888/dockweave/internal/gatesync"
 )
@@ -92,19 +93,33 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Optimistic concurrency (GD-014): reject a save based on a stale revision
-	// so two browser tabs cannot silently overwrite each other.
+	// so two browser tabs cannot silently overwrite each other. The lock makes
+	// check, write and gate sync one atomic step within this gateway.
+	s.graphMu.Lock()
+	defer s.graphMu.Unlock()
+
 	clientRev := graphRevision(body)
 	currentRev := 0
-	if existing, err := os.ReadFile(path); err == nil {
-		currentRev = graphRevision(existing)
-	}
-	if currentRev > 0 && clientRev != currentRev {
-		writeJSONError(w, http.StatusConflict,
-			fmt.Errorf("graph changed on disk (revision %d); reload and retry", currentRev))
+	previous, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		currentRev = graphRevision(previous)
+		if clientRev != currentRev {
+			writeJSONError(w, http.StatusConflict,
+				fmt.Errorf("graph changed on disk (revision %d, yours %d); reload and retry", currentRev, clientRev))
+			return
+		}
+	case os.IsNotExist(err):
+		previous = nil
+	default:
+		writeJSONError(w, http.StatusInternalServerError, fmt.Errorf("read graph: %w", err))
 		return
 	}
 	nextRev := currentRev + 1
-	body = stampRevision(body, nextRev)
+	if body, err = stampRevision(body, nextRev); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err)
+		return
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err)
@@ -122,8 +137,9 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	// Best-effort mirror of the graph gate connectors into the Paperclip
 	// workspace(s). A sync failure must never lose the graph document the user
 	// just saved, so it is reported in the response instead of failing PUT.
-	results := gatesync.SyncAll(body, s.browseRoots)
-	aggregate := gatesync.Result{}
+	// The previous document lets the sync clear workspaces that lost all gates.
+	results, warnings := gatesync.SyncAll(body, previous, s.browseRoots)
+	aggregate := gatesync.Result{Warnings: warnings}
 	for _, res := range results {
 		if res.Error != "" {
 			if s.cfg.Logger != nil {
@@ -142,7 +158,6 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 			aggregate.Gates += res.Gates
 			aggregate.Review = aggregate.Review || res.Review
 			aggregate.HumanApproval = aggregate.HumanApproval || res.HumanApproval
-			aggregate.Warnings = append(aggregate.Warnings, res.Warnings...)
 			if s.cfg.Logger != nil {
 				s.cfg.Logger.Info("paperclip gates synced", "path", res.Path, "gates", res.Gates)
 			}
@@ -162,16 +177,18 @@ func graphRevision(body json.RawMessage) int {
 	return probe.Revision
 }
 
-// stampRevision rewrites the document with the given revision field set.
-func stampRevision(body json.RawMessage, rev int) json.RawMessage {
-	var m map[string]any
+// stampRevision sets the document's revision field. Only that field is
+// replaced; every other value is kept byte-for-byte (json.RawMessage), so
+// large integers or precise numbers survive the round trip.
+func stampRevision(body json.RawMessage, rev int) (json.RawMessage, error) {
+	var m map[string]json.RawMessage
 	if err := json.Unmarshal(body, &m); err != nil {
-		return body
+		return nil, fmt.Errorf("graph must be an object: %w", err)
 	}
-	m["revision"] = rev
+	m["revision"] = json.RawMessage(strconv.Itoa(rev))
 	out, err := json.Marshal(m)
 	if err != nil {
-		return body
+		return nil, fmt.Errorf("encode graph: %w", err)
 	}
-	return out
+	return out, nil
 }

@@ -70,6 +70,8 @@ type Server struct {
 	mcp         *MCPHandler
 	loginLim    *loginLimiter
 	oidcSvc     *oidc.Service
+	// graphMu serialises graph saves (revision check, write, gate sync).
+	graphMu sync.Mutex
 }
 
 // loginLimiter throttles failed /login attempts per client address.

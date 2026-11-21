@@ -212,7 +212,7 @@ func TestSyncAllFansOutPerGateWorkspace(t *testing.T) {
 		},
 	}
 	raw, _ := json.Marshal(doc)
-	results := SyncAll(raw, []string{root})
+	results, _ := SyncAll(raw, nil, []string{root})
 	if len(results) != 2 {
 		t.Fatalf("results = %d, want 2: %+v", len(results), results)
 	}
@@ -256,5 +256,151 @@ func TestDeriveCarriesExpressionContract(t *testing.T) {
 	g := cfg.Gates[0]
 	if g.Expression != "command == 0 && budget < 5" || g.OnTrue != "continue" || g.OnFalse != "rework" {
 		t.Fatalf("expression contract not carried: %+v", g)
+	}
+}
+
+func readConfig(t *testing.T, ws string) Config {
+	t.Helper()
+	var cfg Config
+	b, err := os.ReadFile(filepath.Join(ws, ".paperclip", "gates.json"))
+	if err != nil {
+		t.Fatalf("read gates.json in %s: %v", ws, err)
+	}
+	if err := json.Unmarshal(b, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+func TestSyncAllMergesSameCanonicalWorkspace(t *testing.T) {
+	root := t.TempDir()
+	ws := filepath.Join(root, "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "ws-link")
+	if err := os.Symlink(ws, link); err != nil {
+		t.Fatal(err)
+	}
+	doc := Document{
+		Paperclip: &Settings{Workspace: ws, SyncGates: boolPtr(true)},
+		Connectors: []Connector{
+			gateConnector("Build", `{"command":"make build"}`, true),
+			{ID: "c2", Kind: "gate", Name: "Lint", Enabled: true, Contract: `{"command":"make lint","workspace":"` + link + `"}`},
+			{ID: "c3", Kind: "gate", Name: "Build", Enabled: true, Contract: `{"command":"make build2","workspace":"` + ws + `/."}`},
+		},
+	}
+	raw, _ := json.Marshal(doc)
+	results, _ := SyncAll(raw, nil, []string{root})
+	if len(results) != 1 || !results[0].Written {
+		t.Fatalf("results = %+v, want one written result", results)
+	}
+	cfg := readConfig(t, ws)
+	var ids []string
+	for _, g := range cfg.Gates {
+		ids = append(ids, g.ID)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("merged gate ids = %v", ids)
+	}
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			t.Fatalf("duplicate gate id %q in %v", id, ids)
+		}
+		seen[id] = true
+	}
+}
+
+func TestSyncAllClearsWorkspaceDroppedSincePreviousSave(t *testing.T) {
+	root := t.TempDir()
+	def := filepath.Join(root, "default")
+	alt := filepath.Join(root, "alt")
+	hand := filepath.Join(root, "hand")
+	for _, d := range []string{def, alt, hand} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A hand-maintained config that a previous graph pointed at but never
+	// wrote (sync never owned it) must stay untouched.
+	if err := os.MkdirAll(filepath.Join(hand, ".paperclip"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handCfg := `{"version":1,"gates":[{"id":"manual","when":"after_run","command":"true","cwd":".","timeout_sec":5}]}`
+	if err := os.WriteFile(filepath.Join(hand, ".paperclip", "gates.json"), []byte(handCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prev := Document{
+		Paperclip: &Settings{Workspace: def, SyncGates: boolPtr(true)},
+		Connectors: []Connector{
+			gateConnector("Build", `{"command":"make build"}`, true),
+			{ID: "c2", Kind: "gate", Name: "Lint", Enabled: true, Contract: `{"command":"make lint","workspace":"` + alt + `"}`},
+		},
+	}
+	prevRaw, _ := json.Marshal(prev)
+	if _, _ = SyncAll(prevRaw, nil, []string{root}); len(readConfig(t, alt).Gates) != 1 {
+		t.Fatal("alt workspace should have received the lint gate")
+	}
+	// The lint gate loses its override; a stale hand target appears in prev.
+	prev.Connectors = append(prev.Connectors, Connector{ID: "c3", Kind: "gate", Name: "H", Enabled: true,
+		Contract: `{"command":"x","workspace":"` + hand + `"}`})
+	prevRaw, _ = json.Marshal(prev)
+	next := Document{
+		Paperclip:  &Settings{Workspace: def, SyncGates: boolPtr(true)},
+		Connectors: []Connector{gateConnector("Build", `{"command":"make build"}`, true), gateConnector("Lint", `{"command":"make lint"}`, true)},
+	}
+	nextRaw, _ := json.Marshal(next)
+	results, _ := SyncAll(nextRaw, prevRaw, []string{root})
+	if got := readConfig(t, alt); len(got.Gates) != 0 || got.GeneratedBy != GeneratedBy {
+		t.Fatalf("dropped workspace not cleared: %+v (results %+v)", got, results)
+	}
+	if got := readConfig(t, def); len(got.Gates) != 2 {
+		t.Fatalf("default workspace gates = %+v", got.Gates)
+	}
+	if got := readConfig(t, hand); len(got.Gates) != 1 || got.Gates[0].ID != "manual" || got.GeneratedBy != "" {
+		t.Fatalf("hand-maintained config was modified: %+v", got)
+	}
+}
+
+func TestSyncAllWarnsAboutUnroutedGatesOnce(t *testing.T) {
+	root := t.TempDir()
+	alt := filepath.Join(root, "alt")
+	other := filepath.Join(root, "other")
+	for _, d := range []string{alt, other} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	doc := Document{
+		Paperclip: &Settings{SyncGates: boolPtr(true)},
+		Connectors: []Connector{
+			gateConnector("Orphan", `{"command":"make orphan"}`, true),
+			gateConnector("Descr", `{"expression":"command == 0"}`, true),
+			{ID: "c2", Kind: "gate", Name: "Lint", Enabled: true, Contract: `{"command":"make lint","workspace":"` + alt + `"}`},
+			{ID: "c3", Kind: "gate", Name: "Test", Enabled: true, Contract: `{"command":"make test","workspace":"` + other + `"}`},
+		},
+	}
+	raw, _ := json.Marshal(doc)
+	results, warnings := SyncAll(raw, nil, []string{root})
+	if len(results) != 2 {
+		t.Fatalf("results = %+v", results)
+	}
+	for _, r := range results {
+		if len(r.Warnings) != 0 {
+			t.Fatalf("document warnings must not be repeated per workspace: %+v", r)
+		}
+	}
+	var unrouted, descr int
+	for _, w := range warnings {
+		if strings.Contains(w, "no target workspace") {
+			unrouted++
+		}
+		if strings.Contains(w, "Descr") {
+			descr++
+		}
+	}
+	if unrouted != 1 || descr != 1 {
+		t.Fatalf("warnings = %v", warnings)
 	}
 }
