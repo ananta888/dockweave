@@ -116,3 +116,40 @@ func BenchmarkSharedWorkspaceAdmissions(b *testing.B) {
 		})
 	}
 }
+
+// RF-021: cancellation in the middle of a batch stops further fingerprint
+// work; the remaining agents are reported blocked, never allowed.
+func TestBatchStopsWhenCancelledMidway(t *testing.T) {
+	var edges []*model.PipelineEdge
+	runs := map[string][]*model.GateRun{}
+	for i := 0; i < 5; i++ {
+		e := baseEdge()
+		e.ID, e.DownstreamAgentID, e.Workspace = "e"+string(rune('0'+i)), "agent"+string(rune('0'+i)), "/ws"+string(rune('0'+i))
+		edges = append(edges, e)
+		runs[e.Workspace] = []*model.GateRun{passRun("p"+string(rune('0'+i)), "fp", time.Minute)}
+		runs[e.Workspace][0].Workspace = e.Workspace
+	}
+	st := &fakeStore{edges: edges, runs: runs}
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	ev := &Evaluator{Store: st, Now: func() time.Time { return now }, Fingerprint: func(context.Context, string) (string, error) {
+		calls++
+		if calls == 2 {
+			cancel()
+		}
+		return "fp", nil
+	}}
+	got := ev.Admissions(ctx, &model.PipelineState{Revision: 1, Edges: edges})
+	if calls > 2 {
+		t.Fatalf("fingerprint work continued after cancellation: %d calls", calls)
+	}
+	allowed := 0
+	for _, a := range got {
+		if a.Allowed {
+			allowed++
+		}
+	}
+	if len(got) != 5 || allowed > 2 {
+		t.Fatalf("cancelled batch: %d admissions, %d allowed", len(got), allowed)
+	}
+}

@@ -353,3 +353,17 @@ func TestBlockedAuditRateLimit(t *testing.T) {
 		t.Fatal("rate limit must expire")
 	}
 }
+
+// RF-020: a block whose audit write failed is not remembered as reported, so
+// the next block is audited instead of being suppressed by the rate limit.
+func TestBlockedAuditForgetsFailedWrite(t *testing.T) {
+	var b blockedAudit
+	now := time.Now()
+	if !b.allow("k", now) {
+		t.Fatal("first block not allowed")
+	}
+	b.forget("k") // what auditBlocked does when AppendEvent fails
+	if !b.allow("k", now.Add(time.Second)) {
+		t.Fatal("failed audit write still suppresses the next audit")
+	}
+}
