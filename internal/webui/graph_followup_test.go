@@ -59,8 +59,17 @@ func TestGraphSyncFailureSurvivesReloadAndCanRetryCurrentRevision(t *testing.T) 
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !got.Pipeline.Pushed || got.Pipeline.Error != "" || fp.calls[len(fp.calls)-1].reset {
-		t.Fatalf("retry failed or reset: %s", rec.Body)
+	// The graph was recreated (first save), so its unconfirmed push needed a
+	// revision reset; the retry must carry that reset or the daemon keeps
+	// answering stale_revision forever (RF-026).
+	if !got.Pipeline.Pushed || got.Pipeline.Error != "" || !fp.calls[len(fp.calls)-1].reset {
+		t.Fatalf("retry failed or lost the pending reset: %s", rec.Body)
+	}
+	// Once confirmed, later retries of the same revision never reset again.
+	rec = httptest.NewRecorder()
+	reloaded.retryGraphSync(rec, httptest.NewRequest(http.MethodPost, "/graph/sync", strings.NewReader(`{"revision":1}`)))
+	if rec.Code != 200 || fp.calls[len(fp.calls)-1].reset {
+		t.Fatalf("confirmed reset repeated: %d %s", rec.Code, rec.Body)
 	}
 	count := len(fp.calls)
 	rec = httptest.NewRecorder()

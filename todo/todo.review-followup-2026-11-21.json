@@ -142,7 +142,7 @@
       "id": "M4",
       "title": "Graph-Editor, Autosave und Statusdarstellung",
       "status": "in_progress",
-      "progress_percent": 69.0,
+      "progress_percent": 71.0,
       "task_ids": [
         "RF-023",
         "RF-024",
@@ -1705,7 +1705,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 65,
+      "progress_percent": 75,
       "description": "Graph-Datei, Gate-Dateien und Daemon-Kanten werden nacheinander best-effort synchronisiert. Ein fehlgeschlagener Push bleibt aktuell in der Save-Antwort; ein expliziter revisionssicherer Retry und dauerhaft erkennbarer Soll-/Ist-Abstand fehlen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1760,9 +1760,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Neu angelegter Graph: Retry nach fehlgeschlagenem Erst-Push (reset=true nötig) läuft in stale_revision ohne Ausweg",
           "Daemon-403/stale_revision/revision_conflict in Go ungetestet",
           "Retry-Button ohne e2e-Test"
+        ],
+        "resolved": [
+          "2026-11-21: unbestätigter Reset-Push wird als pending_reset im Sync-Sidecar der Revision gespeichert; Retry übernimmt ihn nur von dort (nie vom Aufrufer), nach Bestätigung kein erneuter Reset. Der bisherige Test hatte das Fehlverhalten (Retry ohne Reset) festgeschrieben und wurde korrigiert."
         ]
       }
     },

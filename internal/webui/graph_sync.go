@@ -18,6 +18,10 @@ type graphSyncState struct {
 	Pipeline PipelineSync      `json:"pipeline_sync"`
 	Bindings map[string]string `json:"pipeline_bindings"`
 	Previous json.RawMessage   `json:"previous,omitempty"`
+	// PendingReset records that this revision's pipeline push needs a daemon
+	// revision reset (recreated graph file) that has not been confirmed yet.
+	// Only this server-side record, never the caller, can request a reset.
+	PendingReset bool `json:"pending_reset,omitempty"`
 }
 
 func (s graphSyncState) response(body json.RawMessage) map[string]any {
@@ -61,6 +65,7 @@ func (s *Server) synchronizeGraph(ctx context.Context, path string, body, previo
 	} else {
 		out.Pipeline = s.syncPipeline(ctx, body, rev, reset)
 	}
+	out.PendingReset = reset && !out.Pipeline.Pushed
 	data, err := json.Marshal(out)
 	if err == nil {
 		err = os.WriteFile(path+".sync.json.tmp", data, 0o600)
@@ -111,6 +116,6 @@ func (s *Server) retryGraphSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	old := readGraphSync(path, rev)
-	out := s.synchronizeGraph(r.Context(), path, body, old.Previous, rev, false)
+	out := s.synchronizeGraph(r.Context(), path, body, old.Previous, rev, old.PendingReset)
 	writeJSON(w, http.StatusOK, out.response(body))
 }
