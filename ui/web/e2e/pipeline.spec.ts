@@ -349,3 +349,55 @@ test('an invalid gate contract names the connector and keeps enforcement', async
   await expect(page.locator('.invalid-connector')).toContainText('„Tests“ → ag_b');
   await expect(page.locator('.invalid-connector')).toContainText('bleibt unverändert');
 });
+
+test('a failed save is retried by the retry button and a reload keeps the local draft', async ({ page }) => {
+  const m: Mock = { blocked: false, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  let fail = true;
+  await page.route('**/graph', async route => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    const body = route.request().postDataJSON();
+    m.puts.push(body);
+    if (fail) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"disk full"}' });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ saved: true, body, revision: body.revision + 1 }) });
+  });
+  await openGraph(page);
+  let input = await workspaceInput(page);
+  await input.fill('/unsaved');
+  await expect(page.locator('.graph-save-status')).toContainText('Speichern fehlgeschlagen');
+  await closeSettings(page);
+  const failedPuts = m.puts.length;
+
+  // No automatic retry while failed; the explicit retry saves the same state.
+  fail = false;
+  await page.getByRole('button', { name: 'Speichern erneut versuchen' }).click();
+  await expect(page.locator('.graph-save-status')).toContainText('gespeichert');
+  expect(m.puts.length).toBe(failedPuts + 1);
+  expect((m.puts.at(-1) as any).paperclip.workspace).toBe('/unsaved');
+
+  // A later failure followed by a reload keeps the draft for export.
+  fail = true;
+  input = await workspaceInput(page);
+  await input.fill('/second');
+  await expect(page.locator('.graph-save-status')).toContainText('Speichern fehlgeschlagen');
+  await page.reload();
+  await page.getByRole('button', { name: 'Graph', exact: true }).click();
+  await page.locator('f-flow').waitFor({ state: 'visible', timeout: 15000 });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('dockweave.graphRecovery') || '{}').paperclip?.workspace)).toBe('/second');
+  await expect(page.getByRole('button', { name: 'Lokalen Entwurf exportieren' })).toBeVisible();
+});
+
+test('pipeline status recovers after an admission outage', async ({ page }) => {
+  const m: Mock = { blocked: true, puts: [], pipelineError: '' };
+  await mockBackend(page, m);
+  let down = true;
+  await page.route('**/api/v1/pipelines/admission', route => down
+    ? route.fulfill({ status: 503, body: '{}' })
+    : route.fulfill({ contentType: 'application/json', body: JSON.stringify(admissions(m.blocked)) }));
+  await openGraph(page);
+  const badge = page.locator('[data-node-id="agent-ag_b"] .pipeline-badge');
+  await expect(badge).toContainText('Status unbekannt');
+  down = false;
+  await expect(badge).toContainText('blockiert', { timeout: 20000 });
+  await expect(page.locator('.edge-label.edge-proceed')).toHaveClass(/edge-state-failed/);
+});
