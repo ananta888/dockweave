@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 69.58,
+      "progress_percent": 70.83,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -553,7 +553,7 @@
       "status": "partial",
       "priority": "P0",
       "risk": "critical",
-      "progress_percent": 70,
+      "progress_percent": 80,
       "description": "copyTree erhält Symlinks mit cp -a. makeWritable ruft os.Chmod auf allen Einträgen auf; hashPaths/hashFile folgen Pfaden mit os.Stat/os.Open. Damit sind Host-Zugriffe außerhalb der privaten Kopie möglich. Die Operationen sind im Code belegt, ein vollständiger Angriff wurde nicht ausgeführt.",
       "evidence_level": "code_confirmed",
       "scope_origin": "pre_existing",
@@ -606,10 +606,12 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "security-decisions.md-Eintrag fehlt (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung)",
           "Escape-Prüfung in snapshot.go ist lexikalisch (verkettete Links)",
           "Absolute Symlinks irgendwo im Tree (node_modules, .git) brechen den Lauf ab – Entscheidung nötig",
           "Behoben 2026-11-21: fehlende gates.json wurde zum Fehler statt Skip (TestReadConfigMissingFileIsNotAnError)"
+        ],
+        "resolved": [
+          "2026-11-21: SD-021 in docs/security-decisions.md (openat2-Modell, Link-/Sonderdatei-Policy, Kernel-Voraussetzung, Restrisiken)"
         ]
       }
     },
@@ -684,7 +686,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 60,
+      "progress_percent": 65,
       "description": "MaxBytes addiert die Dateigröße vor dem Lesen, während hashFileCtx bis EOF liest. Wachsende Dateien können die Grenze überschreiten; ein später gegen FIFO ausgetauschter Eintrag kann schon beim Öffnen blockieren. Timeout-Prüfungen finden nur zwischen Leseoperationen statt.",
       "evidence_level": "investigation_required",
       "scope_origin": "today",
@@ -730,8 +732,10 @@
         "remaining_gaps": [
           "Kein Test mit wachsender Datei während Fingerprint",
           "FIFO-Swap nach stat ungetestet",
-          "Verzeichnisse zählen nicht zu MaxFiles, ReadDir(-1) unbegrenzt",
-          "Garantien nur im Code-Kommentar dokumentiert"
+          "Verzeichnisse zählen nicht zu MaxFiles, ReadDir(-1) unbegrenzt"
+        ],
+        "resolved": [
+          "2026-11-21: Garantien und kooperativer Timeout in SD-021 dokumentiert"
         ]
       }
     },

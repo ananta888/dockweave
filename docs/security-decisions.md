@@ -394,3 +394,46 @@ validation, revision guard, 409 without agent call, fail-closed),
 concurrent override consumption), `tests/integration/pipeline_e2e_test.go`
 (PASS/FAIL/STALE/override/tamper/no edge with the real sandbox runner),
 `deployments/paperclip/tests/test_wrapper.py`.
+
+## SD-021 — Rooted workspace access for gates and fingerprints (2026-11-21)
+
+**Context:** The review of 2026-11-21 (track `review-followup-2026-11-21`,
+RF-007..RF-011) found that gate preparation (`cp -a` plus `chmod -R`), host
+hashing and the admission fingerprint resolved workspace paths by name. A
+symlink inside an agent-writable workspace could make the root-run daemon
+chmod or read files outside the workspace, and a file swapped between
+`stat` and `open` could bypass size limits or hang the reader (FIFO).
+
+**Decision:**
+
+1. All daemon reads of a workspace (gate config, snapshot copy, protected
+   hashes, policy baseline, dependency manifests, fingerprint) go through
+   `internal/gateexec/rooted_fs.go`. The canonical root (callers resolve it
+   with `filepath.EvalSymlinks` and the allowlist, AGENTS.md rule 4) and
+   every entry are opened with `openat2(RESOLVE_BENEATH |
+   RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS)` plus `O_NOFOLLOW` relative to
+   an anchored directory handle. There is no path-based fallback: kernels
+   without `openat2` (< 5.6) make gate runs and admission fail closed.
+2. Symlinks are never followed on the host. Fingerprints and hashes cover the
+   link text. The private gate snapshot recreates links verbatim but aborts
+   on links that are absolute or lexically leave the tree.
+3. FIFOs, sockets and devices are rejected (fail closed); regular files are
+   opened `O_NONBLOCK` and must be the same inode as the enumerated entry
+   (`os.SameFile`). A replaced root, directory or file aborts the operation.
+4. Byte limits count bytes actually read, and size/mtime/ctime are rechecked
+   after reading; the fingerprint limits (files, bytes, time) fail closed and
+   never grant a pass.
+5. The executed gate configuration, the before/after fingerprint and the
+   policy baseline all come from the same private snapshot, so a PASS is
+   bound to the content that actually ran (RF-010/RF-011).
+
+**Residual risk:**
+
+- Timeouts are cooperative (checked between reads). A read that blocks in the
+  kernel, e.g. on a stalled network or FUSE filesystem, is not interrupted.
+- The snapshot escape check is lexical. Chained relative links (`y -> .`,
+  `x -> y/..`) pass it; they only resolve inside the unprivileged gate
+  container, which has no host mounts beyond the snapshot, never on the host.
+- Any absolute symlink in the workspace, including `node_modules` or `.git`,
+  aborts the gate run. This is deliberately strict; whether such links should
+  instead be hashed and skipped is an open decision (RF-007).
