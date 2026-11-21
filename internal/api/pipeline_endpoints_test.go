@@ -275,3 +275,26 @@ func TestRoutingMatrixKeepsActionAndReason(t *testing.T) {
 		})
 	}
 }
+
+// RF-003: a reusable override (single_use=false) admits repeated work against
+// the real store; reading the admission never consumes anything.
+func TestReusableOverrideAdmitsRepeatedWork(t *testing.T) {
+	f := newPipelineFixture(t)
+	var calls atomic.Int32
+	f.srv.Native = nativeProbe(&calls)
+	if rec := f.pushEdges(t, 1); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body)
+	}
+	f.saveRun(t, "r-fail", model.GateFailed, "sha256:one")
+	if rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/pipelines/override", `{"agent":"beta","gate_id":"*","reason":"hotfix window","single_use":false}`); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body)
+	}
+	for i := 0; i < 3; i++ {
+		if rec := f.do(t, RoleAdmin, http.MethodPost, "/v1/chat/completions", chatBody("beta")); rec.Code == http.StatusConflict {
+			t.Fatalf("use %d blocked: %s", i, rec.Body)
+		}
+	}
+	if n := calls.Load(); n != 3 {
+		t.Fatalf("reusable override admitted %d of 3 requests", n)
+	}
+}

@@ -28,7 +28,12 @@ func TestWildcardOverrideConsumesOnceForMultipleEdges(t *testing.T) {
 	if !got.Allowed || !st.consumed["wild"] {
 		t.Fatalf("first work blocked: %+v", got)
 	}
+	// Used up: the next work on the same blocked edges is refused again.
+	if again := eval(st, "", nil).Admit(context.Background(), "b"); again.Allowed {
+		t.Fatalf("single-use wildcard released twice: %+v", again)
+	}
 }
+
 
 func TestPhaseSetupFailureDoesNotReuseOldPass(t *testing.T) {
 	for _, status := range []model.GateRunStatus{model.GateError, model.GateFailed} {

@@ -289,21 +289,19 @@ func TestAdmitBlocksWhenOverrideConsumptionFails(t *testing.T) {
 	if !adm.Allowed {
 		t.Fatalf("override should allow: %+v", adm.Edges)
 	}
-	// Simulate a concurrent consumer between Admission and Admit.
-	st.consumed = map[string]bool{"o1": true}
-	st.overrides[0].SingleUse = false // still listed as active, but consumption fails
-	failing := &consumeFails{st}
-	ev.Store = failing
+	// A concurrent consumer wins between Admission and Admit: the batch
+	// consumption fails, so the work stays blocked and nothing is marked used.
+	ev.Store = &consumeFails{st}
 	if adm := ev.Admit(context.Background(), "b"); adm.Allowed || adm.Edges[0].Code != model.AdmitDenied {
 		t.Fatalf("adm = %+v", adm.Edges)
+	}
+	if st.consumed["o1"] {
+		t.Fatal("failed consumption marked the override as used")
 	}
 }
 
 type consumeFails struct{ *fakeStore }
 
-func (c *consumeFails) ListPipelineOverrides(ctx context.Context, agent string, at time.Time) ([]*model.PipelineOverride, error) {
-	return c.fakeStore.overrides, nil
-}
-func (c *consumeFails) ConsumePipelineOverride(context.Context, string, time.Time) error {
+func (c *consumeFails) ConsumePipelineOverridesAudited(context.Context, []string, time.Time, string, string) error {
 	return errors.New("conflict: already used")
 }

@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -28,6 +29,31 @@ func TestOverrideBatchRollsBackWhenOneAuthorizationExpired(t *testing.T) {
 	list, err := s.ListPipelineOverrides(ctx, "b", at)
 	if err != nil || len(list) != 1 || list[0].UsedAt != nil {
 		t.Fatalf("partial consumption: %+v %v", list, err)
+	}
+}
+
+func TestOverrideBatchRollsBackWhenOneWasAlreadyUsed(t *testing.T) {
+	s, _ := openPipelineStore(t)
+	ctx := context.Background()
+	at := time.Now().UTC()
+	for _, o := range []*model.PipelineOverride{
+		{ID: "fresh", AgentID: "b", GateID: "tests", SingleUse: true, CreatedAt: at, ExpiresAt: at.Add(time.Hour)},
+		{ID: "spent", AgentID: "b", GateID: "lint", SingleUse: true, CreatedAt: at, ExpiresAt: at.Add(time.Hour)},
+	} {
+		if err := s.CreatePipelineOverride(ctx, o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ConsumePipelineOverrides(ctx, []string{"spent"}, at); err != nil {
+		t.Fatal(err)
+	}
+	err := s.ConsumePipelineOverrides(ctx, []string{"fresh", "spent"}, at)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("want ErrConflict for an already used override, got %v", err)
+	}
+	list, err := s.ListPipelineOverrides(ctx, "b", at)
+	if err != nil || len(list) != 1 || list[0].ID != "fresh" || list[0].UsedAt != nil {
+		t.Fatalf("fresh override consumed by a failed batch: %+v %v", list, err)
 	}
 }
 
