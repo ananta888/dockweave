@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,6 +38,8 @@ func graphPath() (string, error) {
 }
 
 func (s *Server) getGraph(w http.ResponseWriter, r *http.Request) {
+	s.graphMu.Lock()
+	defer s.graphMu.Unlock()
 	path, err := graphPath()
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, err)
@@ -56,7 +59,8 @@ func (s *Server) getGraph(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusInternalServerError, fmt.Errorf("graph file is not JSON: %w", err))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"saved": true, "body": body, "revision": graphRevision(body)})
+	state := readGraphSync(path, graphRevision(body))
+	writeJSON(w, http.StatusOK, state.response(body))
 }
 
 // getGateStatus reports whether the workspace gates.json still matches the
@@ -81,13 +85,17 @@ func (s *Server) getGateStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	var body json.RawMessage
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&body); err != nil {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
+	if err := decoder.Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("decode graph: %w", err))
 		return
 	}
-	var probe map[string]any
-	if err := json.Unmarshal(body, &probe); err != nil {
-		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("graph must be an object: %w", err))
+	if err := decoder.Decode(new(json.RawMessage)); err != io.EOF {
+		writeJSONError(w, http.StatusBadRequest, fmt.Errorf("graph must contain exactly one JSON object"))
+		return
+	}
+	if err := validateGraphObject(body); err != nil {
+		writeJSONError(w, http.StatusBadRequest, err)
 		return
 	}
 	path, err := graphPath()
@@ -142,36 +150,8 @@ func (s *Server) putGraph(w http.ResponseWriter, r *http.Request) {
 	// workspace(s). A sync failure must never lose the graph document the user
 	// just saved, so it is reported in the response instead of failing PUT.
 	// The previous document lets the sync clear workspaces that lost all gates.
-	results, warnings := gatesync.SyncAll(body, previous, s.browseRoots)
-	aggregate := gatesync.Result{Warnings: warnings}
-	for _, res := range results {
-		if res.Error != "" {
-			if s.cfg.Logger != nil {
-				s.cfg.Logger.Warn("paperclip gate sync failed", "error", res.Error, "workspace", res.Workspace)
-			}
-			if aggregate.Error == "" {
-				aggregate.Error = res.Error
-			}
-			continue
-		}
-		if res.Skipped {
-			continue
-		}
-		if res.Written {
-			aggregate.Written = true
-			aggregate.Gates += res.Gates
-			aggregate.Review = aggregate.Review || res.Review
-			aggregate.HumanApproval = aggregate.HumanApproval || res.HumanApproval
-			if s.cfg.Logger != nil {
-				s.cfg.Logger.Info("paperclip gates synced", "path", res.Path, "gates", res.Gates)
-			}
-		}
-	}
-	pipelineSync := s.syncPipeline(r.Context(), body, nextRev, previous == nil)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"saved": true, "body": body, "revision": nextRev, "gates": aggregate, "gates_all": results,
-		"pipeline_sync": pipelineSync,
-	})
+	state := s.synchronizeGraph(r.Context(), path, body, previous, nextRev, previous == nil)
+	writeJSON(w, http.StatusOK, state.response(body))
 }
 
 // PipelineSync reports the transfer of the derived pipeline edges.
@@ -260,10 +240,33 @@ func stampRevision(body json.RawMessage, rev int) (json.RawMessage, error) {
 	if err := json.Unmarshal(body, &m); err != nil {
 		return nil, fmt.Errorf("graph must be an object: %w", err)
 	}
+	if m == nil {
+		return nil, fmt.Errorf("graph must be an object")
+	}
 	m["revision"] = json.RawMessage(strconv.Itoa(rev))
 	out, err := json.Marshal(m)
 	if err != nil {
 		return nil, fmt.Errorf("encode graph: %w", err)
 	}
 	return out, nil
+}
+
+func validateGraphObject(body json.RawMessage) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return fmt.Errorf("graph must be an object: %w", err)
+	}
+	if fields == nil {
+		return fmt.Errorf("graph must be an object")
+	}
+	if raw, ok := fields["revision"]; ok {
+		var rev int
+		if string(raw) == "null" {
+			return fmt.Errorf("revision must be a nonnegative integer")
+		}
+		if err := json.Unmarshal(raw, &rev); err != nil || rev < 0 {
+			return fmt.Errorf("revision must be a nonnegative integer")
+		}
+	}
+	return nil
 }

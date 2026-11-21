@@ -215,6 +215,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("PUT /graph", s.putGraph)
 	mux.HandleFunc("GET /graph/gates/status", s.getGateStatus)
 	mux.HandleFunc("POST /graph/validate-expression", s.validateExpression)
+	mux.HandleFunc("POST /graph/sync", s.retryGraphSync)
 	mux.HandleFunc("GET /paperclip/config", s.paperclipConfig)
 	mux.HandleFunc("GET /paperclip/status", s.paperclipStatus)
 	mux.HandleFunc("POST /paperclip/issues", s.paperclipCreateIssue)
