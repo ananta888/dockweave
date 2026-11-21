@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 73.5,
+      "progress_percent": 80.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2081,10 +2081,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "SDK-Pipeline-Vertrag um Fehler-, Abbruch- und Serialisierungsfälle ergänzen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 35,
+      "progress_percent": 100,
       "description": "pipelines_test.go deckt erfolgreiche Antworten der neuen Methoden ab, aber keine Statusfehler, ungültigen Antworten oder Kontextabbrüche.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2120,12 +2120,10 @@
         "go test -race ./pkg/sdk"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Zwei 409-Fälle nicht unterschieden",
-          "Abbruch nur vor Request-Start",
-          "reset/revision/TTL fehlen",
-          "Einzel-/Sammelantwort fehlen"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "Erledigt 2026-11-21: pkg/sdk/pipelines_contract_test.go gegen echten API-Server+Store: TestSDKPipelineRevisionContract (idempotent, revision_conflict, stale_revision, reset), TestSDKAdmissionSingleAndCollectionShapes (inkl. not_found), TestSDKOverrideTTLAndReuse (TTL, single_use=false, >24h/ohne Grund invalid, active-Filter, Lesen verbraucht nicht), TestSDKCancellationDuringRequest (Abbruch während laufendem Request -> context.Canceled), TestSDKPipelineMethodsRejectMalformed200 (alle Methoden), TestSDKSendsExplicitOptionalFields; dazu pipelines_failure_test.go (403/404/409, Query-Escaping)."
         ]
       }
     },
@@ -3119,11 +3117,11 @@
     "by_status": {
       "todo": 2,
       "in_progress": 0,
-      "partial": 39,
+      "partial": 38,
       "blocked": 0,
-      "done": 4
+      "done": 5
     },
-    "progress_percent_done": 8.89,
+    "progress_percent_done": 11.11,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3168,9 +3166,9 @@
     "state": "in_progress",
     "todo_remaining": 2,
     "in_progress": 0,
-    "partial": 39,
+    "partial": 38,
     "blocked": 0,
-    "done": 4
+    "done": 5
   },
   "evidence_summary": {
     "by_level": {
