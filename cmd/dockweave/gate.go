@@ -17,6 +17,8 @@ func gateCmd() *cobra.Command {
 	var image string
 	var timeoutSec int
 	var issueID string
+	var upstream string
+	var phases []string
 	run := &cobra.Command{
 		Use:   "run WORKSPACE",
 		Short: "Run <workspace>/.paperclip/gates.json in a sandbox container",
@@ -25,6 +27,7 @@ func gateCmd() *cobra.Command {
 			var out model.GateRun
 			err := client().Do(context.Background(), "POST", "/api/v1/gates/run", map[string]any{
 				"workspace": args[0], "issue_id": issueID, "image": image, "timeout_sec": timeoutSec,
+				"upstream_agent_id": upstream, "phases": phases,
 			}, &out)
 			if err != nil {
 				return err
@@ -50,6 +53,8 @@ func gateCmd() *cobra.Command {
 	run.Flags().StringVar(&image, "image", "", "gate runner image override")
 	run.Flags().IntVar(&timeoutSec, "timeout", 900, "global timeout in seconds")
 	run.Flags().StringVar(&issueID, "issue", "", "Paperclip issue identifier to link the run to")
+	run.Flags().StringVar(&upstream, "upstream-agent", "", "agent whose work is checked (recorded on the run)")
+	run.Flags().StringSliceVar(&phases, "phase", nil, "run only these phases (pre_run, after_run, post_run); default all")
 
 	var limit int
 	runs := &cobra.Command{

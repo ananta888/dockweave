@@ -43,6 +43,8 @@ type Runner struct {
 	DefaultImage string
 	AllowedRoots []string
 	Logger       *slog.Logger
+	// FingerprintLimits bounds the workspace fingerprint (zero = defaults).
+	FingerprintLimits FingerprintLimits
 }
 
 // Request is one gate execution.
@@ -52,6 +54,11 @@ type Request struct {
 	Image     string
 	Actor     string
 	Timeout   time.Duration
+	// UpstreamAgentID is the agent whose work triggered the run (optional).
+	UpstreamAgentID string
+	// Phases restricts the run to these phases (pre_run, after_run,
+	// post_run). Empty runs every phase in order.
+	Phases []string
 }
 
 const (
@@ -64,7 +71,11 @@ const (
 // (missing workspace, unreadable config) return an error; a failing gate is a
 // normal result with Status failed.
 func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
-	workspace, err := r.validateWorkspace(req.Workspace)
+	workspace, err := r.ValidateWorkspace(req.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	phases, err := normalizePhases(req.Phases)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +92,9 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		Actor:     req.Actor,
 		StartedAt: time.Now().UTC(),
 		Status:    model.GateError,
+
+		UpstreamAgentID: strings.TrimSpace(req.UpstreamAgentID),
+		Phases:          phases,
 	}
 
 	cfg, cfgRaw, err := readConfig(workspace)
@@ -153,10 +167,23 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		return run, nil
 	}
 
+	// The fingerprint of exactly the content under test lets the pipeline
+	// admission prove that a PASS still applies to the current workspace.
+	// Without one the run can never release a downstream agent (fail-closed).
+	if fp, err := Fingerprint(runCtx, work, r.FingerprintLimits); err == nil {
+		run.WorkspaceFingerprint = fp
+	} else {
+		run.Warnings = append(run.Warnings, "workspace fingerprint unavailable: "+err.Error())
+	}
+
 	protected := mergeStrings(defaultProtected, cfg.Protected)
 	before, _ := hashPaths(work, protected)
 
 	order := strings.Split(phaseOrder, ",")
+	selected := order
+	if len(phases) > 0 {
+		selected = phases
+	}
 	byPhase := map[string][]gatesync.Gate{}
 	for _, g := range cfg.Gates {
 		when := strings.TrimSpace(g.When)
@@ -179,10 +206,22 @@ func (r *Runner) Run(ctx context.Context, req Request) (*model.GateRun, error) {
 		}
 		byPhase[when] = append(byPhase[when], g)
 	}
+	scheduled := 0
+	for _, ph := range selected {
+		scheduled += len(byPhase[ph])
+	}
+	if scheduled == 0 {
+		run.Status = model.GateSkipped
+		run.Reason = "no gates configured for phases " + strings.Join(selected, ",")
+		run.FinishedAt = time.Now().UTC()
+		r.record(ctx, run)
+		return run, nil
+	}
+	run.Gates = scheduled
 
 	tamper := false
 gateLoop:
-	for _, phase := range order {
+	for _, phase := range selected {
 		for _, gate := range byPhase[phase] {
 			result := r.runGate(runCtx, work, image, run.ID, gate, budgetEnv)
 			run.Results = append(run.Results, result)
@@ -403,18 +442,47 @@ func gateVerdict(gate gatesync.Gate, env ExprEnv) (status, reason string) {
 		}
 		return "failed", ""
 	}
+	_, _, reasonTrue, reasonFalse := gatesync.ResolveRouting(gate.OnTrue, gate.OnFalse, gate.ReasonTrue, gate.ReasonFalse)
 	ok, err := Evaluate(expr, env)
 	switch {
 	case err != nil:
 		return "error", "gate expression: " + err.Error()
 	case ok:
-		return "passed", strings.TrimSpace(gate.OnTrue)
+		return "passed", reasonTrue
 	default:
-		if onFalse := strings.TrimSpace(gate.OnFalse); onFalse != "" {
-			return "failed", onFalse
+		if reasonFalse != "" {
+			return "failed", reasonFalse
 		}
 		return "failed", "gate expression evaluated to false"
 	}
+}
+
+// normalizePhases validates an explicit phase selection and returns it in
+// execution order without duplicates. Empty input selects all phases (nil).
+func normalizePhases(in []string) ([]string, error) {
+	want := map[string]bool{}
+	for _, p := range in {
+		for _, part := range strings.Split(p, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if !strings.Contains(","+phaseOrder+",", ","+part+",") {
+				return nil, fmt.Errorf("invalid gate phase %q (want pre_run, after_run or post_run)", part)
+			}
+			want[part] = true
+		}
+	}
+	if len(want) == 0 {
+		return nil, nil
+	}
+	var out []string
+	for _, ph := range strings.Split(phaseOrder, ",") {
+		if want[ph] {
+			out = append(out, ph)
+		}
+	}
+	return out, nil
 }
 
 // budgetWarnOnly reports whether a configured budget should degrade to a
@@ -472,7 +540,9 @@ func (r *Runner) record(ctx context.Context, run *model.GateRun) {
 	}
 }
 
-func (r *Runner) validateWorkspace(raw string) (string, error) {
+// ValidateWorkspace canonicalises a workspace path (EvalSymlinks) and checks
+// it against AllowedRoots. The pipeline API uses it for edge workspaces.
+func (r *Runner) ValidateWorkspace(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", errors.New("workspace is required")

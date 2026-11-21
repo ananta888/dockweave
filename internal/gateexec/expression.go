@@ -3,6 +3,7 @@ package gateexec
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // ExprEnv is the variable environment of a gate expression.
@@ -31,11 +32,43 @@ func EvaluateExpression(expr string, exit int, budget float64) (bool, error) {
 //	budget          float   the day's cost in USD; referencing it while no
 //	                        budget snapshot is available is an error
 //
+// The literals true and false stand for 1 and 0.
+//
 // Supported operators: == != < <= > >= && || ! unary minus and parentheses.
-// A bare number or variable is treated as a boolean (non-zero = true).
+// A bare number or variable is treated as a boolean (non-zero = true). Both
+// sides of && and || are always evaluated, so an unavailable budget fails the
+// expression even where short-circuiting would have skipped it (fail-closed).
 func Evaluate(expr string, env ExprEnv) (bool, error) {
 	p := &exprParser{src: expr, env: env}
+	return p.run()
+}
+
+// Validation is the result of a static expression check.
+type Validation struct {
+	// UsesBudget is true when the expression reads the budget variable, i.e.
+	// it needs a configured budget to evaluate at run time.
+	UsesBudget bool
+}
+
+// Validate checks syntax and variable names without needing real values; the
+// budget counts as available. Editors use it to reject an expression before
+// it is saved.
+func Validate(expr string) (Validation, error) {
+	if strings.TrimSpace(expr) == "" {
+		return Validation{}, fmt.Errorf("expression is empty")
+	}
+	p := &exprParser{src: expr, validate: true}
+	if _, err := p.run(); err != nil {
+		return Validation{}, err
+	}
+	return Validation{UsesBudget: p.usesBudget}, nil
+}
+
+func (p *exprParser) run() (bool, error) {
 	p.lex()
+	if len(p.toks) == 0 {
+		return false, fmt.Errorf("expression is empty")
+	}
 	v, err := p.parseOr()
 	if err != nil {
 		return false, err
@@ -56,6 +89,9 @@ type exprParser struct {
 	toks []exprTok
 	pos  int
 	env  ExprEnv
+	// validate makes variable reads succeed without values (see Validate).
+	validate   bool
+	usesBudget bool
 }
 
 func (p *exprParser) lex() {
@@ -235,9 +271,17 @@ func (p *exprParser) parseOperand() (operand, error) {
 	case "ident":
 		p.pos++
 		switch t.text {
+		case "true":
+			return operand{num: 1}, nil
+		case "false":
+			return operand{num: 0}, nil
 		case "command", "exit":
 			return operand{num: float64(p.env.Exit)}, nil
 		case "budget":
+			p.usesBudget = true
+			if p.validate {
+				return operand{}, nil
+			}
 			if !p.env.BudgetAvailable {
 				why := p.env.BudgetUnavailable
 				if why == "" {

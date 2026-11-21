@@ -24,6 +24,10 @@ func (s *Server) runGate(w http.ResponseWriter, r *http.Request) {
 		IssueID    string `json:"issue_id"`
 		Image      string `json:"image"`
 		TimeoutSec int    `json:"timeout_sec"`
+		// UpstreamAgentID names the agent whose work is being checked.
+		UpstreamAgentID string `json:"upstream_agent_id"`
+		// Phases restricts the run (pre_run, after_run, post_run); empty = all.
+		Phases []string `json:"phases"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid", fmt.Errorf("decode gate request: %w", err))
@@ -36,6 +40,9 @@ func (s *Server) runGate(w http.ResponseWriter, r *http.Request) {
 		Image:     body.Image,
 		Actor:     actor(r),
 		Timeout:   timeout,
+
+		UpstreamAgentID: body.UpstreamAgentID,
+		Phases:          body.Phases,
 	})
 	if err != nil {
 		s.fail(w, err)

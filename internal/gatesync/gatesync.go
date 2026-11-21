@@ -37,6 +37,11 @@ type Connector struct {
 	Name     string `json:"name"`
 	Enabled  bool   `json:"enabled"`
 	Contract string `json:"contract"`
+	// AgentID is the DockWeave agent the connector hangs off (for a gate: the
+	// upstream agent whose work it checks).
+	AgentID string `json:"agentId"`
+	// TargetAgentID is the downstream agent a gate releases (proceed edge).
+	TargetAgentID string `json:"targetAgentId"`
 }
 
 // Settings is the graph document's `paperclip` block.
@@ -60,15 +65,20 @@ type Document struct {
 // expression/on_true/on_false form the deterministic verdict contract: the
 // sandbox runner executes `command` and then evaluates `expression` over the
 // exit code (`command`/`exit`) and the day's budget cost (`budget`); its result
-// replaces the plain exit-code verdict and on_true/on_false become the reason
-// (see internal/gateexec.Evaluate). An expression only runs together with a
-// command: a connector with an expression but no command produces no gate,
-// and Derive reports a warning instead of dropping it silently.
+// replaces the plain exit-code verdict (see internal/gateexec.Evaluate).
+// on_true/on_false are routing actions (allow|deny|wake:<agent>|rework, see
+// ParseAction) and reason_true/reason_false the verdict texts. An expression
+// only runs together with a command: a connector with an expression but no
+// command produces no gate, and Derive reports a warning instead of dropping
+// it silently.
 type Contract struct {
 	GateID                string   `json:"gate_id"`
 	Expression            string   `json:"expression"`
 	OnTrue                string   `json:"on_true"`
 	OnFalse               string   `json:"on_false"`
+	ReasonTrue            string   `json:"reason_true"`
+	ReasonFalse           string   `json:"reason_false"`
+	MaxAgeSec             int      `json:"max_age_sec"`
 	Command               string   `json:"command"`
 	Cwd                   string   `json:"cwd"`
 	TimeoutSec            int      `json:"timeout_sec"`
@@ -129,11 +139,14 @@ type Gate struct {
 	Command    string `json:"command"`
 	Cwd        string `json:"cwd"`
 	TimeoutSec int    `json:"timeout_sec"`
-	// Expression/OnTrue/OnFalse are evaluated by the sandbox runner after the
-	// command; they carry the deterministic routing contract (GP-003).
-	Expression string `json:"expression,omitempty"`
-	OnTrue     string `json:"on_true,omitempty"`
-	OnFalse    string `json:"on_false,omitempty"`
+	// Expression is evaluated by the sandbox runner after the command.
+	// OnTrue/OnFalse are routing actions (or legacy reason text) and
+	// ReasonTrue/ReasonFalse the verdict reasons (ADR 0002).
+	Expression  string `json:"expression,omitempty"`
+	OnTrue      string `json:"on_true,omitempty"`
+	OnFalse     string `json:"on_false,omitempty"`
+	ReasonTrue  string `json:"reason_true,omitempty"`
+	ReasonFalse string `json:"reason_false,omitempty"`
 }
 
 // Result reports what the last sync did; it is safe to serialise to the client.
@@ -158,7 +171,7 @@ type Result struct {
 // out to their targets. Derive never touches the filesystem, which makes it
 // easy to test and preview.
 func Derive(doc Document) (Config, []string) {
-	groups, warnings := deriveGroups(doc)
+	groups, _, warnings := deriveGroups(doc)
 	key := ""
 	if doc.Paperclip != nil {
 		key = strings.TrimSpace(doc.Paperclip.Workspace)
@@ -177,7 +190,7 @@ func Derive(doc Document) (Config, []string) {
 // path as configured, which the caller canonicalises). The default workspace
 // is the paperclip.workspace setting; per-gate `workspace` overrides win.
 func DeriveAll(doc Document) (map[string]Config, []string) {
-	groups, warnings := deriveGroups(doc)
+	groups, _, warnings := deriveGroups(doc)
 	for ws, cfg := range groups {
 		if cfg.Review.Required && cfg.Review.IssueMatch == "" {
 			cfg.Review.IssueMatch = "review"
@@ -187,8 +200,17 @@ func DeriveAll(doc Document) (map[string]Config, []string) {
 	return groups, warnings
 }
 
+// gateRef records where a gate connector ended up: the configured workspace
+// key and the final gate id (after de-duplication). An empty ID means the
+// connector produced no executable gate (no command).
+type gateRef struct {
+	Workspace string
+	ID        string
+	Contract  Contract
+}
+
 // deriveGroups groups enabled gate connectors by their target workspace.
-func deriveGroups(doc Document) (map[string]Config, []string) {
+func deriveGroups(doc Document) (map[string]Config, map[string]gateRef, []string) {
 	defaultWS := ""
 	if doc.Paperclip != nil {
 		defaultWS = strings.TrimSpace(doc.Paperclip.Workspace)
@@ -196,6 +218,7 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 	groups := map[string]Config{defaultWS: {Version: 1, Gates: []Gate{}}}
 	var warnings []string
 	seen := map[string]bool{}
+	refs := map[string]gateRef{}
 
 	ensure := func(ws string) Config {
 		if cfg, ok := groups[ws]; ok && cfg.Gates != nil {
@@ -220,6 +243,7 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 			ws = override
 		}
 		cfg := ensure(ws)
+		warnings = append(warnings, routingWarnings(c.Name, ct.OnTrue, ct.OnFalse)...)
 
 		cfg.Review.Required = cfg.Review.Required || ct.ReviewRequired
 		cfg.HumanApproval.Required = cfg.HumanApproval.Required || ct.HumanApprovalRequired
@@ -240,6 +264,7 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 				warnings = append(warnings, fmt.Sprintf(
 					"gate %q: expression %q has no command to run; no gate is generated and the expression is not evaluated", c.Name, ct.Expression))
 			}
+			refs[c.ID] = gateRef{Workspace: ws, Contract: ct}
 			groups[ws] = cfg
 			continue
 		}
@@ -249,6 +274,7 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 			id = fmt.Sprintf("%s-%d", base, n)
 		}
 		seen[ws+"|"+id] = true
+		refs[c.ID] = gateRef{Workspace: ws, ID: id, Contract: ct}
 
 		when := strings.TrimSpace(ct.When)
 		if when == "" {
@@ -264,13 +290,15 @@ func deriveGroups(doc Document) (map[string]Config, []string) {
 		}
 		cfg.Gates = append(cfg.Gates, Gate{
 			ID: id, When: when, Command: command, Cwd: cwd, TimeoutSec: timeout,
-			Expression: strings.TrimSpace(ct.Expression),
-			OnTrue:     strings.TrimSpace(ct.OnTrue),
-			OnFalse:    strings.TrimSpace(ct.OnFalse),
+			Expression:  strings.TrimSpace(ct.Expression),
+			OnTrue:      strings.TrimSpace(ct.OnTrue),
+			OnFalse:     strings.TrimSpace(ct.OnFalse),
+			ReasonTrue:  strings.TrimSpace(ct.ReasonTrue),
+			ReasonFalse: strings.TrimSpace(ct.ReasonFalse),
 		})
 		groups[ws] = cfg
 	}
-	return groups, warnings
+	return groups, refs, warnings
 }
 
 // gateID derives a stable gate identifier. An explicit gate_id in the contract

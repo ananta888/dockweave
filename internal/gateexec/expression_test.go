@@ -97,6 +97,9 @@ func TestGateVerdict(t *testing.T) {
 		{"expression false default reason", gatesync.Gate{Expression: "budget < 1"}, 0, avail, "failed", "gate expression evaluated to false"},
 		{"invalid expression", gatesync.Gate{Expression: "command =="}, 0, avail, "error", ""},
 		{"budget unavailable", gatesync.Gate{Expression: "budget < 5"}, 0, ExprEnv{BudgetUnavailable: "no budget configured for this workspace"}, "error", ""},
+		{"action plus reason_true", gatesync.Gate{Expression: "true", OnTrue: "wake:b", ReasonTrue: "green"}, 0, avail, "passed", "green"},
+		{"action without reason", gatesync.Gate{Expression: "command == 0", OnFalse: "rework"}, 1, avail, "failed", "gate expression evaluated to false"},
+		{"reason_false wins", gatesync.Gate{Expression: "false", OnFalse: "legacy", ReasonFalse: "explicit"}, 0, avail, "failed", "explicit"},
 	}
 	for _, c := range cases {
 		env := c.env
@@ -111,5 +114,66 @@ func TestGateVerdict(t *testing.T) {
 		if c.wantStatus == "error" && reason == "" {
 			t.Fatalf("%s: error without reason", c.name)
 		}
+	}
+}
+
+func TestEvaluateBooleanLiterals(t *testing.T) {
+	cases := map[string]bool{
+		"true":                  true,
+		"false":                 false,
+		"!false":                true,
+		"!true":                 false,
+		"true && exit == 0":     true,
+		"true && command == 0":  true,
+		"false || exit == 0":    true,
+		"(true) && !(false)":    true,
+		"true == 1":             true,
+		"false && command == 0": false,
+	}
+	for expr, want := range cases {
+		got, err := EvaluateExpression(expr, 0, 0)
+		if err != nil || got != want {
+			t.Fatalf("expr %q = %v, %v; want %v", expr, got, err, want)
+		}
+	}
+	if got, err := EvaluateExpression("true && exit == 0", 1, 0); err != nil || got {
+		t.Fatalf("true && exit == 0 with exit 1 = %v, %v", got, err)
+	}
+}
+
+func TestDefaultTrueExpressionPassesGate(t *testing.T) {
+	// graph.json documents created by older UIs carry expression "true".
+	status, _ := gateVerdict(gatesync.Gate{Expression: "true"}, ExprEnv{Exit: 0})
+	if status != "passed" {
+		t.Fatalf("expression true: status %q, want passed", status)
+	}
+}
+
+func TestValidate(t *testing.T) {
+	v, err := Validate("command == 0 && budget < 5")
+	if err != nil || !v.UsesBudget {
+		t.Fatalf("Validate = %+v, %v; want uses_budget", v, err)
+	}
+	v, err = Validate("true && exit == 0")
+	if err != nil || v.UsesBudget {
+		t.Fatalf("Validate = %+v, %v", v, err)
+	}
+	for _, bad := range []string{"", "   ", "command ==", "foo == 1", "(command == 0", "command == 0 0"} {
+		if _, err := Validate(bad); err == nil {
+			t.Fatalf("Validate(%q): expected error", bad)
+		}
+	}
+}
+
+func TestNormalizePhases(t *testing.T) {
+	got, err := normalizePhases([]string{"post_run", "pre_run,after_run", "pre_run"})
+	if err != nil || strings.Join(got, ",") != "pre_run,after_run,post_run" {
+		t.Fatalf("normalizePhases = %v, %v", got, err)
+	}
+	if got, err := normalizePhases(nil); err != nil || got != nil {
+		t.Fatalf("empty = %v, %v", got, err)
+	}
+	if _, err := normalizePhases([]string{"during_run"}); err == nil {
+		t.Fatal("unknown phase must fail")
 	}
 }

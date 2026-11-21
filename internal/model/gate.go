@@ -84,8 +84,17 @@ type GateRun struct {
 	Diff        *GateDiff     `json:"diff,omitempty"`
 	Budget      *GateBudget   `json:"budget,omitempty"`
 	Warnings    []string      `json:"warnings,omitempty"`
-	StartedAt   time.Time     `json:"started_at"`
-	FinishedAt  time.Time     `json:"finished_at"`
+	// WorkspaceFingerprint is the content hash of the workspace as tested
+	// (taken from the sandbox copy before the first gate; see
+	// gateexec.Fingerprint). Empty when it could not be computed.
+	WorkspaceFingerprint string `json:"workspace_fingerprint,omitempty"`
+	// UpstreamAgentID is the agent whose work triggered the run (supplied by
+	// the caller, e.g. the Paperclip wrapper); informational.
+	UpstreamAgentID string `json:"upstream_agent_id,omitempty"`
+	// Phases lists the phases this run executed; empty means all phases.
+	Phases     []string  `json:"phases,omitempty"`
+	StartedAt  time.Time `json:"started_at"`
+	FinishedAt time.Time `json:"finished_at"`
 }
 
 // GateApproval is a DockWeave-side human approval for a Paperclip issue. It is
