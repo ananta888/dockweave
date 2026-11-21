@@ -357,14 +357,26 @@ except Exception:
     # Route the pipeline after the gate run: wake released downstream agents,
     # open a rework issue for `rework`, report `deny` (ADR 0002, D-2).
     if [ -n "$HOST_WORKSPACE" ]; then
+      ROUTE_STATUS=0
       ROUTE=$(printf '%s' "$GATE_JSON" | python3 "$HELPER_DIR/pipeline.py" route \
-        --upstream "$MODEL_OR_CONTAINER" --issue "$ISSUE_ID" --run-json - 2>/dev/null || true)
+        --upstream "$MODEL_OR_CONTAINER" --issue "$ISSUE_ID" --run-json -) || ROUTE_STATUS=$?
       if [ -n "$ROUTE" ] && ! printf '%s' "$ROUTE" | grep -q '^NONE'; then
         echo "[dockweave-run] pipeline routing: $ROUTE" >&2
         NOTE="$NOTE
 
 Pipeline:
 $ROUTE"
+      fi
+      # A routing failure must not discard the gate verdict of THIS issue:
+      # reopening it would only make the upstream agent run again. The
+      # failure is reported in the issue together with the retry command;
+      # wake and rework creation are idempotent, so a retry is safe.
+      if [ "$ROUTE_STATUS" -ne 0 ]; then
+        echo "[dockweave-run] pipeline routing incomplete (exit $ROUTE_STATUS)" >&2
+        NOTE="$NOTE
+
+Pipeline-Routing unvollstaendig (exit $ROUTE_STATUS). Folge-Agenten wurden ggf. nicht geweckt.
+Wiederholen: python3 $HELPER_DIR/pipeline.py route --upstream $MODEL_OR_CONTAINER --issue $ISSUE_ID"
       fi
     fi
     # Anything but a confirmed pass (including an unreadable runner answer)
@@ -430,8 +442,9 @@ try:
     print(json.load(sys.stdin).get("companyId") or "")
 except Exception:
     print("")' 2>/dev/null)
-  if [ -n "$PARENT_ID" ] && [ -n "$COMPANY_ID" ]; then
+  if [ "${ROUTE_STATUS:-0}" -eq 0 ] && [ -n "$PARENT_ID" ] && [ -n "$COMPANY_ID" ]; then
     python3 "$HELPER_DIR/wake-ready.py" "$COMPANY_ID" "$PARENT_ID" 2>/dev/null || true
     python3 "$HELPER_DIR/parent-close.py" "$ISSUE_ID" "$HOST_WORKSPACE" 2>/dev/null || true
   fi
 fi
+

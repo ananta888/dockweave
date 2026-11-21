@@ -70,7 +70,11 @@ FAKE_PC = textwrap.dedent('''\
     if a[:2] == ["issue", "list"]:
         print(json.dumps(cfg.get("list", []))); sys.exit(0)
     if a[:2] == ["issue", "create"]:
+        if cfg.get("create_exit"):
+            sys.exit(cfg["create_exit"])
         print(json.dumps({"id": "new-1", "identifier": "DOC-99"})); sys.exit(0)
+    if a[:2] == ["agent", "wake"] and cfg.get("wake_exit"):
+        sys.exit(cfg["wake_exit"])
     print("{}"); sys.exit(0)
 ''')
 
@@ -257,6 +261,43 @@ class PipelineHelperTest(unittest.TestCase):
         self.f.set("dw", {"admissions": {"alpha": adm("alpha", "ag_a", True)}, "state": {"revision": 1, "edges": []}})
         p = self.f.py("pipeline.py", "route", "--upstream", "alpha")
         self.assertIn("NONE", p.stdout)
+
+    def test_route_unknown_upstream_without_edges_is_none(self):
+        # Legacy dockweave-<cid> targets are unknown to the daemon; with no
+        # pipeline edges there is nothing to route and no error to report.
+        self.f.set("dw", {"admissions": {}, "state": {"revision": 1, "edges": []}})
+        p = self.f.py("pipeline.py", "route", "--upstream", "dockweave-abc123")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertTrue(p.stdout.startswith("NONE"), p.stdout)
+
+    def test_route_unknown_upstream_with_edges_is_error(self):
+        amap = self._route_setup(adm("beta", "ag_b", True))
+        p = self.f.py("pipeline.py", "route", "--upstream", "ghost", "--issue", "DOC-1",
+                      DOCKWEAVE_PAPERCLIP_AGENT_MAP=amap)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("ERR", p.stdout)
+        self.assertFalse([l for l in self.f.log("pc") if '"wake"' in l or '"create"' in l])
+
+    def test_route_accepts_edges_without_upstream(self):
+        amap = self._route_setup(adm("beta", "ag_b", True, [dict(BLOCKED_EDGE, satisfied=True, code="ok", action="allow")]))
+        cfg = json.load(open(os.path.join(self.f.dir, "dw.json")))
+        cfg["state"]["edges"].append({"id": "e0", "gate_id": "lint", "downstream_agent_id": "ag_c", "workspace": "/ws"})
+        self.f.set("dw", cfg)
+        p = self.f.py("pipeline.py", "route", "--upstream", "alpha", "--issue", "DOC-1",
+                      DOCKWEAVE_PAPERCLIP_AGENT_MAP=amap)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("WAKE\tbeta\tallow", p.stdout)
+
+    def test_route_rejects_malformed_edges(self):
+        amap = self._route_setup(adm("beta", "ag_b", True))
+        for bad in (None, "x", {"id": "e", "downstream_agent_id": ""}, {"id": "e", "downstream_agent_id": "d", "upstream_agent_id": 7}):
+            cfg = json.load(open(os.path.join(self.f.dir, "dw.json")))
+            cfg["state"]["edges"] = [bad]
+            self.f.set("dw", cfg)
+            p = self.f.py("pipeline.py", "route", "--upstream", "alpha", "--issue", "DOC-1",
+                          DOCKWEAVE_PAPERCLIP_AGENT_MAP=amap)
+            self.assertEqual(p.returncode, 1, (bad, p.stdout))
+            self.assertIn("invalid pipeline edge", p.stdout)
 
 
 class BlockedCheckTest(unittest.TestCase):
