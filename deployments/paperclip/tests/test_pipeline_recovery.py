@@ -45,6 +45,44 @@ class PipelineRecoveryTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.calls(["issue", "create"]), [])
 
+    def test_mapping_without_upstream_entry_never_uses_current_agent(self):
+        self.route_setup()
+        with open(self.mapping, "w", encoding="utf-8") as stream:
+            json.dump({"ag_b": "pc-b"}, stream)  # downstream known, upstream not
+        result = self.route(PAPERCLIP_AGENT_ID="pc-b")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls(["issue", "create"]), [])
+
+    def test_unreadable_mapping_is_reported(self):
+        self.route_setup(dict(BLOCKED_EDGE, satisfied=True, code="ok", action="allow"), True)
+        with open(self.mapping, "w", encoding="utf-8") as stream:
+            stream.write("{not json")
+        result = self.route()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue("WARN" in result.stderr or "UNMAPPED" in result.stdout, result.stdout + result.stderr)
+        self.assertEqual(self.calls(["agent", "wake"]), [])
+
+    def test_partial_routing_over_several_targets_is_not_success(self):
+        ok_edge = dict(BLOCKED_EDGE, satisfied=True, code="ok", action="allow")
+        self.f.set("dw", {"admissions": {
+            "alpha": adm("alpha", "ag_a", True),
+            "ag_b": adm("beta", "ag_b", True, [ok_edge]),
+            "ag_c": adm("gamma", "ag_c", True, [dict(ok_edge, edge_id="e2")]),
+        }, "state": {"revision": 1, "edges": [
+            {"upstream_agent_id": "ag_a", "downstream_agent_id": "ag_b"},
+            {"upstream_agent_id": "ag_a", "downstream_agent_id": "ag_c"},
+        ]}})
+        result = self.route()  # mapping knows ag_b but not ag_c
+        self.assertNotEqual(result.returncode, 0, "partial routing reported as success")
+        self.assertIn("WAKE\tbeta", result.stdout)
+        self.assertIn("UNMAPPED\tgamma", result.stdout)
+        self.assertEqual([c[2] for c in self.calls(["agent", "wake"])], ["pc-b"])
+        # Retry after fixing the mapping wakes only the missing target.
+        with open(self.mapping, "w", encoding="utf-8") as stream:
+            json.dump({"ag_a": "pc-a", "ag_b": "pc-b", "ag_c": "pc-c"}, stream)
+        self.assertEqual(self.route().returncode, 0)
+        self.assertEqual(sorted(c[2] for c in self.calls(["agent", "wake"])), ["pc-b", "pc-c"])
+
     def test_failed_issue_lookup_cannot_create_rework(self):
         self.route_setup()
         self.f.set("pc", {"fail": True})
@@ -167,7 +205,11 @@ class PipelineRecoveryTest(unittest.TestCase):
         self.assertEqual(len(comments), 1, comments)
 
     def test_invalid_admission_never_permits(self):
-        for invalid in [dict(adm("beta", "ag_b", True), edges="bad"),
+        for invalid in [dict(adm("beta", "ag_b", True), edges=None),
+                        dict(adm("beta", "ag_b", True), edges={"e": 1}),
+                        dict(adm("beta", "ag_b", True), edges=[None]),
+                        dict(adm("beta", "ag_b", True), allowed="true"),
+                        dict(adm("beta", "ag_b", True), edges="bad"),
                         dict(adm("beta", "ag_b", True), edges=[7]),
                         adm("wrong", "wrong", True),
                         adm("beta", "ag_b", True, [BLOCKED_EDGE]),

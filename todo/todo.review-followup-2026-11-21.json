@@ -109,7 +109,7 @@
       "id": "M2",
       "title": "Dateisystemsicherheit und belastbare Gate-Evidenz",
       "status": "in_progress",
-      "progress_percent": 87.92,
+      "progress_percent": 90.42,
       "task_ids": [
         "RF-007",
         "RF-008",
@@ -129,7 +129,7 @@
       "id": "M3",
       "title": "Persistenz, Admission-API und Auditierung",
       "status": "in_progress",
-      "progress_percent": 85.0,
+      "progress_percent": 90.0,
       "task_ids": [
         "RF-018",
         "RF-019",
@@ -155,7 +155,7 @@
       "id": "M5",
       "title": "Paperclip-Wrapper und zuverlässiges Routing",
       "status": "in_progress",
-      "progress_percent": 75.0,
+      "progress_percent": 90.0,
       "task_ids": [
         "RF-027",
         "RF-028",
@@ -866,7 +866,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 80,
+      "progress_percent": 90,
       "description": "record loggt SaveGateRun-Fehler höchstens, ignoriert AddEvidence-Fehler und lässt Run erfolgreich zurückkehren. Mit neuer Admission kann ein nicht gespeicherter fehlgeschlagener Lauf einen älteren PASS als einzigen sichtbaren Stand zurücklassen.",
       "evidence_level": "investigation_required",
       "scope_origin": "interaction",
@@ -913,8 +913,10 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Kein Restart-Test (DB neu öffnen, unvollständiger Lauf sperrt weiter)",
           "Kein API-Test für Persistenzfehler"
+        ],
+        "resolved": [
+          "2026-11-21: TestIncompleteRunKeepsBlockingAfterRestart (Startmarker wie im Runner, DB geschlossen und neu geöffnet, älterer PASS vorhanden -> Admission blockiert mit error)"
         ]
       }
     },
@@ -1101,10 +1103,10 @@
       "milestone": "M2",
       "type": "bug",
       "title": "Gate-Historie und Retention vor LIMIT chronologisch korrekt sortieren",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "started_at ist variabel formatiertes RFC3339Nano-TEXT. ListGateRuns und PruneGateRuns sortieren lexikalisch; die nachgelagerte Go-Sortierung in RecentGateRuns kann bereits durch LIMIT ausgeschlossene Zeilen nicht zurückholen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "interaction",
@@ -1144,9 +1146,11 @@
         "go test ./internal/persistence"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Ordnungstest mit >500 Zeilen gemischter Bruchteil-Zeitstempel fehlt"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "2026-11-21: TestGateHistoryOrderAndRetentionWithManyMixedTimestamps (520 Läufe, ganze Sekunden/.1/.12/.9/1 ns, zufällige Einfügereihenfolge; LIMIT 50 exakt neueste zuerst; Retention behält genau die neuesten 37)",
+          "Abgeschlossen 2026-11-21; Nachweise siehe resolved."
         ]
       }
     },
@@ -1221,7 +1225,7 @@
       "status": "partial",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 90,
       "description": "ReplacePipelineEdges weist nur ältere Revisionen zurück. Eine andere Kantenliste mit derselben Revision löscht und ersetzt den bestehenden Zustand, obwohl der Kommentar diese Wiederholung als idempotent beschreibt.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1265,9 +1269,11 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Kein API-Test für revision_conflict",
           "Gateway-Recovery unterscheidet stale/divergent/idempotent nicht",
           "Kein Test, dass idempotente Wiederholung Zeitstempel/Events unverändert lässt"
+        ],
+        "resolved": [
+          "2026-11-21: revision_conflict/stale_revision am echten API-Server: pkg/sdk TestSDKPipelineRevisionContract und OpenAPI-Fixtures (409 mit Code)"
         ]
       }
     },
@@ -1276,10 +1282,10 @@
       "milestone": "M3",
       "type": "bug",
       "title": "Pipeline-Revision und Kanten aus einem konsistenten Datenbank-Snapshot lesen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 80,
+      "progress_percent": 100,
       "description": "ListPipelineEdges liest erst die Meta-Revision und danach die Kanten. Ein paralleler Replace kann alte Revision mit neuer Kantenmenge kombinieren.",
       "evidence_level": "investigation_required",
       "scope_origin": "today",
@@ -1316,10 +1322,11 @@
         "go test -race ./internal/persistence ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Snapshot-Test umgeht ListPipelineEdges (ruft readPipelineEdges direkt)",
-          "Keine Leak-Prüfung (db.Stats)"
+        "verdict": "done",
+        "remaining_gaps": [],
+        "resolved": [
+          "2026-11-21: TestListPipelineEdgesSnapshotUnderConcurrentWrites über ListPipelineEdges selbst mit zweitem Store-Schreiber (300 Lesungen, Revision und Kanten konsistent, db.Stats().InUse == 0, -race). Hinweis: nebenläufig und damit probabilistisch; der deterministische Fall bleibt TestPipelineSnapshotNeverMixesRevisions.",
+          "Abgeschlossen 2026-11-21; Nachweise siehe resolved."
         ]
       }
     },
@@ -1773,10 +1780,10 @@
       "milestone": "M5",
       "type": "bug",
       "title": "Auch für Rework ausschließlich verifizierbare Upstream-Zuordnungen verwenden",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "cmd_route verwendet beim fehlenden Upstream-Mapping ersatzweise PAPERCLIP_AGENT_ID. Das widerspricht dem dokumentierten expliziten Mapping und kann bei abweichender aufrufender Identität das falsche Teammitglied zuweisen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1810,13 +1817,12 @@
         "make test-wrapper"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Test sollte Mapping ohne nur den Upstream-Eintrag nutzen statt Datei zu löschen",
-          "WARN/ERR-Ausgaben ungetestet"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: Gate-Läufe speichern die aufgelöste stabile Agenten-ID statt des übergebenen Namens; unbekannter Upstream -> 400"
+          "2026-11-21: Gate-Läufe speichern die aufgelöste stabile Agenten-ID statt des übergebenen Namens; unbekannter Upstream -> 400",
+          "2026-11-21: test_mapping_without_upstream_entry_never_uses_current_agent, test_unreadable_mapping_is_reported",
+          "Abgeschlossen 2026-11-21; Nachweise siehe resolved."
         ]
       }
     },
@@ -1828,7 +1834,7 @@
       "status": "partial",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 70,
+      "progress_percent": 80,
       "description": "cmd_route weckt bei jedem Aufruf erneut, meldet nach ERR/UNMAPPED dennoch Exit 0 und ignoriert einen fehlgeschlagenen Wake nach Rework-Erstellung. dockweave-run.sh unterdrückt zusätzlich Routing-Fehler.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1877,12 +1883,12 @@
       "audit_2026_11_21": {
         "verdict": "partial",
         "remaining_gaps": [
-          "Kein Test mit mehreren Zielen",
           "Kein dockweave-run.sh-Test für Routing-Fehler (-> RF-035)"
         ],
         "resolved": [
           "2026-11-21: Wake-Wiederholung nach unbekanntem Ausgang über Abgleichfenster (test_pending_wake_recovers_after_reconcile_window)",
-          "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl"
+          "Behoben 2026-11-21: Routing-Fehler öffnete das Upstream-Issue wieder und ließ Legacy-Ziele nie schließen; jetzt bleibt der Gate-Status, Notiz mit Wiederholbefehl",
+          "2026-11-21: test_partial_routing_over_several_targets_is_not_success (ein Ziel geweckt, eines UNMAPPED -> Exit != 0; Wiederholung weckt nur das fehlende)"
         ]
       }
     },
@@ -1891,10 +1897,10 @@
       "milestone": "M5",
       "type": "security",
       "title": "Admission- und Routing-Antworten im Wrapper strukturell fail-closed prüfen",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 75,
+      "progress_percent": 100,
       "description": "admission akzeptiert ein Dict mit bool allowed und beliebigem vorhandenen edges-Feld. Nachgelagerte Funktionen erwarten Listen von Objekten; fehlerhafte Antworten können als Freigabe erscheinen oder bei Zugriff auf .get abstürzen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -1938,12 +1944,12 @@
         "make test-wrapper"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "edges=null/Objekt/Liste mit null in Admission ungetestet"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "Behoben 2026-11-21: Kanten ohne upstream_agent_id wurden als ungültig abgelehnt (test_route_accepts_edges_without_upstream, test_route_rejects_malformed_edges)"
+          "Behoben 2026-11-21: Kanten ohne upstream_agent_id wurden als ungültig abgelehnt (test_route_accepts_edges_without_upstream, test_route_rejects_malformed_edges)",
+          "2026-11-21: test_invalid_admission_never_permits um edges null/Objekt/[null] und allowed als String erweitert",
+          "Abgeschlossen 2026-11-21; Nachweise siehe resolved."
         ]
       }
     },
@@ -3115,11 +3121,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 32,
+      "partial": 28,
       "blocked": 0,
-      "done": 12
+      "done": 16
     },
-    "progress_percent_done": 26.67,
+    "progress_percent_done": 35.56,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3134,8 +3140,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 3,
-      "remaining": 20
+      "done": 4,
+      "remaining": 19
     },
     "milestones": {
       "total": 7,
@@ -3164,9 +3170,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 32,
+    "partial": 28,
     "blocked": 0,
-    "done": 12
+    "done": 16
   },
   "evidence_summary": {
     "by_level": {
