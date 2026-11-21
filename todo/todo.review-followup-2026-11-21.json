@@ -167,7 +167,7 @@
       "id": "M6",
       "title": "Tests, CI und reproduzierbare Builds",
       "status": "in_progress",
-      "progress_percent": 96.5,
+      "progress_percent": 98.0,
       "task_ids": [
         "RF-031",
         "RF-032",
@@ -2118,10 +2118,10 @@
       "milestone": "M6",
       "type": "test",
       "title": "Pipeline-Enforcement an allen zugesagten Ausführungsendpunkten und Rollen prüfen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 85,
+      "progress_percent": 100,
       "description": "Vorhandene API-Tests prüfen OpenAI-Enforcement, aber die vollständige Kombination aus herdr, Streaming, Rollenpolicy und konkurrierender Override-Nutzung ist nicht nachgewiesen.",
       "evidence_level": "coverage_gap",
       "scope_origin": "today",
@@ -2172,12 +2172,11 @@
         "go test -race ./internal/api"
       ],
       "audit_2026_11_21": {
-        "verdict": "todo",
-        "remaining_gaps": [
-          "Kein Test, dass Terminal- und Start/Stop-Endpunkte für gesperrte Agenten nicht blockiert werden (benötigt Docker-Fake); aktuell nur durch die zwei Aufrufstellen von admitPipelineWork (openai.go, herdr.go) belegt"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: internal/api/pipeline_endpoints_test.go: TestBlockedWorkNeverReachesNativeAdapter (OpenAI, OpenAI-Stream, herdr: 409 JSON mit Gate/Gründen vor jedem Stream, Native nie erreicht; nach PASS beide ausgeführt; ungated Agent frei; Gegenprobe ohne Sperre scheitert), TestPipelineEndpointsThroughRealAuthMiddleware (unbekannte UID, Monitor schreibgesperrt bei Override/Update/Review/Prune/Chat, Admin), TestConcurrentPromptsConsumeSingleUseOverrideOnce (8 parallel, genau 1 Ausführung, -race), TestOverrideNeverReleasesTamper"
+          "2026-11-21: internal/api/pipeline_endpoints_test.go: TestBlockedWorkNeverReachesNativeAdapter (OpenAI, OpenAI-Stream, herdr: 409 JSON mit Gate/Gründen vor jedem Stream, Native nie erreicht; nach PASS beide ausgeführt; ungated Agent frei; Gegenprobe ohne Sperre scheitert), TestPipelineEndpointsThroughRealAuthMiddleware (unbekannte UID, Monitor schreibgesperrt bei Override/Update/Review/Prune/Chat, Admin), TestConcurrentPromptsConsumeSingleUseOverrideOnce (8 parallel, genau 1 Ausführung, -race), TestOverrideNeverReleasesTamper",
+          "Erledigt 2026-11-21: Verhaltenstests (internal/api/pipeline_endpoints_test.go: OpenAI, Stream, herdr, Auth-Middleware mit Rollen, nebenläufiger Single-Use-Override, Tamper, ungated Agent) plus struktureller Wächter TestPipelineEnforcementPoints (AST-Aufrufgraph: nur openAIChatCompletions und herdrPrompt rufen admitPipelineWork; jeder Weg zu Sessions.Prompt/Native.Prompt führt nur über diese beiden Handler; Start/Stop/Restart/Terminal als dokumentierte Ausnahmen ohne Admission; Gegenprobe mit eingeschleustem Handler scheitert)."
         ]
       }
     },
@@ -3103,11 +3102,11 @@
     "by_status": {
       "todo": 1,
       "in_progress": 0,
-      "partial": 5,
+      "partial": 4,
       "blocked": 0,
-      "done": 39
+      "done": 40
     },
-    "progress_percent_done": 86.67,
+    "progress_percent_done": 88.89,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3122,8 +3121,8 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 18,
-      "remaining": 5
+      "done": 19,
+      "remaining": 4
     },
     "milestones": {
       "total": 7,
@@ -3152,9 +3151,9 @@
     "state": "in_progress",
     "todo_remaining": 1,
     "in_progress": 0,
-    "partial": 5,
+    "partial": 4,
     "blocked": 0,
-    "done": 39
+    "done": 40
   },
   "evidence_summary": {
     "by_level": {
