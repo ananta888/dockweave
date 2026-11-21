@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 export interface GraphDocument {
   version: number;
+  revision?: number;
   schema?: unknown;
   connectors?: unknown[];
   customEdges?: unknown[];
@@ -33,6 +34,7 @@ export interface GraphGateSyncResult {
 export interface GraphDocumentResponse {
   saved: boolean;
   body: GraphDocument | null;
+  revision?: number;
   gates?: GraphGateSyncResult;
 }
 

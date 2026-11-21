@@ -110,7 +110,7 @@ interface GraphEdge {
   standalone: true,
   imports: [FFlowModule, FMinimapComponent, FormsModule],
   template: `
-    <div class="graph-view" (contextmenu)="openContext($event)" (click)="closeContext()">
+    <div class="graph-view" (contextmenu)="openContext($event)" (click)="closeContext()" (window:keydown)="onKeydown($event)">
       <div class="graph-toolbar">
         <div class="mode-switch">
           <button [class.active]="mode() === 'organization'" (click)="setMode('organization')">Organisation</button>
@@ -135,6 +135,8 @@ interface GraphEdge {
           <option value="radial">Radial</option>
           <option value="free">Frei (manuell)</option>
         </select>
+        <button class="small" (click)="undo()" [disabled]="!canUndo()" title="Rückgängig (Strg+Z)">↶</button>
+        <button class="small" (click)="redo()" [disabled]="!canRedo()" title="Wiederholen (Strg+Umschalt+Z)">↷</button>
         <button class="small" (click)="cleanup()">Aufräumen</button>
         <button class="small" (click)="openSettings()">Ports &amp; Schema</button>
         <button class="small" (click)="fit()">Fit</button>
@@ -166,7 +168,6 @@ interface GraphEdge {
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'skill')" (dragend)="draggingPalette.set(null)" (click)="palette('skill')"><b>Skill</b><span>agent skill</span></button>
           <button class="gate" draggable="true" (dragstart)="onPaletteDragStart($event, 'gate')" (dragend)="draggingPalette.set(null)" (click)="palette('gate')"><b>Gate</b><span>deterministic</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'http')" (dragend)="draggingPalette.set(null)" (click)="palette('http')"><b>HTTP</b><span>API endpoint</span></button>
-          <button draggable="true" (dragstart)="onPaletteDragStart($event, 'agent-chain')" (dragend)="draggingPalette.set(null)" (click)="palette('agent-chain')"><b>Chain</b><span>agent → agent</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'custom')" (dragend)="draggingPalette.set(null)" (click)="palette('custom')"><b>Custom</b><span>free node</span></button>
           <p class="muted">Workspace, memory, credential and knowledge come from the agent data.</p>
         </aside>
@@ -216,10 +217,17 @@ interface GraphEdge {
                 [class.active]="node.kind === 'agent' && node.state === 'running'"
                 [class.inactive]="node.kind === 'agent' && node.state !== 'running' && node.state !== 'error'"
                 [class.error]="node.kind === 'agent' && node.state === 'error'"
+                [class.gate-passed]="node.kind === 'gate' && node.state === 'passed'"
+                [class.gate-failed]="node.kind === 'gate' && node.state === 'failed'"
                 [class.main-agent]="node.kind === 'agent' && agentIdOf(node) === mainAgentId"
                 (click)="handleNodeClick(node)"
                 (dblclick)="nodeDoubleClicked(node)"
-                (contextmenu)="openContext($event, node)">
+                (contextmenu)="openContext($event, node)"
+                (keydown.enter)="handleNodeClick(node)"
+                (keydown.space)="handleNodeClick(node); $event.preventDefault()"
+                tabindex="0"
+                role="button"
+                [attr.aria-label]="ariaLabel(node)">
                 @if (node.kind === 'ghost') {
                   <div class="ghost-card" [class.active]="node.active">
                     <div class="ghost-kind">PLACEHOLDER</div>
@@ -238,7 +246,7 @@ interface GraphEdge {
                   <div class="node-head">
                     <span class="kind">{{ node.kind }}</span>
                     @if (node.state) {
-                      <span class="state" [class.on]="node.state === 'running'" [class.err]="node.state === 'error'">{{ node.state }}</span>
+                      <span class="state" [class.on]="node.state === 'running' || node.state === 'passed'" [class.err]="node.state === 'error' || node.state === 'failed'">{{ node.state }}</span>
                     }
                   </div>
                   @if (node.kind === 'agent' && agentIdOf(node) === mainAgentId) { <div class="main-badge">★ HAUPTAGENT</div> }
@@ -646,6 +654,7 @@ interface GraphEdge {
                     <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="gateCommand" name="gateCommand" placeholder="npm run build" /></label>
                     <label>Arbeitsverzeichnis <input [(ngModel)]="gateCwd" name="gateCwd" placeholder="." /></label>
                     <label>Timeout (s) <input type="number" [(ngModel)]="gateTimeout" name="gateTimeout" min="1" /></label>
+                    <label class="wide">Workspace (optional, überschreibt Standard) <input [(ngModel)]="gateWorkspace" name="gateWorkspace" placeholder="/pfad/zum/workspace" /></label>
                     <label><input type="checkbox" [(ngModel)]="gateReview" name="gateReview" /> Review erforderlich</label>
                     <label><input type="checkbox" [(ngModel)]="gateHuman" name="gateHuman" /> Menschliche Freigabe</label>
                   }
@@ -748,6 +757,7 @@ interface GraphEdge {
                     <label class="wide">Shell-Befehl (optional) <input [(ngModel)]="ecCommand" name="ecCommand" placeholder="npm run build" /></label>
                     <label>Arbeitsverzeichnis <input [(ngModel)]="ecCwd" name="ecCwd" placeholder="." /></label>
                     <label>Timeout (s) <input type="number" [(ngModel)]="ecTimeout" name="ecTimeout" min="1" /></label>
+                    <label class="wide">Workspace (optional) <input [(ngModel)]="ecWorkspace" name="ecWorkspace" placeholder="/pfad/zum/workspace" /></label>
                     <label><input type="checkbox" [(ngModel)]="ecReview" name="ecReview" /> Review erforderlich</label>
                     <label><input type="checkbox" [(ngModel)]="ecHuman" name="ecHuman" /> Menschliche Freigabe</label>
                   }
@@ -860,6 +870,8 @@ interface GraphEdge {
     .gw-node.kind-knowledge { border-left:4px solid #39c5cf; }
     .gw-node.kind-mcp { border-left:4px solid #bc8cff; }
     .gw-node.kind-gate { border-left:4px solid #d29922; }
+    .gw-node.kind-gate.gate-passed { border-left-color:#3fb950; }
+    .gw-node.kind-gate.gate-failed { border-left-color:#f85149; }
     .gw-node.kind-http { border-left:4px solid #39c5cf; }
     .gw-node.kind-custom { border-left:4px solid #8b949e; }
     .gw-node.kind-ghost { width:190px; background:#1a0f12; border:1px dashed #f85149; opacity:.72; }
@@ -1037,6 +1049,7 @@ export class GraphComponent implements OnChanges {
   gateTimeout = 300;
   gateReview = false;
   gateHuman = false;
+  gateWorkspace = '';
   editAvatar = '';
   editAvatarSVG = '';
   avatarError = signal('');
@@ -1059,6 +1072,7 @@ export class GraphComponent implements OnChanges {
   ecTimeout = 300;
   ecReview = false;
   ecHuman = false;
+  ecWorkspace = '';
   ecContract = '';
   connectOpen = signal(false);
   connectSource = signal<GraphNode | null>(null);
@@ -1080,6 +1094,10 @@ export class GraphComponent implements OnChanges {
   connDirection: ConnectorConfig['direction'] = 'out';
   private manualPositions = this.loadPositions();
 
+  // Undo/redo (GD-013): snapshots of the editable graph state.
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+
   @ViewChild(FCanvasComponent) private canvas?: FCanvasComponent;
   private readonly api = inject(ApiService);
   private readonly sanitizer = inject(DomSanitizer);
@@ -1087,6 +1105,7 @@ export class GraphComponent implements OnChanges {
   private readonly gateService = inject(GateService);
   private readonly paperclip = inject(PaperclipService);
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private graphRevision = 0;
   readonly gateCount = computed(() => this.connectors().filter(c => c.kind === 'gate' && c.enabled).length);
   readonly paperclipWorkspace = signal('');
   readonly paperclipSync = signal(false);
@@ -1097,8 +1116,16 @@ export class GraphComponent implements OnChanges {
   readonly expandedGateRun = signal<string | null>(null);
   readonly gateRunError = signal('');
   readonly paperclipIssues = signal<{ identifier?: string; title?: string; status?: string }[]>([]);
+  // Review detection (GD-018): a single source for the UI. The Paperclip issue
+  // model does not yet expose a review "type" flag, so we match the same
+  // keyword that parent-close.py uses for review.issue_match.
+  private readonly reviewMatch = 'review';
+  private isReviewIssue(i: { title?: string }): boolean {
+    return this.reviewMatch.length > 0
+      && (i.title || '').toLowerCase().includes(this.reviewMatch.toLowerCase());
+  }
   readonly openReviews = computed(() => this.paperclipIssues()
-    .filter(i => /review/i.test(i.title || '') && i.status !== 'done' && i.status !== 'cancelled').length);
+    .filter(i => this.isReviewIssue(i) && i.status !== 'done' && i.status !== 'cancelled').length);
 
   constructor() {
     // The gateway is the shared source of truth; localStorage stays as a
@@ -1109,6 +1136,7 @@ export class GraphComponent implements OnChanges {
     });
     this.graphService.load().subscribe({
       next: (res) => {
+        this.graphRevision = res?.revision ?? 0;
         const doc = (res?.saved ? res.body : null) as Record<string, unknown> | null;
         if (!doc) return;
         const apply = <T>(key: string, value: T | undefined, target: { set: (v: T) => void }) => {
@@ -1138,9 +1166,10 @@ export class GraphComponent implements OnChanges {
       this.paperclipSync.set(localStorage.getItem('dockweave.paperclipSync') === '1');
     } catch { /* ignore */ }
     this.loadGateSyncStatus();
-    // Gate runs are fetched lazily when the settings panel opens: the daemon
-    // endpoint may not exist on an older daemon and a background 404 would only
-    // add console noise.
+    this.loadGateHealth();
+    // Gate runs are now also fetched eagerly so the 2D graph can reflect each
+    // gate's last run on the node itself; a missing endpoint on an older daemon
+    // only sets an error signal and adds no console noise.
   }
 
   setPaperclipWorkspace(value: string): void {
@@ -1216,6 +1245,7 @@ export class GraphComponent implements OnChanges {
   private pushGraph(): void {
     const doc = {
       version: 1,
+      revision: this.graphRevision,
       schema: this.schema(),
       connectors: this.connectors(),
       customEdges: this.customEdges(),
@@ -1229,11 +1259,22 @@ export class GraphComponent implements OnChanges {
     };
     this.graphService.save(doc).subscribe({
       next: (res) => {
+        this.graphRevision = res.revision ?? this.graphRevision + 1;
         if (this.paperclipSync()) this.paperclipSyncInfo.set(this.describeGateSync(res.gates));
         this.loadGateSyncStatus();
         this.loadGateHealth();
       },
-      error: () => { /* keep localStorage */ },
+      error: (err) => {
+        if (err?.status === 409) {
+          this.configError.set('Graph wurde zwischenzeitlich geändert (409). Bitte neu laden und erneut speichern.');
+          this.graphService.load().subscribe({
+            next: (res) => {
+              this.graphRevision = res.revision ?? this.graphRevision;
+            },
+            error: () => { /* ignore */ },
+          });
+        }
+      },
     });
   }
 
@@ -1467,12 +1508,18 @@ export class GraphComponent implements OnChanges {
     if (!flow) return { x: clientX, y: clientY };
     const rect = flow.getBoundingClientRect();
     if (!canvas) return { x: clientX - rect.left, y: clientY - rect.top };
+    // Parse the canvas transform with DOMMatrix instead of a regex so
+    // matrix3d / scientific-notation / translate+scale forms all work.
+    let scale = 1, tx = 0, ty = 0;
     const tr = getComputedStyle(canvas).transform;
-    const m = tr && tr !== 'none' ? tr.match(/matrix\(([^)]+)\)/) : null;
-    const parts = m ? m[1].split(',').map(Number) : [1, 0, 0, 1, 0, 0];
-    const scale = parts[0] || 1;
-    const tx = parts[4] || 0;
-    const ty = parts[5] || 0;
+    if (tr && tr !== 'none') {
+      try {
+        const m = new DOMMatrix(tr);
+        scale = m.a || 1;
+        tx = m.e || 0;
+        ty = m.f || 0;
+      } catch { /* keep identity */ }
+    }
     return { x: (clientX - rect.left - tx) / scale, y: (clientY - rect.top - ty) / scale };
   }
 
@@ -1490,12 +1537,12 @@ export class GraphComponent implements OnChanges {
 
   private createPaletteNode(a: Agent, kind: string, pos: { x: number; y: number }): void {
     const mapped = kind === 'agent-chain' ? 'custom' : kind;
-    const id = 'conn-' + Date.now();
+    const id = newId('conn');
     const name = kind === 'gate' ? 'New gate' : kind === 'http' ? 'New HTTP' : kind === 'mcp' ? 'New MCP server' : kind === 'skill' ? 'New skill' : kind === 'agent-chain' ? 'New chain' : 'New node';
     const cfg: ConnectorConfig = {
       id, agentId: a.id, kind: mapped as ConnectorConfig['kind'], name,
       direction: 'out', enabled: true, connected: false, draft: kind === 'mcp' || kind === 'skill',
-      contract: kind === 'gate' ? JSON.stringify({ expression: 'true', on_true: 'allow', on_false: 'deny' }) : undefined,
+      contract: kind === 'gate' ? JSON.stringify({ gate_id: newId('gate'), expression: 'true', on_true: 'allow', on_false: 'deny' }) : undefined,
     };
     const next = [...this.connectors(), cfg];
     this.connectors.set(next);
@@ -1574,6 +1621,12 @@ export class GraphComponent implements OnChanges {
   }
 
   private createConnection(source: GraphNode, target: GraphNode, kind: string): void {
+    this.commit();
+    if (!this.compatibleKinds(kind, source.kind, target.kind)) {
+      this.connectError.set(`Verbindung ${source.kind} → ${target.kind} ist für Typ "${kind}" nicht erlaubt`);
+      this.cancelConnect();
+      return;
+    }
     const sides = this.bestSides(source, target);
     const out = this.pickPort(source.id, 'out', sides.sourceSide);
     const inn = this.pickPort(target.id, 'in', sides.targetSide);
@@ -1584,7 +1637,7 @@ export class GraphComponent implements OnChanges {
     }
     const ctype = this.schema().connectionTypes.find(t => t.id === kind);
     const edge: CustomEdge = {
-      id: 'custom-' + Date.now(), source: source.id, target: target.id,
+      id: newId('custom'), source: source.id, target: target.id,
       sourcePort: out.id, targetPort: inn.id, label: ctype?.label || kind,
       kind, sourceSide: out.side, targetSide: inn.side,
     };
@@ -1593,6 +1646,27 @@ export class GraphComponent implements OnChanges {
     this.persistCustomEdges(next);
     this.selectedEdge.set({ ...edge, type: 'bezier' });
     this.cancelConnect();
+  }
+
+  // Connection-type compatibility (GD-009). Known types constrain the allowed
+  // source/target node kinds; unknown or custom types stay free-form.
+  private compatibleKinds(type: string, source: NodeKind, target: NodeKind): boolean {
+    const rules: Partial<Record<string, [NodeKind, NodeKind]>> = {
+      rw: ['agent', 'workspace'],
+      ro: ['agent', 'workspace'],
+      memory: ['agent', 'memory'],
+      credential: ['agent', 'credential'],
+      knowledge: ['agent', 'knowledge'],
+      unit: ['unit', 'agent'],
+      org: ['org', 'unit'],
+      mcp: ['agent', 'mcp'],
+      gate: ['agent', 'gate'],
+      http: ['agent', 'http'],
+      chain: ['agent', 'agent'],
+    };
+    const rule = rules[type];
+    if (!rule) return true;
+    return source === rule[0] && target === rule[1];
   }
 
   private bestSides(source: GraphNode, target: GraphNode): { sourceSide: Side; targetSide: Side } {
@@ -1653,7 +1727,7 @@ export class GraphComponent implements OnChanges {
     const source = this.nodes().find(n => n.id === edge.source);
     const target = this.nodes().find(n => n.id === edge.target);
     if (!source || !target) return;
-    const id = 'conn-' + Date.now();
+    const id = newId('conn');
     const cfg: ConnectorConfig = {
       id, agentId: this.agents.find(x => x.id === this.selectedAgentId)?.id || source.id.replace(/^agent-/, ''),
       kind: 'custom', name: 'Junction', direction: 'out', enabled: true, connected: false,
@@ -1667,8 +1741,8 @@ export class GraphComponent implements OnChanges {
     const at = this.pickPort('connector-' + id, 'in', 'left');
     const ot = this.pickPort('connector-' + id, 'out', 'right');
     if (at && ot) {
-      const e1: CustomEdge = { id: 'custom-' + Date.now() + '-a', source: edge.source, target: 'connector-' + id, sourcePort: edge.sourcePort, targetPort: at.id, label: edge.label, kind: edge.kind, sourceSide: edge.sourceSide, targetSide: at.side };
-      const e2: CustomEdge = { id: 'custom-' + Date.now() + '-b', source: 'connector-' + id, target: edge.target, sourcePort: ot.id, targetPort: edge.targetPort, label: edge.label, kind: edge.kind, sourceSide: ot.side, targetSide: edge.targetSide };
+      const e1: CustomEdge = { id: newId('custom') + '-a', source: edge.source, target: 'connector-' + id, sourcePort: edge.sourcePort, targetPort: at.id, label: edge.label, kind: edge.kind, sourceSide: edge.sourceSide, targetSide: at.side };
+      const e2: CustomEdge = { id: newId('custom') + '-b', source: 'connector-' + id, target: edge.target, sourcePort: ot.id, targetPort: edge.targetPort, label: edge.label, kind: edge.kind, sourceSide: ot.side, targetSide: edge.targetSide };
       const edges = this.customEdges().filter(e => e.id !== edge.id);
       edges.push(e1, e2);
       this.customEdges.set(edges);
@@ -1678,6 +1752,7 @@ export class GraphComponent implements OnChanges {
   }
 
   deleteEdge(edge: GraphEdge): void {
+    this.commit();
     const custom = this.customEdges().filter(e => e.id !== edge.id);
     if (custom.length !== this.customEdges().length) {
       this.customEdges.set(custom);
@@ -1738,12 +1813,14 @@ export class GraphComponent implements OnChanges {
     this.ecTimeout = 300;
     this.ecReview = false;
     this.ecHuman = false;
+    this.ecWorkspace = '';
     if (c.kind === 'gate' && c.contract) {
       try {
         const g = JSON.parse(c.contract) as {
           expression?: string; on_true?: string; on_false?: string;
           command?: string; cwd?: string; timeout_sec?: number;
           review_required?: boolean; human_approval_required?: boolean;
+          workspace?: string;
         };
         this.ecExpression = g.expression || '';
         this.ecTrue = g.on_true || '';
@@ -1753,11 +1830,13 @@ export class GraphComponent implements OnChanges {
         this.ecTimeout = g.timeout_sec || 300;
         this.ecReview = !!g.review_required;
         this.ecHuman = !!g.human_approval_required;
+        this.ecWorkspace = g.workspace || '';
       } catch { /* ignore */ }
     }
   }
 
   saveLocalEditor(): void {
+    this.commit();
     const id = this.editConnectorId();
     if (!id) return;
     const next = this.connectors().map(c => {
@@ -1765,6 +1844,7 @@ export class GraphComponent implements OnChanges {
       let contract = this.ecContract;
       if (this.ecKind === 'gate') {
         const gate: Record<string, unknown> = {
+          gate_id: this.existingGateId(c.contract) || slug(this.ecName.trim()) || newId('gate'),
           expression: this.ecExpression.trim(),
           on_true: this.ecTrue.trim() || 'allow',
           on_false: this.ecFalse.trim() || 'deny',
@@ -1774,6 +1854,7 @@ export class GraphComponent implements OnChanges {
         if (this.ecTimeout) gate['timeout_sec'] = Number(this.ecTimeout) || 300;
         if (this.ecReview) gate['review_required'] = true;
         if (this.ecHuman) gate['human_approval_required'] = true;
+        if (this.ecWorkspace.trim()) gate['workspace'] = this.ecWorkspace.trim();
         contract = JSON.stringify(gate, null, 2);
       }
       return { ...c, name: this.ecName.trim() || c.name, kind: this.ecKind, direction: this.ecDirection,
@@ -1786,6 +1867,7 @@ export class GraphComponent implements OnChanges {
   }
 
   deleteLocalEdited(): void {
+    this.commit();
     const id = this.editConnectorId();
     if (!id) return;
     const next = this.connectors().filter(c => c.id !== id);
@@ -1803,6 +1885,17 @@ export class GraphComponent implements OnChanges {
       return `${c.expression || 'condition'} · true→${c.on_true || 'allow'} · false→${c.on_false || 'deny'}`;
     } catch {
       return 'gate';
+    }
+  }
+
+  // Stable gate identity (GD-011): read the existing gate_id so a rename never
+  // changes the identifier that links the graph node to gate runs.
+  private existingGateId(contract?: string): string {
+    if (!contract) return '';
+    try {
+      return ((JSON.parse(contract) as { gate_id?: string }).gate_id || '').trim();
+    } catch {
+      return '';
     }
   }
 
@@ -1908,6 +2001,7 @@ export class GraphComponent implements OnChanges {
   }
 
   setPortCount(kind: string, side: Side, type: 'inputs' | 'outputs', value: number | string): void {
+    this.commit();
     const n = Math.max(0, Math.min(12, Number(value) || 0));
     const schema = structuredClone(this.schema());
     if (!schema.nodePorts[kind]) {
@@ -2014,6 +2108,69 @@ export class GraphComponent implements OnChanges {
     this.persistPositions(this.manualPositions);
   }
 
+  // --- undo/redo (GD-013) ---
+  private snapshot(): string {
+    return JSON.stringify({
+      connectors: this.connectors(),
+      customEdges: this.customEdges(),
+      ghosts: this.ghosts(),
+      positions: this.manualPositions,
+      schema: this.schema(),
+    });
+  }
+
+  private restore(snap: string): void {
+    try {
+      const s = JSON.parse(snap) as {
+        connectors?: ConnectorConfig[]; customEdges?: CustomEdge[];
+        ghosts?: GhostNode[]; positions?: Record<string, { x: number; y: number }>;
+        schema?: GraphSchema;
+      };
+      if (s.connectors) { this.connectors.set(s.connectors); this.persistConnectors(s.connectors); }
+      if (s.customEdges) { this.customEdges.set(s.customEdges); this.persistCustomEdges(s.customEdges); }
+      if (s.ghosts) { this.ghosts.set(s.ghosts); this.persistGhosts(s.ghosts); }
+      if (s.positions) { this.manualPositions = s.positions; this.persistPositions(s.positions); }
+      if (s.schema) { this.schema.set(s.schema); this.persistSchema(s.schema); }
+      this.layoutNonce.update(v => v + 1);
+    } catch { /* ignore corrupt snapshot */ }
+  }
+
+  private commit(): void {
+    this.undoStack.push(this.snapshot());
+    if (this.undoStack.length > 50) this.undoStack.shift();
+    this.redoStack = [];
+  }
+
+  undo(): void {
+    const snap = this.undoStack.pop();
+    if (!snap) return;
+    this.redoStack.push(this.snapshot());
+    this.restore(snap);
+  }
+
+  redo(): void {
+    const snap = this.redoStack.pop();
+    if (!snap) return;
+    this.undoStack.push(this.snapshot());
+    this.restore(snap);
+  }
+
+  canUndo(): boolean { return this.undoStack.length > 0; }
+  canRedo(): boolean { return this.redoStack.length > 0; }
+
+  ariaLabel(n: { title: string; state?: string }): string {
+    return n.title + (n.state ? ' · ' + n.state : '');
+  }
+
+  onKeydown(ev: KeyboardEvent): void {
+    const mod = ev.ctrlKey || ev.metaKey;
+    if (!mod || ev.key.toLowerCase() !== 'z') return;
+    const t = ev.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    ev.preventDefault();
+    if (ev.shiftKey) this.redo(); else this.undo();
+  }
+
   openContext(ev: MouseEvent, node?: GraphNode): void {
     ev.preventDefault();
     ev.stopPropagation();
@@ -2025,6 +2182,7 @@ export class GraphComponent implements OnChanges {
   }
 
   saveTemplate(name?: string): void {
+    this.commit();
     const chosen = (name ?? '').trim();
     if (!chosen) {
       this.newTemplateName = `Layout ${new Date().toLocaleString()}`;
@@ -2036,7 +2194,7 @@ export class GraphComponent implements OnChanges {
       .filter(n => n.kind !== 'ghost')
       .map(n => ({ id: n.id, kind: n.kind, title: n.title, position: { x: n.position.x, y: n.position.y } }));
     if (!nodes.length) return;
-    const tpl: LayoutTemplate = { id: `tpl-${Date.now()}`, name: chosen, createdAt: new Date().toISOString(), nodes };
+    const tpl: LayoutTemplate = { id: newId('tpl'), name: chosen, createdAt: new Date().toISOString(), nodes };
     const next = [tpl, ...this.layoutTemplates()];
     this.layoutTemplates.set(next);
     this.persistTemplates(next);
@@ -2051,6 +2209,7 @@ export class GraphComponent implements OnChanges {
   }
 
   applyTemplate(tpl: LayoutTemplate): void {
+    this.commit();
     const real = this.nodes().filter(n => n.kind !== 'ghost');
     const byId = new Map(real.map(n => [n.id, n]));
     const tplById = new Map(tpl.nodes.map(n => [n.id, n]));
@@ -2154,11 +2313,13 @@ export class GraphComponent implements OnChanges {
     this.gateTimeout = 300;
     this.gateReview = false;
     this.gateHuman = false;
+    this.gateWorkspace = '';
     this.connectorsOpen.set(true);
     this.loadAgentConfig(a.id);
   }
 
   addConnector(): void {
+    this.commit();
     const a = this.connectorAgent();
     if (!a) return;
     const name = this.connName.trim();
@@ -2170,6 +2331,7 @@ export class GraphComponent implements OnChanges {
     let contractRaw = this.connContract.trim();
     if (this.connKind === 'gate') {
       const contract: Record<string, unknown> = {
+        gate_id: slug(name) || newId('gate'),
         expression: this.gateExpression.trim(),
         on_true: this.gateTrue.trim() || 'allow',
         on_false: this.gateFalse.trim() || 'deny',
@@ -2179,6 +2341,7 @@ export class GraphComponent implements OnChanges {
       if (this.gateTimeout) contract['timeout_sec'] = Number(this.gateTimeout) || 300;
       if (this.gateReview) contract['review_required'] = true;
       if (this.gateHuman) contract['human_approval_required'] = true;
+      if (this.gateWorkspace.trim()) contract['workspace'] = this.gateWorkspace.trim();
       contractRaw = JSON.stringify(contract, null, 2);
     }
     if (contractRaw) {
@@ -2193,7 +2356,7 @@ export class GraphComponent implements OnChanges {
       }
     }
     const cfg: ConnectorConfig = {
-      id: `conn-${Date.now()}`, agentId: a.id, kind: this.connKind, name,
+      id: newId('conn'), agentId: a.id, kind: this.connKind, name,
       targetAgentId: this.connTargetAgent || undefined, url: this.connURL.trim() || undefined,
       contract: contractRaw || undefined, direction: this.connDirection, enabled: true,
     };
@@ -2214,12 +2377,14 @@ export class GraphComponent implements OnChanges {
   }
 
   deleteConnector(id: string): void {
+    this.commit();
     const next = this.connectors().filter(c => c.id !== id);
     this.connectors.set(next);
     this.persistConnectors(next);
   }
 
   toggleConnector(id: string): void {
+    this.commit();
     const next = this.connectors().map(c => c.id === id ? { ...c, enabled: !c.enabled } : c);
     this.connectors.set(next);
     this.persistConnectors(next);
@@ -2549,16 +2714,38 @@ export class GraphComponent implements OnChanges {
       if (!agent) continue;
       const idx = used.get(c.agentId) ?? 0;
       used.set(c.agentId, idx + 1);
+      const isGate = c.kind === 'gate';
+      const gate = isGate ? this.gateNodeStatus(c) : undefined;
       out.push({
         id: `connector-${c.id}`,
         kind: c.kind === 'custom' ? 'custom' : c.kind,
         title: c.name,
         subtitle: c.kind,
-        detail: c.kind === 'gate' && c.contract ? this.gateSummary(c.contract) : (c.url || (c.contract ? this.contractSummary(c.contract) : '')),
+        detail: isGate ? (gate?.detail || (c.contract ? this.gateSummary(c.contract) : ''))
+          : (c.url || (c.contract ? this.contractSummary(c.contract) : '')),
         position: { x: agent.position.x + 320, y: agent.position.y + idx * 130 },
+        state: gate?.state,
       });
     }
     return out;
+  }
+
+  // Gate node runtime status (GD-005): reflect the latest sandbox run for the
+  // gate's stable id so a failed/tampered gate is visible on the node itself.
+  private gateNodeStatus(c: ConnectorConfig): { state?: string; detail?: string } | undefined {
+    const gid = this.existingGateId(c.contract) || slug(c.name);
+    if (!gid) return undefined;
+    const runs = this.gateRuns();
+    for (const run of runs) {
+      const res = (run.results || []).find(r => r.id === gid);
+      if (res) {
+        const tamper = run.tamper;
+        const status = tamper ? 'failed' : (res.status === 'passed' ? 'passed' : 'failed');
+        const detail = `${status} · ${res.duration_ms ?? run.duration_ms}ms${tamper ? ' · TAMPER' : ''}`;
+        return { state: status, detail };
+      }
+    }
+    return undefined;
   }
 
   contractSummary(raw: string): string {
@@ -2628,6 +2815,7 @@ export class GraphComponent implements OnChanges {
   }
 
   applySchemaJson(): void {
+    this.commit();
     try {
       const parsed = JSON.parse(this.schemaJson) as GraphSchema;
       if (!parsed.nodePorts || !parsed.connectionTypes) throw new Error('nodePorts and connectionTypes are required');
@@ -2641,6 +2829,7 @@ export class GraphComponent implements OnChanges {
   }
 
   resetSchema(): void {
+    this.commit();
     this.schema.set(structuredClone(DEFAULT_GRAPH_SCHEMA));
     this.persistSchema(this.schema());
     this.schemaJson = JSON.stringify(this.schema(), null, 2);
@@ -2783,12 +2972,19 @@ export class GraphComponent implements OnChanges {
   }
 
   addCustomEdge(): void {
+    this.commit();
     if (!this.connSource || !this.connTarget || !this.connSourcePort || !this.connTargetPort) {
       this.schemaError.set('source, target and both ports are required');
       return;
     }
+    const srcKind = this.kindOfId(this.connSource);
+    const tgtKind = this.kindOfId(this.connTarget);
+    if (srcKind && tgtKind && !this.compatibleKinds(this.connType, srcKind, tgtKind)) {
+      this.schemaError.set(`Verbindung ${srcKind} → ${tgtKind} ist für Typ "${this.connType}" nicht erlaubt`);
+      return;
+    }
     const edge: CustomEdge = {
-      id: `custom-${Date.now()}`,
+      id: newId('custom'),
       source: this.connSource,
       target: this.connTarget,
       sourcePort: this.connSourcePort,
@@ -2805,6 +3001,7 @@ export class GraphComponent implements OnChanges {
   }
 
   deleteCustomEdge(id: string): void {
+    this.commit();
     const next = this.customEdges().filter(e => e.id !== id);
     this.customEdges.set(next);
     this.persistCustomEdges(next);
@@ -3192,9 +3389,10 @@ export class GraphComponent implements OnChanges {
     const k = area / Math.max(1, Math.sqrt(nodes.length));
     const pos = new Map<string, { x: number; y: number }>();
     const sizes = new Map<string, { w: number; h: number }>();
+    const rand = mulberry32(FORCE_LAYOUT_SEED);
     for (const n of nodes) {
-      const ang = Math.random() * 2 * Math.PI;
-      const rr = 120 + Math.random() * 200;
+      const ang = rand() * 2 * Math.PI;
+      const rr = 120 + rand() * 200;
       pos.set(n.id, { x: Math.cos(ang) * rr, y: Math.sin(ang) * rr });
       sizes.set(n.id, this.nodeSize(n));
     }
@@ -3580,3 +3778,24 @@ export class GraphComponent implements OnChanges {
 function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unassigned';
 }
+
+/** Collision-safe id generation (GD-016). */
+function newId(prefix: string): string {
+  const uuid = (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
+  return `${prefix}-${uuid}`;
+}
+
+/** Deterministic 32-bit PRNG (mulberry32) for reproducible force layouts (GD-010). */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Stable, deterministic seed for the force layout (GD-010). */
+const FORCE_LAYOUT_SEED = 20261121;
