@@ -107,7 +107,7 @@ test('editor validates expressions, offers routing actions and shows sync errors
   await mockBackend(page, m);
   await openGraph(page);
 
-  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right' });
+  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right', position: { x: 8, y: 8 } }); // corner: an edge's ＋ button can overlap the centre
   await page.getByRole('button', { name: 'Connectoren konfigurieren…' }).click();
 
   await page.locator('select[name="connKind"]').selectOption('gate');
@@ -159,7 +159,7 @@ test('legacy free-text routing opens as reason with the default action', async (
 
 // The Paperclip workspace lives in the agent's connector popover.
 async function workspaceInput(page: Page) {
-  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right' });
+  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right', position: { x: 8, y: 8 } }); // corner: an edge's ＋ button can overlap the centre
   await page.getByRole('button', { name: 'Connectoren konfigurieren…' }).click();
   return page.locator('input[name="paperclipWorkspace"]');
 }
@@ -432,7 +432,7 @@ test('the add dialog cannot save a form changed during a delayed validation', as
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true }) });
   });
   await openGraph(page);
-  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right' });
+  await page.locator('[data-node-id="agent-ag_a"]').click({ button: 'right', position: { x: 8, y: 8 } }); // corner: an edge's ＋ button can overlap the centre
   await page.getByRole('button', { name: 'Connectoren konfigurieren…' }).click();
   await page.locator('select[name="connKind"]').selectOption('gate');
   await page.locator('input[name="connName"]').fill('Lint');
