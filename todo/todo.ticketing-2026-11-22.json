@@ -34,7 +34,7 @@
       "task_ids": [
         "TK-001"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "M1",
@@ -52,7 +52,8 @@
       "title": "API und Akteure",
       "task_ids": [
         "TK-006",
-        "TK-007"
+        "TK-007",
+        "TK-013"
       ],
       "status": "todo"
     },
@@ -61,7 +62,8 @@
       "title": "Dispatcher",
       "task_ids": [
         "TK-008",
-        "TK-009"
+        "TK-009",
+        "TK-011"
       ],
       "status": "todo"
     },
@@ -70,7 +72,6 @@
       "title": "UI, Migration, Doku",
       "task_ids": [
         "TK-010",
-        "TK-011",
         "TK-012"
       ],
       "status": "todo"
@@ -82,10 +83,10 @@
       "milestone": "M0",
       "type": "docs",
       "title": "ADR 0003 entscheiden (offene Fragen 1–4 klären, Status accepted)",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Nutzerentscheidungen zu Menschen/Rollen, Rechten an Agenten-Tickets, Scheduler und Migration einholen und im ADR festhalten.",
       "components": [
         "docs/adr"
@@ -95,7 +96,10 @@
       ],
       "depends_on": [],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: ADR 0003 accepted; owner decisions: several accounts via Keycloak groups, permissions configurable per role (D-6a), native heartbeat 30 s (D-9), import existing Paperclip tickets and live sync primary↔mirror (D-3, D-8)."
+      ]
     },
     {
       "id": "TK-002",
@@ -174,20 +178,21 @@
       "id": "TK-005",
       "milestone": "M1",
       "type": "feature",
-      "title": "Anbieterwahl: Konfiguration, Einrichtungsvorschlag auto, Health, CLI dockweave ticket provider",
+      "title": "Anbieterwahl: führender Anbieter + optionaler Spiegel, Einrichtungsvorschlag auto, Health, CLI",
       "status": "todo",
       "priority": "P2",
       "risk": "medium",
       "progress_percent": 0,
-      "description": "TICKET_PROVIDER in dockweaved.conf; auto nur bei Einrichtung; GET /api/v1/tickets/provider (Name, Health, Capabilities).",
+      "description": "TICKET_PROVIDER und TICKET_MIRROR in dockweaved.conf; auto nur bei Einrichtung; GET /api/v1/tickets/provider (Name, Health, Capabilities, Spiegel).",
       "components": [
         "cmd/dockweaved",
         "cmd/dockweave",
         "internal/api"
       ],
       "acceptance_criteria": [
-        "Laufzeit-Umschaltung findet nie statt.",
-        "Provider-Status ist per API, CLI und UI sichtbar."
+        "Der führende Anbieter wechselt zur Laufzeit nie.",
+        "Agenten werden nur aus dem führenden Anbieter angetrieben.",
+        "Provider- und Spiegelstatus sind per API, CLI und UI sichtbar."
       ],
       "depends_on": [
         "TK-003",
@@ -241,6 +246,35 @@
       ],
       "depends_on": [
         "TK-006"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-013",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Rollen und Rechte: Keycloak-Gruppen → Rollen → Rechte (konfigurierbar), Durchsetzung im Daemon",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "ticket-roles.json (Gruppen→Rollen, Rollen→Rechte); Startrechte ticket.*, gate.override, agent.wake, terminal.view/takeover, provider.configure, sync.run; Standardrollen admin/approver/author/reader; Daemon prüft jedes Recht mit dem weitergereichten Akteur; UI blendet aus.",
+      "components": [
+        "internal/ticketing/authz",
+        "internal/api",
+        "internal/webui",
+        "ui/web",
+        "docs/security-decisions.md"
+      ],
+      "acceptance_criteria": [
+        "Jede Ticket-Mutation prüft ein Recht im Daemon; fehlendes Recht → 403 mit Rechtname.",
+        "Unbekannte Gruppe gibt keine Rechte; ungültige Konfiguration → Daemon startet mit nur-lesend und meldet den Fehler.",
+        "Rollenänderung in der Datei wirkt ohne Neustart (Reload) und wird auditiert.",
+        "UI zeigt nur erlaubte Aktionen (e2e je Rolle)."
+      ],
+      "depends_on": [
+        "TK-007"
       ],
       "verification_files": [],
       "verification_commands": []
@@ -312,32 +346,38 @@
       ],
       "depends_on": [
         "TK-006",
-        "TK-007"
+        "TK-007",
+        "TK-013"
       ],
       "verification_files": [],
       "verification_commands": []
     },
     {
       "id": "TK-011",
-      "milestone": "M4",
+      "milestone": "M3",
       "type": "feature",
-      "title": "Migration: dockweave ticket migrate (native ↔ paperclip) und Altdaten paperclip:<id>",
+      "title": "Live-Sync führend ↔ Spiegel und Erstübernahme bestehender Paperclip-Tickets",
       "status": "todo",
-      "priority": "P3",
-      "risk": "medium",
+      "priority": "P1",
+      "risk": "high",
       "progress_percent": 0,
-      "description": "Bestehende issue_id-Werte in Gate-Läufen/Reviews/Freigaben als paperclip:<id> lesbar; ausdrücklicher Kopierbefehl zwischen Anbietern.",
+      "description": "ticket_links-Zuordnung, Outbox aus Domänenereignissen, Abgleich alle 30 s (updated_since), feldweise Konfliktregel (neuer gewinnt, Gleichstand → führend), Kommentare append-only nach Herkunfts-ID; dockweave ticket sync --initial/--dry-run; Gate-Läufe/Reviews/Freigaben auf TicketRef umschlüsseln.",
       "components": [
+        "internal/ticketing/sync",
         "internal/persistence",
         "cmd/dockweave"
       ],
       "acceptance_criteria": [
+        "Erstübernahme übernimmt Tickets, Kommentare, Unteraufgaben vollständig und idempotent (zweiter Lauf ändert nichts).",
+        "Änderungen auf beiden Seiten erscheinen nach spätestens einem Abgleich auf der anderen Seite.",
+        "Konflikte werden nach Regel aufgelöst und als ticket.sync_conflict mit beiden Werten auditiert.",
         "Keine bestehende Gate-/Review-Historie geht verloren.",
-        "Migration ist idempotent und trocken testbar (--dry-run)."
+        "Sync-Ausfall blockiert das führende System nie; Status unter GET /api/v1/tickets/sync."
       ],
       "depends_on": [
         "TK-003",
-        "TK-004"
+        "TK-004",
+        "TK-006"
       ],
       "verification_files": [],
       "verification_commands": []
@@ -372,61 +412,64 @@
     "TK-003",
     "TK-005",
     "TK-006",
+    "TK-007",
+    "TK-013",
     "TK-008",
     "TK-009",
+    "TK-011",
     "TK-010"
   ],
   "tasks_status_summary": {
-    "total": 12,
+    "total": 13,
     "by_status": {
       "todo": 12,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 0
+      "done": 1
     },
-    "progress_percent_done": 0.0,
+    "progress_percent_done": 7.7,
     "by_priority": {
       "P0": 0,
-      "P1": 9,
+      "P1": 11,
       "P2": 2,
-      "P3": 1
+      "P3": 0
     },
     "by_risk": {
       "low": 1,
-      "medium": 6,
-      "high": 5,
+      "medium": 5,
+      "high": 7,
       "critical": 0
     },
     "critical_path": {
-      "total": 8,
-      "done": 0,
-      "remaining": 8
+      "total": 11,
+      "done": 1,
+      "remaining": 10
     },
     "milestones": {
       "total": 5,
-      "todo": 5,
+      "todo": 4,
       "in_progress": 0,
       "blocked": 0,
-      "done": 0
+      "done": 1
     }
   },
   "tasks_type_summary": {
-    "total": 12,
+    "total": 13,
     "by_type": {
       "docs": 2,
       "feature": 7,
-      "security": 1,
+      "security": 2,
       "refactor": 1,
       "frontend": 1
     }
   },
   "progress_summary": {
-    "state": "todo",
+    "state": "in_progress",
     "todo_remaining": 12,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 0
+    "done": 1
   }
 }

@@ -1,8 +1,8 @@
 # ADR 0003 — Ticketing as a port with exchangeable adapters (Paperclip, native)
 
-- Status: proposed
+- Status: accepted (2026-11-22, decisions of the owner below)
 - Date: 2026-11-22
-- Decisions: D-1 … D-7 (open questions at the end)
+- Decisions: D-1 … D-9
 - Tracked in: `todo/todo.ticketing-2026-11-22.json`
 
 ## Context
@@ -70,17 +70,20 @@ Existing ids stay valid as `paperclip:<id>` (migration, no data loss).
 Anti-corruption layer: adapter-specific fields never leak into the core;
 unknown extras stay in `Ticket.Extra` (read-only for the UI).
 
-## D-3: Selection – explicit, not automatic switching
+## D-3: Selection – one primary provider, optional live sync to a mirror
 
-The daemon config names the provider (`TICKET_PROVIDER=native|paperclip`).
-`auto` is only a **setup-time default** (Paperclip reachable → `paperclip`,
-otherwise `native`) and is written to the config once. The provider never
-flips at runtime: switching silently would split tickets across two stores.
-If the selected provider is down, ticket operations fail closed with a clear
-`ticketing_unavailable` and the UI shows it; agents are not driven.
+The daemon config names the **primary** provider
+(`TICKET_PROVIDER=native|paperclip`) and optionally a **mirror**
+(`TICKET_MIRROR=paperclip|native|none`). `auto` is only a setup-time
+proposal (Paperclip reachable → `paperclip`, otherwise `native`) written to
+the config once. The primary never flips at runtime.
 
-A later, explicit migration command can copy native tickets to Paperclip or
-back (`dockweave ticket migrate --to paperclip`).
+- **Agents are driven only from the primary.** The mirror is never
+  dispatched, so no ticket is executed twice.
+- If the primary is down, ticket operations fail closed with
+  `ticketing_unavailable`, the UI shows it and agents are not driven.
+- Live sync between primary and mirror is D-8; the initial import of
+  existing Paperclip tickets is part of it.
 
 ## D-4: The worker loop moves into the daemon (Template Method)
 
@@ -134,12 +137,48 @@ reference a ticket.
   (`deployments/paperclip/tests`, `tests/integration/wrapper_e2e_test.go`)
   to the Go dispatcher before switching the default.
 
-## Open questions
+## D-6a: Roles and permissions are configurable
 
-1. Humans: only the owner, or several accounts with roles (author, approver,
-   reader) – via Keycloak groups?
-2. What may a human do on an agent ticket: assign, reply in thread, approve,
-   override a gate (already exists, admin only), take over the terminal?
-3. Native scheduler: heartbeat interval and concurrency per agent.
-4. Should `native` also import existing Paperclip tickets once (migration) or
-   start empty?
+Accounts come from Keycloak; **groups map to roles**, roles map to
+**permissions** – both in a config file (`/etc/dockweave/ticket-roles.json`),
+not in code. Permissions (initial set): `ticket.read`, `ticket.create`,
+`ticket.edit`, `ticket.comment`, `ticket.assign`, `ticket.approve`,
+`ticket.delete`, `gate.override`, `agent.wake`, `terminal.view`,
+`terminal.takeover`, `provider.configure`, `sync.run`. Default roles:
+`admin` (all), `approver`, `author`, `reader` (only `ticket.read`). The
+**daemon** enforces the permissions with the actor forwarded by the gateway
+(D-6); the UI only hides what the actor may not do. Unknown groups grant
+nothing; the peer-UID roles (`ADMIN_UIDS`/`MONITOR_UIDS`) stay for CLI and
+local tools.
+
+## D-8: Live sync between primary and mirror
+
+- **Mapping table** `ticket_links(primary_ref, mirror_ref, primary_version,
+  mirror_version, synced_at)`; every ticket and comment carries its origin.
+- **Triggers:** domain events (D-5) via an outbox for prompt pushes, plus a
+  reconcile pass every 30 s that pulls changes (`updated_since`) from both
+  sides. Idempotent: replaying a change is a no-op.
+- **Conflicts:** field-level; the newer change wins, on a tie the primary
+  wins; comments are append-only and merged by origin id, never rewritten.
+  Every resolved conflict is an audit event `ticket.sync_conflict` with both
+  values.
+- **Initial import:** `dockweave ticket sync --initial` (also offered at setup)
+  imports all existing Paperclip tickets, comments and children; existing
+  gate runs, reviews and approvals are re-keyed to `TicketRef`
+  (`paperclip:<id>`) without data loss. Dry run with `--dry-run`.
+- **Status:** `GET /api/v1/tickets/sync` (last pass, lag, conflicts, errors);
+  sync failures never block the primary.
+
+## D-9: Native scheduler
+
+Heartbeat every **30 s** per agent (configurable), **one ticket at a time**
+per agent by default (configurable concurrency). A heartbeat with no work
+is a no-op; a blocked admission spends no turn.
+
+## Decisions of the owner (2026-11-22)
+
+1. Several accounts, roles via Keycloak groups → D-6a.
+2. Everything a human may do is configurable per role → D-6a.
+3. Native heartbeat 30 s → D-9.
+4. Import existing Paperclip tickets and keep both in sync while running →
+   D-3 (primary + mirror) and D-8.

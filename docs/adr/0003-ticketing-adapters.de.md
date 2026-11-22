@@ -1,8 +1,8 @@
 # ADR 0003 — Ticketing als Port mit austauschbaren Adaptern (Paperclip, nativ)
 
-- Status: vorgeschlagen
+- Status: angenommen (2026-11-22, Entscheidungen des Eigentümers unten)
 - Datum: 2026-11-22
-- Entscheidungen: D-1 … D-7 (offene Fragen am Ende)
+- Entscheidungen: D-1 … D-9
 - Verfolgt in: `todo/todo.ticketing-2026-11-22.json`
 
 ## Kontext
@@ -72,19 +72,22 @@ Datenverlust).
 Anti-Corruption-Layer: adapterspezifische Felder gelangen nie in den Kern;
 unbekannte Zusatzfelder liegen in `Ticket.Extra` (nur lesend für die UI).
 
-## D-3: Auswahl – explizit, kein automatisches Umschalten
+## D-3: Auswahl – ein führender Anbieter, optional Live-Sync mit einem Spiegel
 
-Die Daemon-Konfiguration nennt den Anbieter (`TICKET_PROVIDER=native|paperclip`).
-`auto` ist nur ein **Vorschlag bei der Einrichtung** (Paperclip erreichbar →
-`paperclip`, sonst `native`) und wird einmal in die Konfiguration
-geschrieben. Zur Laufzeit wird nie umgeschaltet: stilles Umschalten würde
-Tickets auf zwei Speicher verteilen. Ist der gewählte Anbieter nicht
-erreichbar, scheitern Ticket-Operationen geschlossen mit
-`ticketing_unavailable`, die UI zeigt das, und Agenten werden nicht
-angetrieben.
+Die Daemon-Konfiguration nennt den **führenden** Anbieter
+(`TICKET_PROVIDER=native|paperclip`) und optional einen **Spiegel**
+(`TICKET_MIRROR=paperclip|native|none`). `auto` ist nur ein Vorschlag bei der
+Einrichtung (Paperclip erreichbar → `paperclip`, sonst `native`) und wird
+einmal in die Konfiguration geschrieben. Der führende Anbieter wechselt zur
+Laufzeit nie.
 
-Ein späterer, ausdrücklicher Migrationsbefehl kann native Tickets nach
-Paperclip kopieren oder zurück (`dockweave ticket migrate --to paperclip`).
+- **Agenten werden nur aus dem führenden System angetrieben.** Der Spiegel
+  wird nie ausgeführt, kein Ticket läuft doppelt.
+- Ist der führende Anbieter nicht erreichbar, scheitern Ticket-Operationen
+  geschlossen mit `ticketing_unavailable`, die UI zeigt das, und Agenten
+  werden nicht angetrieben.
+- Der Live-Sync zwischen führendem System und Spiegel ist D-8; die einmalige
+  Übernahme bestehender Paperclip-Tickets gehört dazu.
 
 ## D-4: Die Arbeitsschleife wandert in den Daemon (Template Method)
 
@@ -142,13 +145,51 @@ persönliche Tagesplan; eine Aufgabe kann auf ein Ticket verweisen.
   `tests/integration/wrapper_e2e_test.go`) auf den Go-Dispatcher übertragen,
   bevor der Standard umgestellt wird.
 
-## Offene Fragen
+## D-6a: Rollen und Rechte sind konfigurierbar
 
-1. Menschen: nur der Eigentümer oder mehrere Konten mit Rollen (Autor,
-   Freigeber, Leser) – über Keycloak-Gruppen?
-2. Was darf ein Mensch an einem Agenten-Ticket: zuweisen, im Thread
-   antworten, freigeben, ein Gate überstimmen (gibt es schon, nur Admin), das
-   Terminal übernehmen?
-3. Nativer Scheduler: Heartbeat-Intervall und Parallelität je Agent.
-4. Soll `native` bestehende Paperclip-Tickets einmalig übernehmen
-   (Migration) oder leer starten?
+Konten kommen aus Keycloak; **Gruppen werden Rollen zugeordnet**, Rollen
+**Rechten** – beides in einer Konfigurationsdatei
+(`/etc/dockweave/ticket-roles.json`), nicht im Code. Rechte (Startumfang):
+`ticket.read`, `ticket.create`, `ticket.edit`, `ticket.comment`,
+`ticket.assign`, `ticket.approve`, `ticket.delete`, `gate.override`,
+`agent.wake`, `terminal.view`, `terminal.takeover`, `provider.configure`,
+`sync.run`. Standardrollen: `admin` (alles), `approver`, `author`, `reader`
+(nur `ticket.read`). Der **Daemon** setzt die Rechte mit dem vom Gateway
+weitergereichten Akteur durch (D-6); die UI blendet nur aus, was der Akteur
+nicht darf. Unbekannte Gruppen geben keine Rechte; die Peer-UID-Rollen
+(`ADMIN_UIDS`/`MONITOR_UIDS`) bleiben für CLI und lokale Werkzeuge.
+
+## D-8: Live-Sync zwischen führendem System und Spiegel
+
+- **Zuordnungstabelle** `ticket_links(primary_ref, mirror_ref,
+  primary_version, mirror_version, synced_at)`; jedes Ticket und jeder
+  Kommentar trägt seine Herkunft.
+- **Auslöser:** Domänenereignisse (D-5) über eine Outbox für zeitnahe
+  Übertragung, dazu alle 30 s ein Abgleich, der Änderungen
+  (`updated_since`) von beiden Seiten holt. Idempotent: eine wiederholte
+  Änderung bewirkt nichts.
+- **Konflikte:** feldweise; die neuere Änderung gewinnt, bei Gleichstand das
+  führende System; Kommentare werden nur angehängt und nach Herkunfts-ID
+  zusammengeführt, nie umgeschrieben. Jeder aufgelöste Konflikt ist ein
+  Audit-Ereignis `ticket.sync_conflict` mit beiden Werten.
+- **Erstübernahme:** `dockweave ticket sync --initial` (auch bei der
+  Einrichtung angeboten) übernimmt alle bestehenden Paperclip-Tickets,
+  Kommentare und Unteraufgaben; vorhandene Gate-Läufe, Reviews und Freigaben
+  werden ohne Datenverlust auf `TicketRef` (`paperclip:<id>`) umgeschlüsselt.
+  Probelauf mit `--dry-run`.
+- **Status:** `GET /api/v1/tickets/sync` (letzter Lauf, Verzug, Konflikte,
+  Fehler); Sync-Fehler blockieren nie das führende System.
+
+## D-9: Nativer Scheduler
+
+Heartbeat alle **30 s** je Agent (konfigurierbar), standardmäßig **ein
+Ticket gleichzeitig** je Agent (Parallelität konfigurierbar). Ein Heartbeat
+ohne Arbeit bewirkt nichts; eine blockierte Admission kostet keinen Turn.
+
+## Entscheidungen des Eigentümers (2026-11-22)
+
+1. Mehrere Konten, Rollen über Keycloak-Gruppen → D-6a.
+2. Alles, was ein Mensch tun darf, ist je Rolle konfigurierbar → D-6a.
+3. Nativer Heartbeat 30 s → D-9.
+4. Bestehende Paperclip-Tickets übernehmen und beide im laufenden Betrieb
+   synchron halten → D-3 (führend + Spiegel) und D-8.
