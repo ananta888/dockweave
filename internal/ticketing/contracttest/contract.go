@@ -207,8 +207,12 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 		if err := in.Checkout(ctx, tk.Ref.ID, agentB.ID); !errors.Is(err, ticketing.ErrConflict) {
 			t.Fatalf("second agent: %v", err)
 		}
-		if next, _ := in.Next(ctx, agentA.ID); next != nil {
-			t.Fatalf("checked-out ticket offered again: %+v", next)
+		// The holder may resume its own claim; nobody else is offered it.
+		if next, _ := in.Next(ctx, agentA.ID); next != nil && next.Ref != tk.Ref {
+			t.Fatalf("unexpected next while holding: %+v", next)
+		}
+		if next, _ := in.Next(ctx, agentB.ID); next != nil && next.Ref == tk.Ref {
+			t.Fatalf("ticket held by A offered to B: %+v", next)
 		}
 		got, _ := p.Tickets().Get(ctx, tk.Ref.ID)
 		if got.CheckedOutBy != agentA.ID {
@@ -222,6 +226,16 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 		}
 		if err := in.Checkout(ctx, "nope", agentA.ID); !errors.Is(err, ticketing.ErrNotFound) {
 			t.Fatalf("checkout missing: %v", err)
+		}
+	})
+
+	t.Run("blocked_by_roundtrip", func(t *testing.T) {
+		p := newProvider(t)
+		dep := mustCreate(t, p, ticketing.NewTicket{Title: "dependency"}, human)
+		tk := mustCreate(t, p, ticketing.NewTicket{Title: "after", BlockedBy: []ticketing.Ref{dep.Ref}}, human)
+		got, err := p.Tickets().Get(ctx, tk.Ref.ID)
+		if err != nil || len(got.BlockedBy) != 1 || got.BlockedBy[0] != dep.Ref {
+			t.Fatalf("blocked_by: %+v %v", got.BlockedBy, err)
 		}
 	})
 

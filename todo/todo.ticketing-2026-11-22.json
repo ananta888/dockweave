@@ -63,9 +63,10 @@
       "task_ids": [
         "TK-008",
         "TK-009",
-        "TK-011"
+        "TK-011",
+        "TK-014"
       ],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "M4",
@@ -304,10 +305,10 @@
       "milestone": "M3",
       "type": "refactor",
       "title": "Dispatcher im Daemon: Arbeitsschleife als Template Method, Routing als Strategien",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Ablauf aus dockweave-run.sh/pipeline.py nach internal/dispatch; anbieterneutral; STATUS-Vertrag, Gates, Admission, Routing, Retry-Notizen.",
       "components": [
         "internal/dispatch"
@@ -320,7 +321,10 @@
         "TK-006"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: internal/dispatch (ports Admitter/PipelineEdges/GateRunner/Driver/Waker/Reviews/ActionLog; RunOnce template method; STATUS/VERDICT contracts; route with wake/rework/deny; review rework; idempotent markers with reconcile window in dispatch_actions, migration 22; one heartbeat per agent). Canonical Ticket gains blocked_by (all adapters); Next may resume the agent's own claim (contract adjusted). Ported matrix: 22 tests incl. blocked once per reason set, daemon down/invalid admission, 409, pre_run, DONE without workspace, wake once per evidence, rework once + idempotent, tamper never reworked, routing failure keeps verdict, unknown wake outcome within/after window, lost create reconciled by tag, blockers incl. fail-closed, reviewer FAIL rework, busy claim, empty answer, agent failure retry, durable markers across restart, concurrent heartbeats. Lead mode split into TK-014."
+      ]
     },
     {
       "id": "TK-009",
@@ -346,6 +350,33 @@
       ],
       "verification_files": [],
       "verification_commands": []
+    },
+    {
+      "id": "TK-014",
+      "milestone": "M3",
+      "type": "feature",
+      "title": "Lead-/Orchestrierungsmodus im Dispatcher (Plan zerlegen, Unteraufgaben, Eltern schließen, Abhängige wecken)",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Port von orchestrate in dockweave-run.sh, plan-extract.py, plan-delegate.py, wake-ready.py, parent-close.py als eigene Strategie des Dispatchers.",
+      "components": [
+        "internal/dispatch"
+      ],
+      "acceptance_criteria": [
+        "JSON-Plan wird robust extrahiert; je Aufgabe genau ein Unterticket mit Rolle, Abhängigkeiten (blocked_by) und gemeinsamem Workspace, idempotent bei erneutem Heartbeat.",
+        "Eltern-Ticket mit Kindern führt keinen neuen Plan aus, sondern schließt nur, wenn alle Gates zustimmen.",
+        "Abhängige werden geweckt, sobald ihre Blocker erledigt sind.",
+        "Testmatrix test_wrapper_modes (orchestrate) übertragen."
+      ],
+      "depends_on": [
+        "TK-008"
+      ],
+      "verification_files": [],
+      "verification_commands": [
+        "go test ./internal/dispatch"
+      ]
     },
     {
       "id": "TK-010",
@@ -442,45 +473,45 @@
     "TK-010"
   ],
   "tasks_status_summary": {
-    "total": 13,
+    "total": 14,
     "by_status": {
       "todo": 5,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 8
+      "done": 9
     },
-    "progress_percent_done": 61.5385,
+    "progress_percent_done": 64.2857,
     "by_priority": {
       "P0": 0,
       "P1": 11,
-      "P2": 2,
+      "P2": 3,
       "P3": 0
     },
     "by_risk": {
       "low": 1,
       "medium": 5,
-      "high": 7,
+      "high": 8,
       "critical": 0
     },
     "critical_path": {
       "total": 11,
-      "done": 7,
-      "remaining": 4
+      "done": 8,
+      "remaining": 3
     },
     "milestones": {
       "total": 5,
-      "todo": 2,
-      "in_progress": 0,
+      "todo": 1,
+      "in_progress": 1,
       "blocked": 0,
       "done": 3
     }
   },
   "tasks_type_summary": {
-    "total": 13,
+    "total": 14,
     "by_type": {
       "docs": 2,
-      "feature": 7,
+      "feature": 8,
       "security": 2,
       "refactor": 1,
       "frontend": 1
@@ -492,6 +523,6 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 8
+    "done": 9
   }
 }

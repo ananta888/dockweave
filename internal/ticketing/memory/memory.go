@@ -57,6 +57,7 @@ func clone(t *ticketing.Ticket) *ticketing.Ticket {
 		r := *t.Parent
 		c.Parent = &r
 	}
+	c.BlockedBy = append([]ticketing.Ref(nil), t.BlockedBy...)
 	if t.CreatedBy != nil {
 		a := *t.CreatedBy
 		c.CreatedBy = &a
@@ -143,7 +144,7 @@ func (p *Provider) Create(_ context.Context, n ticketing.NewTicket, by ticketing
 	t := &ticketing.Ticket{
 		Ref: ticketing.Ref{Provider: p.name, ID: id}, Identifier: "MEM-" + strconv.Itoa(p.seq),
 		Title: n.Title, Description: n.Description, Status: n.Status, Priority: n.Priority,
-		Assignee: n.Assignee, Parent: n.Parent, WorkspaceID: n.WorkspaceID, CreatedBy: &author,
+		Assignee: n.Assignee, Parent: n.Parent, BlockedBy: n.BlockedBy, WorkspaceID: n.WorkspaceID, CreatedBy: &author,
 		CreatedAt: now, UpdatedAt: now, Version: "1",
 	}
 	p.tk[id] = clone(t)
@@ -225,7 +226,7 @@ func (p *Provider) Next(_ context.Context, agentID string) (*ticketing.Ticket, e
 		if t.Assignee == nil || t.Assignee.Kind != ticketing.ActorAgent || t.Assignee.ID != agentID {
 			continue
 		}
-		if t.CheckedOutBy != "" || (t.Status != ticketing.StatusTodo && t.Status != ticketing.StatusInProgress) {
+		if (t.CheckedOutBy != "" && t.CheckedOutBy != agentID) || (t.Status != ticketing.StatusTodo && t.Status != ticketing.StatusInProgress) {
 			continue
 		}
 		if best == nil || t.CreatedAt.Before(best.CreatedAt) || (t.CreatedAt.Equal(best.CreatedAt) && t.Ref.ID < best.Ref.ID) {

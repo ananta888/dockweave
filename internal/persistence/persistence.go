@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 21
+const schemaVersion = 22
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -415,6 +415,15 @@ var migrations = []string{
 		created_at TEXT NOT NULL
 	);
 	CREATE INDEX idx_ticket_comments_task ON ticket_comments(task_id, created_at, id);`,
+	// 22: dispatcher idempotency markers (ADR 0003 D-4); replaces the
+	// wrapper's state files. status: pending | done | retry.
+	`CREATE TABLE dispatch_actions (
+		key TEXT PRIMARY KEY,
+		status TEXT NOT NULL,
+		since TEXT NOT NULL,
+		result TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL
+	);`,
 }
 
 // Store is the DockWeave registry.

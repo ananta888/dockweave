@@ -21,6 +21,8 @@ type TaskQuery struct {
 	Query        string // case-insensitive substring of title or description
 	// Unclaimed restricts to tasks nobody has checked out.
 	Unclaimed bool
+	// ClaimableBy restricts to tasks nobody or this agent has checked out.
+	ClaimableBy string
 	// InboxOrder sorts by priority (high first), then age; default is age.
 	InboxOrder bool
 	Limit      int
@@ -63,6 +65,10 @@ func (s *Store) ListTicketTasks(ctx context.Context, q TaskQuery) ([]*model.Task
 	}
 	if q.Unclaimed {
 		sqlq += ` AND checked_out_by = ''`
+	}
+	if q.ClaimableBy != "" {
+		sqlq += ` AND (checked_out_by = '' OR checked_out_by = ?)`
+		args = append(args, q.ClaimableBy)
 	}
 	if q.InboxOrder {
 		sqlq += ` ORDER BY priority DESC, julianday(created_at) ASC, ticket_seq ASC`

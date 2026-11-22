@@ -106,7 +106,7 @@ func (f *fakePaperclip) serve(w http.ResponseWriter, r *http.Request) {
 		ts := f.now()
 		is := map[string]any{"id": id, "identifier": fmt.Sprintf("PC-%d", f.seq), "title": body["title"], "description": body["description"],
 			"status": or(body["status"], "todo"), "priority": or(body["priority"], "medium"), "assigneeAgentId": body["assigneeAgentId"],
-			"assigneeUserId": body["assigneeUserId"], "parentId": body["parentId"], "createdByUserId": "local-board",
+			"assigneeUserId": body["assigneeUserId"], "parentId": body["parentId"], "blockedByIssueIds": body["blockedByIssueIds"], "createdByUserId": "local-board",
 			"statusVersion": 1, "createdAt": ts, "updatedAt": ts, "companyId": f.company}
 		f.issues[id] = is
 		f.order = append(f.order, id)

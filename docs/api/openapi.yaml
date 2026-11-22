@@ -840,6 +840,7 @@ components:
         priority: { type: string, enum: [critical, high, medium, low] }
         assignee: { $ref: "#/components/schemas/TicketActor" }
         parent: { $ref: "#/components/schemas/TicketRef" }
+        blocked_by: { type: array, items: { $ref: "#/components/schemas/TicketRef" } }
         workspace_id: { type: string }
         created_by: { $ref: "#/components/schemas/TicketActor" }
         checked_out_by: { type: string }
@@ -858,6 +859,7 @@ components:
         priority: { type: string, enum: [critical, high, medium, low] }
         assignee: { $ref: "#/components/schemas/TicketActor" }
         parent: { $ref: "#/components/schemas/TicketRef" }
+        blocked_by: { type: array, items: { $ref: "#/components/schemas/TicketRef" } }
         workspace_id: { type: string }
     TicketUpdate:
       type: object

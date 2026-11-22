@@ -418,3 +418,15 @@ type TicketComment struct {
 	Origin     string    `json:"origin,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 }
+
+// DispatchAction is an idempotency marker of the ticket dispatcher: a side
+// effect (comment, wake, rework creation) is recorded pending before it is
+// attempted and done afterwards, so a retry never duplicates a confirmed
+// effect and an unknown outcome is reconciled instead of guessed.
+type DispatchAction struct {
+	Key       string    `json:"key"`
+	Status    string    `json:"status"` // "" (none) | pending | done | retry
+	Since     time.Time `json:"since"`
+	Result    string    `json:"result,omitempty"`
+	UpdatedAt time.Time `json:"updated_at"`
+}

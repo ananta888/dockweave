@@ -144,6 +144,8 @@ type Ticket struct {
 	Priority    Priority `json:"priority,omitempty"`
 	Assignee    *Actor   `json:"assignee,omitempty"`
 	Parent      *Ref     `json:"parent,omitempty"`
+	// BlockedBy lists tickets that must be closed before work may start.
+	BlockedBy []Ref `json:"blocked_by,omitempty"`
 	// WorkspaceID binds the ticket to a DockWeave workspace (optional).
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	CreatedBy   *Actor `json:"created_by,omitempty"`
@@ -166,6 +168,7 @@ type NewTicket struct {
 	Priority    Priority `json:"priority,omitempty"`
 	Assignee    *Actor   `json:"assignee,omitempty"`
 	Parent      *Ref     `json:"parent,omitempty"`
+	BlockedBy   []Ref    `json:"blocked_by,omitempty"`
 	WorkspaceID string   `json:"workspace_id,omitempty"`
 }
 
@@ -260,8 +263,9 @@ type Threads interface {
 
 // Inbox hands work to agents. Checkout is exclusive: one agent per ticket.
 type Inbox interface {
-	// Next returns the next open ticket assigned to agentID that nobody has
-	// checked out, or (nil, nil) when there is no work.
+	// Next returns the next open ticket assigned to agentID that no other
+	// agent holds – including one agentID itself holds, so partial work is
+	// resumed – or (nil, nil) when there is no work.
 	Next(ctx context.Context, agentID string) (*Ticket, error)
 	// Checkout claims the ticket for agentID; ErrConflict if another agent
 	// holds it. Checking out again by the same agent is a no-op.

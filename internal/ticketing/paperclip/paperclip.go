@@ -338,23 +338,24 @@ func (p *Provider) pcAgentID(ctx context.Context, dwID string) (string, error) {
 // ---- issue mapping ----
 
 type pcIssue struct {
-	ID              string  `json:"id"`
-	Identifier      string  `json:"identifier"`
-	Title           string  `json:"title"`
-	Description     *string `json:"description"`
-	Status          string  `json:"status"`
-	Priority        string  `json:"priority"`
-	AssigneeAgentID *string `json:"assigneeAgentId"`
-	AssigneeUserID  *string `json:"assigneeUserId"`
-	ParentID        *string `json:"parentId"`
-	CreatedByAgent  *string `json:"createdByAgentId"`
-	CreatedByUser   *string `json:"createdByUserId"`
-	CheckoutRunID   *string `json:"checkoutRunId"`
-	StatusVersion   int     `json:"statusVersion"`
-	ProjectID       *string `json:"projectId"`
-	GoalID          *string `json:"goalId"`
-	CreatedAt       string  `json:"createdAt"`
-	UpdatedAt       string  `json:"updatedAt"`
+	ID              string   `json:"id"`
+	Identifier      string   `json:"identifier"`
+	Title           string   `json:"title"`
+	Description     *string  `json:"description"`
+	Status          string   `json:"status"`
+	Priority        string   `json:"priority"`
+	AssigneeAgentID *string  `json:"assigneeAgentId"`
+	AssigneeUserID  *string  `json:"assigneeUserId"`
+	ParentID        *string  `json:"parentId"`
+	BlockedByIDs    []string `json:"blockedByIssueIds"`
+	CreatedByAgent  *string  `json:"createdByAgentId"`
+	CreatedByUser   *string  `json:"createdByUserId"`
+	CheckoutRunID   *string  `json:"checkoutRunId"`
+	StatusVersion   int      `json:"statusVersion"`
+	ProjectID       *string  `json:"projectId"`
+	GoalID          *string  `json:"goalId"`
+	CreatedAt       string   `json:"createdAt"`
+	UpdatedAt       string   `json:"updatedAt"`
 }
 
 func str(p *string) string {
@@ -409,6 +410,9 @@ func (p *Provider) toTicket(ctx context.Context, is *pcIssue) ticketing.Ticket {
 	}
 	if id := str(is.ParentID); id != "" {
 		t.Parent = &ticketing.Ref{Provider: Name, ID: id}
+	}
+	for _, b := range is.BlockedByIDs {
+		t.BlockedBy = append(t.BlockedBy, ticketing.Ref{Provider: Name, ID: b})
 	}
 	switch {
 	case str(is.CreatedByAgent) != "":
@@ -575,6 +579,16 @@ func (p *Provider) Create(ctx context.Context, n ticketing.NewTicket, _ ticketin
 			return nil, err
 		}
 		body["parentId"] = n.Parent.ID
+	}
+	if len(n.BlockedBy) > 0 {
+		var ids []string
+		for _, b := range n.BlockedBy {
+			if b.Provider != Name {
+				return nil, fmt.Errorf("%w: blocker belongs to provider %q", ticketing.ErrInvalid, b.Provider)
+			}
+			ids = append(ids, b.ID)
+		}
+		body["blockedByIssueIds"] = ids
 	}
 	var is pcIssue
 	if err := p.do(ctx, http.MethodPost, "/api/companies/"+url.PathEscape(cid)+"/issues", body, &is); err != nil {
@@ -749,14 +763,23 @@ func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing
 
 var openForCheckout = []string{"backlog", "todo", "blocked", "in_review"}
 
+// Next returns todo work, or work the agent already holds (in_progress and
+// assigned to it: Paperclip's own claim), so partial work is resumed.
 func (p *Provider) Next(ctx context.Context, agentID string) (*ticketing.Ticket, error) {
-	list, err := p.List(ctx, ticketing.Filter{Status: []ticketing.Status{ticketing.StatusTodo},
+	list, err := p.List(ctx, ticketing.Filter{Status: []ticketing.Status{ticketing.StatusTodo, ticketing.StatusInProgress},
 		Assignee: &ticketing.Actor{Kind: ticketing.ActorAgent, ID: agentID}})
 	if err != nil || len(list) == 0 {
 		return nil, err
 	}
+	// Resume own work first, then by priority.
 	rank := map[ticketing.Priority]int{ticketing.PriorityCritical: 0, ticketing.PriorityHigh: 1, ticketing.PriorityMedium: 2, "": 3, ticketing.PriorityLow: 4}
-	sort.SliceStable(list, func(i, j int) bool { return rank[list[i].Priority] < rank[list[j].Priority] })
+	sort.SliceStable(list, func(i, j int) bool {
+		ri, rj := list[i].CheckedOutBy != agentID, list[j].CheckedOutBy != agentID
+		if ri != rj {
+			return !ri
+		}
+		return rank[list[i].Priority] < rank[list[j].Priority]
+	})
 	return &list[0], nil
 }
 

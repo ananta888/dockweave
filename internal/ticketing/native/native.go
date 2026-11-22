@@ -151,6 +151,9 @@ func (p *Provider) toTicket(t *model.Task) ticketing.Ticket {
 	if t.ParentID != "" {
 		out.Parent = &ticketing.Ref{Provider: Name, ID: t.ParentID}
 	}
+	for _, b := range t.BlockedBy {
+		out.BlockedBy = append(out.BlockedBy, ticketing.Ref{Provider: Name, ID: b})
+	}
 	if t.CreatedBy != "" {
 		var a ticketing.Actor
 		if json.Unmarshal([]byte(t.CreatedBy), &a) == nil && a.Valid() {
@@ -254,6 +257,12 @@ func (p *Provider) Create(ctx context.Context, n ticketing.NewTicket, by ticketi
 		}
 		t.ParentID = n.Parent.ID
 	}
+	for _, b := range n.BlockedBy {
+		if b.Provider != Name {
+			return nil, fmt.Errorf("%w: blocker belongs to provider %q", ticketing.ErrInvalid, b.Provider)
+		}
+		t.BlockedBy = append(t.BlockedBy, b.ID)
+	}
 	if by.Valid() {
 		b, _ := json.Marshal(by)
 		t.CreatedBy = string(b)
@@ -348,8 +357,8 @@ func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing
 func (p *Provider) Next(ctx context.Context, agentID string) (*ticketing.Ticket, error) {
 	tasks, err := p.store.ListTicketTasks(ctx, persistence.TaskQuery{
 		AssigneeKind: string(model.AssigneeAgent), AssigneeID: agentID,
-		Statuses:  []string{string(model.TaskTodo), string(model.TaskInProgress), string(model.TaskPartial)},
-		Unclaimed: true, InboxOrder: true, Limit: 1,
+		Statuses:    []string{string(model.TaskTodo), string(model.TaskInProgress), string(model.TaskPartial)},
+		ClaimableBy: agentID, InboxOrder: true, Limit: 1,
 	})
 	if err != nil || len(tasks) == 0 {
 		return nil, err

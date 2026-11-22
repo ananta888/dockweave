@@ -72,6 +72,38 @@ is audited (`ticket.roles_loaded` / `ticket.roles_invalid`). An invalid file
 configuration error for the UI. Socket peers without a forwarded human (CLI)
 keep their peer role (`ADMIN_UIDS`/`MONITOR_UIDS`).
 
+## Dispatcher (`internal/dispatch`, D-4)
+
+The worker loop of `deployments/paperclip/dockweave-run.sh` and
+`pipeline.py`, provider-neutral, as a fixed sequence per heartbeat:
+
+1. next ticket of the agent (own partial work is resumed);
+2. open or unreadable blockers (`blocked_by`) → re-queue, no turn;
+3. pipeline admission; refused, unreachable or inconsistent → comment once per
+   reason set, re-queue, no turn;
+4. exclusive claim; one heartbeat per agent at a time;
+5. `pre_run` gates (with a workspace) – failure → comment, re-queue, no turn;
+6. the agent turn (prompt with the STATUS contract, the reviewer also with
+   the VERDICT contract); a 409 from the endpoint is handled like a refused
+   admission;
+7. `STATUS: DONE` only counts after passing `after_run,post_run` gates
+   (without a workspace it stays open); then routing: wake released
+   downstream agents (`allow` / `wake:<agent>`), exactly one rework ticket per
+   gate run for `rework` (never for tamper/unavailable), report `deny`;
+   a routing failure never discards the verdict and names the retry;
+8. `VERDICT: FAIL` → rework ticket for the author of the reviewed dependency,
+   verdict mirrored into DockWeave;
+9. answer + notes as comment, resulting status; the claim is kept for partial
+   work, otherwise released.
+
+Side effects (blocked comment, wake, rework creation) are idempotent through
+durable markers (`dispatch_actions`, migration 22): a confirmed effect is
+never repeated, an unknown outcome blocks a retry for the reconcile window
+(600 s), a lost creation response is reconciled through the title tag.
+`go test ./internal/dispatch` runs the ported wrapper test matrix against an
+in-memory provider. Wiring into the daemon, the 30-s scheduler and
+`dockweave ticket run` follow (TK-009); the Lead/orchestration mode is TK-014.
+
 ## Adapters
 
 | | native | paperclip |

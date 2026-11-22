@@ -76,6 +76,42 @@ Rechte gelten nie weiter. `GET /api/v1/tickets/me` liefert Rollen, Rechte und
 einen Konfigurationsfehler für die UI. Socket-Peers ohne weitergereichten
 Menschen (CLI) behalten ihre Peer-Rolle (`ADMIN_UIDS`/`MONITOR_UIDS`).
 
+## Dispatcher (`internal/dispatch`, D-4)
+
+Die Arbeitsschleife aus `deployments/paperclip/dockweave-run.sh` und
+`pipeline.py`, anbieterneutral, als feste Abfolge je Heartbeat:
+
+1. nächstes Ticket des Agenten (eigene Teilarbeit wird fortgesetzt);
+2. offene oder unlesbare Blocker (`blocked_by`) → zurück in die Warteschlange,
+   kein Turn;
+3. Pipeline-Admission; abgelehnt, nicht erreichbar oder widersprüchlich →
+   einmal je Grund-Satz kommentieren, zurück in die Warteschlange, kein Turn;
+4. exklusiver Claim; ein Heartbeat je Agent gleichzeitig;
+5. `pre_run`-Gates (mit Workspace) – Fehlschlag → Kommentar, zurück in die
+   Warteschlange, kein Turn;
+6. der Agenten-Turn (Prompt mit STATUS-Vertrag, beim Reviewer zusätzlich mit
+   VERDICT-Vertrag); ein 409 des Endpunkts wird wie eine abgelehnte
+   Admission behandelt;
+7. `STATUS: DONE` zählt erst nach bestandenen `after_run,post_run`-Gates
+   (ohne Workspace bleibt es offen); danach Routing: freigegebene
+   Folge-Agenten wecken (`allow` / `wake:<agent>`), genau ein
+   Nacharbeits-Ticket je Gate-Lauf bei `rework` (nie bei tamper/unavailable),
+   `deny` melden; ein Routing-Fehler verwirft das Urteil nie und nennt die
+   Wiederholung;
+8. `VERDICT: FAIL` → Nacharbeits-Ticket für den Autor der geprüften
+   Abhängigkeit, Urteil nach DockWeave gespiegelt;
+9. Antwort + Hinweise als Kommentar, resultierender Status; der Claim bleibt
+   bei Teilarbeit bestehen, sonst wird er freigegeben.
+
+Nebenwirkungen (Sperr-Kommentar, Wecken, Nacharbeits-Ticket) sind über
+dauerhafte Markierungen idempotent (`dispatch_actions`, Migration 22): Eine
+bestätigte Wirkung wird nie wiederholt, ein unbekannter Ausgang sperrt eine
+Wiederholung für das Abgleichsfenster (600 s), eine verlorene
+Anlage-Antwort wird über das Titel-Tag abgeglichen. `go test
+./internal/dispatch` führt die übertragene Wrapper-Testmatrix gegen einen
+In-Memory-Anbieter aus. Anbindung an den Daemon, der 30-s-Scheduler und
+`dockweave ticket run` folgen (TK-009); der Lead-/Orchestrierungsmodus ist TK-014.
+
 ## Adapter
 
 | | native | paperclip |
