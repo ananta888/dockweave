@@ -6,8 +6,8 @@ and `paperclip` (Paperclip HTTP API). Gates, pipeline admission, evidence and
 monitoring apply to every provider. Design: `docs/adr/0003-ticketing-adapters.md`.
 
 Status: port, both adapters, provider selection and the ticket API, forwarded
-humans and permissions are implemented; live sync and the
-dispatcher are implemented; Lead mode and UI follow
+humans and permissions are implemented; live sync, the
+dispatcher and the Lead mode are implemented; the UI follows
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Configuration (`/etc/dockweave/dockweaved.conf`)
@@ -103,7 +103,7 @@ never repeated, an unknown outcome blocks a retry for the reconcile window
 (600 s), a lost creation response is reconciled through the title tag.
 `go test ./internal/dispatch` runs the ported wrapper test matrix against an
 in-memory provider; `internal/api` runs the same scenario end to end for the
-native provider and a Paperclip fake. The Lead/orchestration mode is TK-014.
+native provider and a Paperclip fake. 
 
 ### Running it
 
@@ -126,6 +126,36 @@ The driver runs the consuming pipeline admission right before the turn (as
 the execution endpoint does) and shows the turn as live endpoint work in the
 graph. Without `DOCKWEAVE_DISPATCH=daemon` the wrapper keeps its own logic;
 the default switches only after the acceptance on a real installation (TK-015).
+
+### Lead mode (TK-014)
+
+Agents listed in `TICKET_LEADS` plan instead of implementing:
+
+1. With no children yet: the Lead gets the goal plus the plan contract
+   (roles from `TICKET_ROLE_AGENTS`, e.g.
+   `backend=demo-opencode,frontend=researcher,reviewer=reviewer,platform=platform`,
+   shared directory `DISPATCH_CONTAINER_WORKSPACE`, default `/workspace`) and
+   answers with a JSON plan (fenced or bare). One child per task (same title →
+   reused), assigned to the role's agent, with `blocked_by` from
+   `depends_on` and a `DEPENDS_ON:` marker; unknown roles are reported as
+   `SKIP`. Only unblocked children are woken.
+2. A Lead ticket with children is never planned again: each heartbeat only
+   settles it. A finished child wakes the next unblocked siblings, the last
+   one wakes the Lead.
+3. The parent closes when every child is finished, the review child (title
+   contains `review.issue_match`, default "review"; `review.required` default
+   true in `.paperclip/gates.json`) carries a `VERDICT: PASS` from its
+   assigned agent or a named human (system/unattributed PASS does not count;
+   the verdict is mirrored into DockWeave), and – with
+   `human_approval.required` – a DockWeave approval exists. Waiting for it
+   puts the parent `in_review` with one comment; `dockweave gate approve
+   <key>` (permission `ticket.approve`, recorded with the signed-in human)
+   continues it and wakes the Lead.
+
+Difference to the old script: the Paperclip interaction card is no longer
+required next to the DockWeave approval – the audited DockWeave approval is
+authoritative. `DOCKWEAVE_DISPATCH=daemon` now also hands orchestration to
+the daemon.
 
 ## Live sync (D-8, `internal/ticketing/tsync`)
 

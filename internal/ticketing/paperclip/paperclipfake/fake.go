@@ -130,7 +130,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, 409, map[string]any{"error": "Issue status changed"})
 				return
 			}
-			for _, k := range []string{"title", "description", "priority", "assigneeAgentId", "assigneeUserId"} {
+			for _, k := range []string{"title", "description", "priority", "assigneeAgentId", "assigneeUserId", "blockedByIssueIds"} {
 				if v, ok := body[k]; ok {
 					is[k] = v
 				}

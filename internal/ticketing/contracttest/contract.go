@@ -253,6 +253,21 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 		if err != nil || len(got.BlockedBy) != 1 || got.BlockedBy[0] != dep.Ref {
 			t.Fatalf("blocked_by: %+v %v", got.BlockedBy, err)
 		}
+		dep2 := mustCreate(t, p, ticketing.NewTicket{Title: "second dependency"}, human)
+		both := []ticketing.Ref{dep.Ref, dep2.Ref}
+		if _, err := p.Tickets().Update(ctx, tk.Ref.ID, ticketing.Update{BlockedBy: &both}, human); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := p.Tickets().Get(ctx, tk.Ref.ID); len(got.BlockedBy) != 2 {
+			t.Fatalf("update blocked_by: %+v", got.BlockedBy)
+		}
+		none := []ticketing.Ref{}
+		if _, err := p.Tickets().Update(ctx, tk.Ref.ID, ticketing.Update{BlockedBy: &none}, human); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := p.Tickets().Get(ctx, tk.Ref.ID); len(got.BlockedBy) != 0 {
+			t.Fatalf("clear blocked_by: %+v", got.BlockedBy)
+		}
 	})
 
 	t.Run("checkout_race_has_one_winner", func(t *testing.T) {

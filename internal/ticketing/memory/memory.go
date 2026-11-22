@@ -183,6 +183,9 @@ func (p *Provider) Update(_ context.Context, id string, u ticketing.Update, _ ti
 	if u.ClearAssignee {
 		t.Assignee = nil
 	}
+	if u.BlockedBy != nil {
+		t.BlockedBy = append([]ticketing.Ref(nil), (*u.BlockedBy)...)
+	}
 	v, _ := strconv.Atoi(t.Version)
 	t.Version = strconv.Itoa(v + 1)
 	t.UpdatedAt = p.stamp()

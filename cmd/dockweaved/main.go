@@ -44,8 +44,8 @@ import (
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/supervisor"
 	"github.com/ananta888/dockweave/internal/ticketing"
-	tnative "github.com/ananta888/dockweave/internal/ticketing/native"
 	"github.com/ananta888/dockweave/internal/ticketing/authz"
+	tnative "github.com/ananta888/dockweave/internal/ticketing/native"
 	pcticket "github.com/ananta888/dockweave/internal/ticketing/paperclip"
 	"github.com/ananta888/dockweave/internal/ticketing/tsync"
 	"github.com/ananta888/dockweave/internal/workspaces"
@@ -468,9 +468,12 @@ func startDispatcher(ctx context.Context, apiSrv *api.Server, cfg config.Config,
 		},
 	}
 	d := apiSrv.NewDispatcher(api.DispatchSettings{
-		DefaultWorkspace: cfg.DispatchDefaultWorkspace,
-		Reviewers:        cfg.TicketReviewers,
-		PromptTimeout:    time.Duration(cfg.DispatchPromptTimeoutSec) * time.Second,
+		DefaultWorkspace:   cfg.DispatchDefaultWorkspace,
+		Reviewers:          cfg.TicketReviewers,
+		PromptTimeout:      time.Duration(cfg.DispatchPromptTimeoutSec) * time.Second,
+		Leads:              cfg.TicketLeads,
+		RoleAgents:         cfg.TicketRoleAgents,
+		ContainerWorkspace: cfg.DispatchContainerWorkspace,
 	}, primary, api.AgentWaker{Server: apiSrv, Provider: primary, Scheduler: sched})
 	sched.D = d
 	apiSrv.Dispatcher = d

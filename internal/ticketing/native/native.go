@@ -308,6 +308,15 @@ func (p *Provider) Update(ctx context.Context, id string, u ticketing.Update, _ 
 	if u.ClearAssignee {
 		setAssignee(t, nil)
 	}
+	if u.BlockedBy != nil {
+		t.BlockedBy = nil
+		for _, b := range *u.BlockedBy {
+			if b.Provider != Name {
+				return nil, fmt.Errorf("%w: blocker belongs to provider %q", ticketing.ErrInvalid, b.Provider)
+			}
+			t.BlockedBy = append(t.BlockedBy, b.ID)
+		}
+	}
 	if expected > 0 {
 		err = p.store.UpdateTaskIfVersion(ctx, t, expected)
 	} else {

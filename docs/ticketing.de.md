@@ -7,8 +7,8 @@ Monitoring gelten für jeden Anbieter. Entwurf:
 `docs/adr/0003-ticketing-adapters.de.md`.
 
 Stand: Port, beide Adapter, Anbieterwahl und Ticket-API,
-weitergereichte Menschen und Rechte sind umgesetzt; Live-Sync und
-Dispatcher sind umgesetzt; Lead-Modus und UI folgen
+weitergereichte Menschen und Rechte sind umgesetzt; Live-Sync,
+Dispatcher und Lead-Modus sind umgesetzt; die UI folgt
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Konfiguration (`/etc/dockweave/dockweaved.conf`)
@@ -111,8 +111,7 @@ Wiederholung für das Abgleichsfenster (600 s), eine verlorene
 Anlage-Antwort wird über das Titel-Tag abgeglichen. `go test
 ./internal/dispatch` führt die übertragene Wrapper-Testmatrix gegen einen
 In-Memory-Anbieter aus; `internal/api` prüft dasselbe Szenario Ende zu Ende
-für den nativen Anbieter und einen Paperclip-Nachbau. Der
-Lead-/Orchestrierungsmodus ist TK-014.
+für den nativen Anbieter und einen Paperclip-Nachbau.
 
 ### Betrieb
 
@@ -136,6 +135,37 @@ aus (wie der Ausführungsendpunkt) und zeigt den Turn als laufende
 Endpoint-Arbeit im Graphen. Ohne `DOCKWEAVE_DISPATCH=daemon` behält der
 Wrapper seine eigene Logik; der Standard wechselt erst nach der Abnahme auf
 einer echten Installation (TK-015).
+
+### Lead-Modus (TK-014)
+
+In `TICKET_LEADS` genannte Agenten planen statt umzusetzen:
+
+1. Ohne Kinder: Der Lead bekommt das Goal plus den Plan-Vertrag (Rollen aus
+   `TICKET_ROLE_AGENTS`, z. B.
+   `backend=demo-opencode,frontend=researcher,reviewer=reviewer,platform=platform`,
+   gemeinsames Verzeichnis `DISPATCH_CONTAINER_WORKSPACE`, Standard
+   `/workspace`) und antwortet mit einem JSON-Plan (im Codeblock oder frei).
+   Je Aufgabe ein Kind (gleicher Titel → wiederverwendet), dem Agenten der
+   Rolle zugewiesen, mit `blocked_by` aus `depends_on` und einer
+   `DEPENDS_ON:`-Markierung; unbekannte Rollen werden als `SKIP` gemeldet. Nur
+   nicht blockierte Kinder werden geweckt.
+2. Ein Lead-Ticket mit Kindern wird nie erneut geplant: jeder Heartbeat
+   schließt es nur ab. Ein fertiges Kind weckt die nächsten freien
+   Geschwister, das letzte weckt den Lead.
+3. Das Eltern-Ticket schließt, wenn alle Kinder fertig sind, das Review-Kind
+   (Titel enthält `review.issue_match`, Standard „review“; `review.required`
+   in `.paperclip/gates.json` standardmäßig wahr) ein `VERDICT: PASS` seines
+   zugewiesenen Agenten oder eines benannten Menschen trägt (System- oder
+   nicht zuordenbares PASS zählt nicht; das Urteil wird nach DockWeave
+   gespiegelt) und – bei `human_approval.required` – eine DockWeave-Freigabe
+   vorliegt. Das Warten darauf setzt das Eltern-Ticket auf `in_review` mit
+   einem Kommentar; `dockweave gate approve <key>` (Recht `ticket.approve`,
+   mit dem angemeldeten Menschen erfasst) setzt es fort und weckt den Lead.
+
+Unterschied zum alten Skript: Die Paperclip-Interaktionskarte ist neben der
+DockWeave-Freigabe nicht mehr nötig – die auditierte DockWeave-Freigabe ist
+maßgeblich. `DOCKWEAVE_DISPATCH=daemon` übergibt jetzt auch die
+Orchestrierung an den Daemon.
 
 ## Live-Sync (D-8, `internal/ticketing/tsync`)
 

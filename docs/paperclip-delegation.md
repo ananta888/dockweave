@@ -226,5 +226,4 @@ agent is then driven through the endpoint like any worker.
 With `TICKET_PROVIDER=paperclip` in `dockweaved.conf` and
 `DOCKWEAVE_DISPATCH=daemon` in the wrapper environment, `dockweave-run.sh`
 only calls `dockweave ticket run <agent>`; the worker loop described here runs
-in the daemon (`docs/ticketing.md`). Orchestration mode keeps the script
-logic until TK-014.
+in the daemon (`docs/ticketing.md`). Orchestration (Lead mode, `TICKET_LEADS`) runs in the daemon too.

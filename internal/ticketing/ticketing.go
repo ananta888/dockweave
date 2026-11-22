@@ -200,8 +200,10 @@ type Update struct {
 	Status      *Status   `json:"status,omitempty"`
 	Priority    *Priority `json:"priority,omitempty"`
 	// Assignee sets the assignee; ClearAssignee removes it.
-	Assignee        *Actor `json:"assignee,omitempty"`
-	ClearAssignee   bool   `json:"clear_assignee,omitempty"`
+	Assignee      *Actor `json:"assignee,omitempty"`
+	ClearAssignee bool   `json:"clear_assignee,omitempty"`
+	// BlockedBy replaces the blockers when non-nil (empty slice clears).
+	BlockedBy       *[]Ref `json:"blocked_by,omitempty"`
 	ExpectedVersion string `json:"expected_version,omitempty"`
 }
 

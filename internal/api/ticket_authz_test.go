@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ananta888/dockweave/internal/dispatch"
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/authz"
 )
 
@@ -101,5 +104,30 @@ func TestTicketPermissionsPerRole(t *testing.T) {
 	// The CLI peer (no forwarded human) keeps its peer role.
 	if rec := f.do(t, RoleAdmin, "PATCH", one, `{"title":"cli"}`); rec.Code != 200 {
 		t.Fatalf("peer admin: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Approvals need ticket.approve for humans, record the human as actor and
+// let a parent waiting for the approval continue (TK-014).
+func TestApprovalPermissionActorAndContinuation(t *testing.T) {
+	f := ticketFixture(t)
+	f.srv.Dispatcher = f.srv.NewDispatcher(DispatchSettings{}, f.srv.Tickets.Primary, AgentWaker{Server: f.srv, Scheduler: &dispatch.Scheduler{}})
+	tk, err := f.srv.Tickets.Primary.Tickets().Create(context.Background(), ticketing.NewTicket{Title: "Goal", Status: ticketing.StatusInReview,
+		Assignee: &ticketing.Actor{Kind: ticketing.ActorAgent, ID: "ag_a"}}, ticketing.Actor{Kind: ticketing.ActorSystem})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := dispatch.IssueKey(tk.Ref)
+	body := `{"issue_id":"` + key + `"}`
+	if rec := asHuman(t, f, []string{"dockweave-monitor"}, http.MethodPost, "/api/v1/gates/approvals", body); rec.Code != http.StatusForbidden {
+		t.Fatalf("reader approve: %d", rec.Code)
+	}
+	rec := asHuman(t, f, []string{"dockweave-admin"}, http.MethodPost, "/api/v1/gates/approvals", body)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"actor":"iss|dockweave-admin"`) {
+		t.Fatalf("admin approve: %d %s", rec.Code, rec.Body)
+	}
+	got, _ := f.srv.Tickets.Primary.Tickets().Get(context.Background(), tk.Ref.ID)
+	if got.Status != ticketing.StatusInProgress {
+		t.Fatalf("parent did not continue: %s", got.Status)
 	}
 }

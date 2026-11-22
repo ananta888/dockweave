@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +26,12 @@ type DispatchSettings struct {
 	Reviewers []string
 	// PromptTimeout bounds one agent turn.
 	PromptTimeout time.Duration
+	// Leads are agents (ids or names) that plan and delegate (TK-014).
+	Leads []string
+	// RoleAgents maps plan roles to agents (ids or names).
+	RoleAgents map[string]string
+	// ContainerWorkspace is the shared directory named in plans.
+	ContainerWorkspace string
 }
 
 // NewDispatcher wires the provider-neutral dispatcher to the daemon: real
@@ -37,7 +44,62 @@ func (s *Server) NewDispatcher(set DispatchSettings, provider ticketing.Provider
 			reviewers[r] = true
 		}
 	}
+	resolve := func(nameOrID string) string {
+		if s.Agents != nil {
+			if a, err := s.Agents.Get(context.Background(), nameOrID); err == nil {
+				return a.ID
+			}
+		}
+		return nameOrID
+	}
+	leads := map[string]bool{}
+	for _, l := range set.Leads {
+		if l = strings.TrimSpace(l); l != "" {
+			leads[l] = true
+		}
+	}
+	roles := map[string]string{}
+	for role, agent := range set.RoleAgents {
+		if role, agent = strings.ToLower(strings.TrimSpace(role)), strings.TrimSpace(agent); role != "" && agent != "" {
+			roles[role] = resolve(agent)
+		}
+	}
 	return &dispatch.Dispatcher{
+		Lead: dispatch.LeadConfig{
+			IsLead: func(agentID string) bool {
+				if leads[agentID] {
+					return true
+				}
+				if s.Agents != nil {
+					if a, err := s.Agents.Get(context.Background(), agentID); err == nil {
+						return leads[a.Name] || leads[a.ID]
+					}
+				}
+				return false
+			},
+			Roles:              roles,
+			ContainerWorkspace: set.ContainerWorkspace,
+			Policy: func(ctx context.Context, workspace string) dispatch.LeadPolicy {
+				pol := dispatch.LeadPolicy{ReviewRequired: true}
+				cfg, raw, err := gateexec.ReadConfig(ctx, workspace)
+				if err != nil {
+					return pol // unreadable: the strict default
+				}
+				var keys map[string]json.RawMessage
+				if json.Unmarshal(raw, &keys) == nil {
+					if _, ok := keys["review"]; ok {
+						pol.ReviewRequired = cfg.Review.Required
+					}
+				}
+				pol.ReviewMatch = cfg.Review.IssueMatch
+				pol.HumanApproval = cfg.HumanApproval.Required
+				return pol
+			},
+			Approved: func(ctx context.Context, key string) bool {
+				a, err := s.Store.GetGateApproval(ctx, key)
+				return err == nil && a != nil
+			},
+		},
 		Tickets:  provider,
 		Admit:    dispatchAdmitter{s},
 		Pipeline: dispatchEdges{s},

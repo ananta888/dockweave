@@ -100,7 +100,12 @@ class DaemonDispatchTest(unittest.TestCase):
         self.f.set("dw", {"admissions": {}, "ticket_run": {"kind": "agent_failed"}, "ticket_run_exit": 1})
         self.assertEqual(self.run_daemon("beta").returncode, 1)
 
-    def test_orchestrate_and_legacy_keep_the_script(self):
-        self.run_daemon("lead", "orchestrate", DOCKWEAVE_DEFAULT_TASK="Plan")
-        self.assertNotIn("ticket run lead", self.dw_calls())
+    def test_orchestrate_runs_in_the_daemon_too(self):
+        p = self.run_daemon("lead", "orchestrate")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.dw_calls(), ["ticket run lead"])
+
+    def test_legacy_target_keeps_the_script(self):
+        self.run_daemon("dockweave-abc", "opencode", DOCKWEAVE_DEFAULT_TASK="Plan")
+        self.assertNotIn("ticket run dockweave-abc", self.dw_calls())
 

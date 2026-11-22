@@ -634,6 +634,16 @@ func (p *Provider) Update(ctx context.Context, id string, u ticketing.Update, _ 
 	if u.ClearAssignee {
 		_ = p.assigneeFields(ctx, nil, body)
 	}
+	if u.BlockedBy != nil {
+		ids := []string{}
+		for _, b := range *u.BlockedBy {
+			if b.Provider != Name {
+				return nil, fmt.Errorf("%w: blocker belongs to provider %q", ticketing.ErrInvalid, b.Provider)
+			}
+			ids = append(ids, b.ID)
+		}
+		body["blockedByIssueIds"] = ids
+	}
 	var is pcIssue
 	if err := p.do(ctx, http.MethodPatch, "/api/issues/"+url.PathEscape(id), body, &is); err != nil {
 		return nil, err

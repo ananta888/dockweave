@@ -43,6 +43,7 @@ type Dispatcher struct {
 	Reviews  Reviews
 	Log      ActionLog
 	Config   Config
+	Lead     LeadConfig
 
 	once sync.Once
 	acts *actions
@@ -178,11 +179,20 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 		}
 	}()
 
-	// 4. pre_run gates (only with a workspace; skipped without pre_run gates).
 	workspace := ""
 	if d.Config.Workspace != nil {
 		workspace = d.Config.Workspace(ctx, tk.WorkspaceID)
 	}
+	// Lead mode: plan and delegate, or settle the delegated parent (no
+	// pre_run gates, like the wrapper's orchestrate mode).
+	if d.isLead(agentID) {
+		var st ticketing.Status
+		out, st = d.runLead(ctx, tk, agentID, workspace, out)
+		finalStatus = st
+		return out, nil
+	}
+
+	// 4. pre_run gates (only with a workspace; skipped without pre_run gates).
 	if workspace != "" {
 		run, err := d.Gates.Run(ctx, GateRequest{Workspace: workspace, IssueID: IssueKey(ref), Phases: []string{"pre_run"}})
 		if !gateOK(run, err) {
@@ -278,6 +288,26 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 	}
 	finalStatus = status
 	out.Kind, out.Status = OutcomeRan, status
+	// A finished child unblocks its siblings; the last one wakes the Lead,
+	// whose heartbeat closes the parent (wake-ready.py / parent-close.py).
+	if tk.Parent != nil && status.Closed() {
+		d.wakeReady(ctx, *tk.Parent)
+		if kids, err := d.children(ctx, *tk.Parent); err == nil {
+			all := true
+			for _, k := range kids {
+				if k.Ref == ref {
+					continue
+				}
+				all = all && k.Status.Closed()
+			}
+			if parent, err := d.Tickets.Tickets().Get(ctx, tk.Parent.ID); all && err == nil && parent.Assignee != nil && parent.Assignee.Kind == ticketing.ActorAgent {
+				lead := parent.Assignee.ID
+				_, _ = d.acts.once(ctx, "children-done|"+tk.Parent.String()+"|"+parent.Version, func() (string, error) {
+					return "", d.wake(ctx, lead, "Alle Child-Issues erledigt")
+				})
+			}
+		}
+	}
 	return out, nil
 }
 

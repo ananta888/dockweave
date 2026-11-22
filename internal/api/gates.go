@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ananta888/dockweave/internal/ticketing/authz"
 	"net/http"
 	"strconv"
 	"strings"
@@ -98,9 +99,16 @@ func (s *Server) createGateApproval(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "forbidden", errors.New("only admins may approve"))
 		return
 	}
+	if !s.requirePerm(w, r, authz.TicketApprove) {
+		return
+	}
+	who := actor(r)
+	if h, ok := HumanFromContext(r.Context()); ok {
+		who = h.ID // the signed-in human, not the gateway peer (SD-022)
+	}
 	approval := &model.GateApproval{
 		IssueID:    body.IssueID,
-		Actor:      actor(r),
+		Actor:      who,
 		Role:       string(role),
 		Note:       strings.TrimSpace(body.Note),
 		ApprovedAt: time.Now().UTC(),
@@ -116,6 +124,10 @@ func (s *Server) createGateApproval(w http.ResponseWriter, r *http.Request) {
 		Message:   fmt.Sprintf("issue %s approved by %s (%s)", approval.IssueID, approval.Actor, approval.Role),
 		Timestamp: approval.ApprovedAt,
 	})
+	// A parent waiting for this approval continues (ADR 0003, TK-014).
+	if s.Dispatcher != nil {
+		_ = s.Dispatcher.Approved(r.Context(), approval.IssueID)
+	}
 	writeJSON(w, http.StatusOK, approval)
 }
 

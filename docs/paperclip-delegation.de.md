@@ -235,5 +235,5 @@ den Endpoint.
 Mit `TICKET_PROVIDER=paperclip` in `dockweaved.conf` und
 `DOCKWEAVE_DISPATCH=daemon` in der Wrapper-Umgebung ruft `dockweave-run.sh`
 nur noch `dockweave ticket run <agent>` auf; die hier beschriebene
-Arbeitsschleife läuft im Daemon (`docs/ticketing.de.md`). Der
-Orchestrierungsmodus behält bis TK-014 die Skript-Logik.
+Arbeitsschleife läuft im Daemon (`docs/ticketing.de.md`). Auch die
+Orchestrierung (Lead-Modus, `TICKET_LEADS`) läuft im Daemon.

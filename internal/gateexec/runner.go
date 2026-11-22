@@ -649,6 +649,12 @@ func (r *Runner) ValidateWorkspace(raw string) (string, error) {
 // production.
 var testHookAfterSnapshotCopy func(workspace string)
 
+// ReadConfig reads .paperclip/gates.json of a workspace through the rooted
+// filesystem (no symlink traversal); a missing file is an empty config.
+func ReadConfig(ctx context.Context, workspace string) (gatesync.Config, []byte, error) {
+	return readConfigContext(ctx, workspace)
+}
+
 func readConfig(workspace string) (gatesync.Config, []byte, error) {
 	return readConfigContext(context.Background(), workspace)
 }

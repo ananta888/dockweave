@@ -73,6 +73,11 @@ type Config struct {
 	DispatchHeartbeatSec     int
 	DispatchConcurrency      int
 	DispatchPromptTimeoutSec int
+	// Lead mode (TK-014): planning agents, role -> agent map
+	// ("backend=demo-opencode,frontend=researcher"), shared container dir.
+	TicketLeads                []string
+	TicketRoleAgents           map[string]string
+	DispatchContainerWorkspace string
 }
 
 // Default returns the default configuration.
@@ -185,6 +190,17 @@ func applyPairs(cfg *Config, lines []string) {
 			fmt.Sscanf(v, "%d", &cfg.DispatchConcurrency)
 		case "DISPATCH_PROMPT_TIMEOUT_SEC":
 			fmt.Sscanf(v, "%d", &cfg.DispatchPromptTimeoutSec)
+		case "TICKET_LEADS":
+			cfg.TicketLeads = strings.Split(v, ",")
+		case "TICKET_ROLE_AGENTS":
+			cfg.TicketRoleAgents = map[string]string{}
+			for _, pair := range strings.Split(v, ",") {
+				if role, agent, ok := strings.Cut(pair, "="); ok {
+					cfg.TicketRoleAgents[strings.TrimSpace(role)] = strings.TrimSpace(agent)
+				}
+			}
+		case "DISPATCH_CONTAINER_WORKSPACE":
+			cfg.DispatchContainerWorkspace = v
 		}
 	}
 }

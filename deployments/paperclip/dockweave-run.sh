@@ -66,10 +66,10 @@ DW_CLI="${DOCKWEAVE_CLI:-$(command -v dockweave 2>/dev/null || true)}"
 HDIR="${DOCKWEAVE_PAPERCLIP_HELPER_DIR:-$(dirname "$0")}"
 
 # Daemon dispatcher (ADR 0003 D-4): with DOCKWEAVE_DISPATCH=daemon (and
-# TICKET_PROVIDER=paperclip in dockweaved.conf) the whole worker loop runs in
-# dockweaved; this script only triggers one heartbeat. Orchestration and the
-# legacy docker-exec path keep the script logic.
-if [ "${DOCKWEAVE_DISPATCH:-}" = "daemon" ] && [ "$MODE" != "orchestrate" ]; then
+# TICKET_PROVIDER=paperclip in dockweaved.conf) the whole worker loop – also
+# the Lead mode for agents in TICKET_LEADS – runs in dockweaved; this script
+# only triggers one heartbeat. The legacy docker-exec path keeps the script.
+if [ "${DOCKWEAVE_DISPATCH:-}" = "daemon" ]; then
   case "$MODEL_OR_CONTAINER" in
     dockweave-*) ;;
     *)

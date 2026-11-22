@@ -66,7 +66,7 @@
         "TK-011",
         "TK-014"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "M4",
@@ -360,10 +360,10 @@
       "milestone": "M3",
       "type": "feature",
       "title": "Lead-/Orchestrierungsmodus im Dispatcher (Plan zerlegen, Unteraufgaben, Eltern schließen, Abhängige wecken)",
-      "status": "todo",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Port von orchestrate in dockweave-run.sh, plan-extract.py, plan-delegate.py, wake-ready.py, parent-close.py als eigene Strategie des Dispatchers.",
       "components": [
         "internal/dispatch"
@@ -380,6 +380,9 @@
       "verification_files": [],
       "verification_commands": [
         "go test ./internal/dispatch"
+      ],
+      "resolved": [
+        "2026-11-22: internal/dispatch/lead.go – ExtractPlan (fenced/bare), delegate (one child per task, reuse by title, blocked_by from depends_on via new Update.BlockedBy on all adapters + DEPENDS_ON marker, SKIP for unknown roles), wakeReady (once per ticket version), closeParent (all children closed, attributed review PASS mirrored into DockWeave, DockWeave human approval → in_review with one comment), Approved continuation hooked into POST /api/v1/gates/approvals (now ticket.approve + human actor); finished child wakes siblings and the Lead. Config TICKET_LEADS, TICKET_ROLE_AGENTS, DISPATCH_CONTAINER_WORKSPACE; review policy from gates.json via gateexec.ReadConfig (default required). Wrapper: DOCKWEAVE_DISPATCH=daemon now also for orchestrate. Tests: full cycle plan→children→dependency order→review PASS→parent done, unattributed PASS, approval once + continuation, no plan, ExtractPlan; wrapper tests updated (58)."
       ]
     },
     {
@@ -512,13 +515,13 @@
   "tasks_status_summary": {
     "total": 15,
     "by_status": {
-      "todo": 4,
+      "todo": 3,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 11
+      "done": 12
     },
-    "progress_percent_done": 73.3333,
+    "progress_percent_done": 80.0,
     "by_priority": {
       "P0": 0,
       "P1": 12,
@@ -539,9 +542,9 @@
     "milestones": {
       "total": 5,
       "todo": 1,
-      "in_progress": 1,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 3
+      "done": 4
     }
   },
   "tasks_type_summary": {
@@ -557,10 +560,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 4,
+    "todo_remaining": 3,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 11
+    "done": 12
   }
 }
