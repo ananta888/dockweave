@@ -96,6 +96,7 @@ nutzen dieselben Variablen.
 | Variable | Pflicht | Bedeutung |
 |---|---|---|
 | `PAPERCLIPAI_BIN` | ja, falls `paperclipai` nicht im `PATH` des Prozess-Adapters liegt | Pfad zur Paperclip-CLI (alle Helfer) |
+| `DOCKWEAVE_DISPATCH` | nein | `daemon`: das Skript ruft nur `dockweave ticket run <agent>` auf; Arbeitsschleife, Gates, Routing und Lead-Modus laufen im Daemon (`docs/ticketing.de.md`, braucht `TICKET_PROVIDER=paperclip`). Dann gelten die Daemon-Schlüssel (`DISPATCH_DEFAULT_WORKSPACE`, `TICKET_LEADS`, `TICKET_ROLE_AGENTS`, …) statt der Skript-Variablen unten |
 | `DOCKWEAVE_CLI` | ja, falls `dockweave` nicht im `PATH` liegt | Pfad zur DockWeave-CLI (Gates, Pipeline, Reviews) |
 | `DOCKWEAVE_HOST_WORKSPACE` | ja für das DONE-Gate | Host-Pfad des Projekt-Workspaces; ohne ihn schlägt das DONE-Gate fail-closed fehl und `pre_run`/Routing entfallen |
 | `DOCKWEAVE_PAPERCLIP_WORKSPACE` | nein (Default `/workspace`) | Container-Pfad des gemeinsamen Workspaces im Lead-Prompt |

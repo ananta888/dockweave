@@ -229,3 +229,20 @@ gesund).
 (`internal/ticketing/contracttest`) gegen memory, native und einen
 Paperclip-Nachbau aus. Lesender Smoke-Test gegen ein echtes Paperclip:
 `DOCKWEAVE_PAPERCLIP_SMOKE_URL=http://127.0.0.1:3100 go test ./internal/ticketing/paperclip -run Smoke`.
+
+## Konfigurationsübersicht (`dockweaved.conf`)
+
+| Schlüssel | Standard | Bedeutung |
+|---|---|---|
+| `TICKET_PROVIDER` | – (aus) | `native` oder `paperclip` |
+| `TICKET_MIRROR` | `none` | Live-Spiegel, nie der führende |
+| `PAPERCLIP_URL` / `PAPERCLIP_COMPANY` / `PAPERCLIP_TOKEN_FILE` | `http://127.0.0.1:3100` / einzige Firma / – | Paperclip-Verbindung |
+| `TICKET_ROLES_FILE` | `/etc/dockweave/ticket-roles.json` | Gruppen → Rollen → Rechte |
+| `GATEWAY_UIDS` | – | Peers, deren weitergereichter OIDC-Mensch beachtet wird |
+| `DISPATCH_DEFAULT_WORKSPACE` | – | Gate-Workspace für Tickets ohne DockWeave-Workspace |
+| `TICKET_REVIEWERS` | – | Agenten mit VERDICT-Vertrag |
+| `TICKET_LEADS` / `TICKET_ROLE_AGENTS` / `DISPATCH_CONTAINER_WORKSPACE` | – / – / `/workspace` | Lead-Modus |
+| `DISPATCH_HEARTBEAT_SEC` / `DISPATCH_CONCURRENCY` / `DISPATCH_PROMPT_TIMEOUT_SEC` | 30 / 4 / 240 | nativer Scheduler und Turn-Grenze |
+
+CLI: `dockweave ticket provider [detect]`, `ticket run AGENT`, `ticket route
+TICKET --agent AGENT`, `ticket sync [--initial] [--dry-run]`.

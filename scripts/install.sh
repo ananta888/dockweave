@@ -80,6 +80,13 @@ ADMIN_UIDS=0:$REAL_UID
 # TICKET_PROVIDER=native
 # TICKET_MIRROR=none
 # PAPERCLIP_URL=http://127.0.0.1:3100
+# Permissions of signed-in humans: /etc/dockweave/ticket-roles.json
+# (example: deployments/ticket-roles.example.json).
+# Dispatcher: gate workspace for tickets without one, reviewers, Lead mode.
+# DISPATCH_DEFAULT_WORKSPACE=/srv/project
+# TICKET_REVIEWERS=reviewer
+# TICKET_LEADS=lead
+# TICKET_ROLE_AGENTS=backend=demo-opencode,frontend=researcher,reviewer=reviewer,platform=platform
 #
 # Socket group (0660 root:GROUP). Your primary group makes the CLI work
 # immediately in this shell. After your next login you may switch this to

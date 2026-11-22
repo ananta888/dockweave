@@ -453,10 +453,10 @@
       "milestone": "M4",
       "type": "docs",
       "title": "Doku DE/EN: Ticketing, Anbieterwahl, Paperclip-Delegation aktualisiert",
-      "status": "todo",
+      "status": "done",
       "priority": "P2",
       "risk": "low",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "docs/ticketing{,.de}.md neu; paperclip-delegation und web-ui angepasst.",
       "components": [
         "docs"
@@ -469,7 +469,10 @@
         "TK-010"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: docs/ticketing{,.de}.md (port, adapters, configuration reference, API, roles/permissions, dispatcher incl. Lead mode and operation, live sync incl. initial import), web-ui{,.de} (Tickets view), paperclip-delegation{,.de} (daemon dispatcher), deployments/paperclip/README (DOCKWEAVE_DISPATCH), oidc{,.de} (forwarded human), security-decisions SD-022, install.sh template keys; ADR 0003 accepted (DE/EN)."
+      ]
     },
     {
       "id": "TK-015",
@@ -518,13 +521,13 @@
   "tasks_status_summary": {
     "total": 15,
     "by_status": {
-      "todo": 2,
+      "todo": 1,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 13
+      "done": 14
     },
-    "progress_percent_done": 86.6667,
+    "progress_percent_done": 93.3333,
     "by_priority": {
       "P0": 0,
       "P1": 12,
@@ -563,10 +566,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 2,
+    "todo_remaining": 1,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 13
+    "done": 14
   }
 }
