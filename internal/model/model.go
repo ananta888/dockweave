@@ -452,3 +452,29 @@ const (
 	LiveEndpointJob = "endpoint_job"
 	LiveGateRun     = "gate_run"
 )
+
+// ActorHeader carries the signed-in human from the web gateway to the daemon
+// (ADR 0003 D-6). The daemon accepts it only from configured gateway peers;
+// the gateway always strips a client-supplied value.
+const ActorHeader = "X-DockWeave-Actor"
+
+// HumanActor is the payload of ActorHeader: stable principal id ("iss|sub"),
+// display handle and Keycloak groups (authorization data for D-6a).
+type HumanActor struct {
+	ID     string   `json:"id"`
+	Name   string   `json:"name,omitempty"`
+	Groups []string `json:"groups,omitempty"`
+}
+
+// Validate bounds the header payload.
+func (h HumanActor) Validate() error {
+	if h.ID == "" || len(h.ID) > 512 || len(h.Name) > 256 || len(h.Groups) > 128 {
+		return errors.New("actor: id required; id ≤ 512, name ≤ 256 bytes, ≤ 128 groups")
+	}
+	for _, g := range h.Groups {
+		if g == "" || len(g) > 256 {
+			return errors.New("actor: invalid group")
+		}
+	}
+	return nil
+}

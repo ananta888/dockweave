@@ -19,6 +19,7 @@ Rollen, Dispatcher, Live-Sync und UI folgen
 | `PAPERCLIP_URL` | Standard `http://127.0.0.1:3100` |
 | `PAPERCLIP_COMPANY` | Paperclip-Firmen-ID; leer = die einzige Firma der Instanz |
 | `PAPERCLIP_TOKEN_FILE` | optionale Datei mit einem Paperclip-Board-API-Key (`local_trusted` braucht keinen) |
+| `GATEWAY_UIDS` | Web-Gateway-Peers, deren weitergereichter OIDC-Mensch der Ticket-Akteur wird (SD-022) |
 
 `dockweave ticket provider detect` schlägt einen Wert vor (Paperclip
 erreichbar → `paperclip`, sonst `native`); ein laufender Daemon wird nie
@@ -42,8 +43,8 @@ Agenten dürfen per Name angegeben werden; gespeichert wird die stabile ID.
 Unbekannte JSON-Felder ergeben 400. Ohne Anbieter oder wenn er nicht
 erreichbar ist: `503 ticketing_unavailable` (geschlossen scheitern).
 Monitor-Peers lesen, Admin-Peers schreiben; Rechte je Rolle folgen (TK-013).
-Bis das Gateway den angemeldeten Menschen weiterreicht (TK-007), ist der
-Akteur der Socket-Peer (`peer:<name>`).
+Akteur ist der vom Gateway weitergereichte OIDC-Mensch (`iss|sub`, SD-022),
+sonst der Socket-Peer (`peer:<name>`).
 
 Jede erfolgreiche Änderung – über API, Dispatcher oder Sync – ist ein
 Domänenereignis (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,

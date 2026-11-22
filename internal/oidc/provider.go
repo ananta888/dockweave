@@ -23,6 +23,8 @@ type idClaims struct {
 	Subject string   `json:"sub"`
 	Groups  []string `json:"groups"`
 	Roles   []string `json:"roles"`
+	// PreferredUsername is the display handle (Keycloak: login name).
+	PreferredUsername string `json:"preferred_username"`
 }
 
 // idpProvider is the real OpenID Connect adapter.
@@ -92,10 +94,16 @@ func (p *idpProvider) Exchange(ctx context.Context, code, codeVerifier, nonce st
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidID, err)
 	}
+	groups := claims.Groups
+	if p.cfg.RolesClaim == "roles" {
+		groups = claims.Roles
+	}
 	return &Principal{
-		Issuer:  claims.Issuer,
-		Subject: claims.Subject,
-		Roles:   p.mapRoles(claims),
+		Issuer:   claims.Issuer,
+		Subject:  claims.Subject,
+		Roles:    p.mapRoles(claims),
+		Groups:   dedupe(groups),
+		Username: claims.PreferredUsername,
 	}, nil
 }
 

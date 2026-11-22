@@ -245,10 +245,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Menschliche Akteure: Principal vom Gateway an den Daemon (nur vom Gateway-Peer akzeptiert)",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Header mit iss/sub/Rolle; Daemon akzeptiert ihn nur vom konfigurierten Gateway-Peer; Eintrag in security-decisions.md.",
       "components": [
         "internal/api",
@@ -263,7 +263,10 @@
         "TK-006"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: gateway strips client X-DockWeave-Actor and sets {id iss|sub, username, groups} for OIDC sessions (token users: none); oidc.Principal keeps groups + preferred_username (no other profile claims, test asserts email does not leak); daemon honours the header only from GATEWAY_UIDS peers with admin role, ignores it otherwise (no rights, actor stays the peer; keeps unconfigured installs working), 400 on malformed; ticket actor = forwarded human; SD-022 with residual risk (same-UID processes) and dedicated-gateway-user recommendation; install.sh template comments; TestForwardedHumanOnlyFromGatewayPeer, TestGatewayForwardsOIDCHumanAndStripsSpoofedHeader."
+      ]
     },
     {
       "id": "TK-013",
@@ -438,13 +441,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 7,
+      "todo": 6,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 6
+      "done": 7
     },
-    "progress_percent_done": 46.1538,
+    "progress_percent_done": 53.8462,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -459,8 +462,8 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 5,
-      "remaining": 6
+      "done": 6,
+      "remaining": 5
     },
     "milestones": {
       "total": 5,
@@ -482,10 +485,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 7,
+    "todo_remaining": 6,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 6
+    "done": 7
   }
 }

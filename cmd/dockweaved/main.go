@@ -134,7 +134,7 @@ func run(cfgPath string) error {
 		}
 	}
 	wsSvc := &workspaces.Service{Store: store, Mounts: mountMgr}
-	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs)
+	authPolicy := api.NewAuthPolicy(cfg.AdminUIDs, cfg.MonitorUIDs).WithGateways(cfg.GatewayUIDs)
 	// Agent removal revokes the agent's grants through the workspace service.
 	agentSvc.Grants = wsSvc
 

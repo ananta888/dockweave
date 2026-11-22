@@ -19,6 +19,9 @@ type Config struct {
 	// MonitorUIDs get read-only access. Unknown UIDs are denied.
 	AdminUIDs   []uint32
 	MonitorUIDs []uint32
+	// GatewayUIDs may forward the signed-in human to the daemon (must be
+	// admin peers). Ideally the gateway runs as a dedicated user.
+	GatewayUIDs []uint32
 
 	// AgentUID/AgentGID is the container identity used when an agent has
 	// no explicit UID (review-005: non-root containers by default).
@@ -138,6 +141,8 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.AdminUIDs = parseUIDList(v)
 		case "MONITOR_UIDS":
 			cfg.MonitorUIDs = parseUIDList(v)
+		case "GATEWAY_UIDS":
+			cfg.GatewayUIDs = parseUIDList(v)
 		case "AGENT_UID":
 			fmt.Sscanf(v, "%d", &cfg.AgentUID)
 		case "AGENT_GID":

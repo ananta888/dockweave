@@ -18,6 +18,7 @@ implemented; roles, dispatcher, live sync and UI follow
 | `PAPERCLIP_URL` | default `http://127.0.0.1:3100` |
 | `PAPERCLIP_COMPANY` | Paperclip company id; empty = the instance's only company |
 | `PAPERCLIP_TOKEN_FILE` | optional file with a Paperclip board API key (`local_trusted` needs none) |
+| `GATEWAY_UIDS` | web gateway peers whose forwarded OIDC human becomes the ticket actor (SD-022) |
 
 `dockweave ticket provider detect` proposes a value (Paperclip reachable →
 `paperclip`, otherwise `native`); it never changes a running daemon.
@@ -39,8 +40,8 @@ reported there – DockWeave never falls back to another provider silently.
 given by name; the API stores the stable id. Unknown JSON fields are 400.
 Without a provider, or when it is unreachable: `503 ticketing_unavailable`
 (fail closed). Monitor peers read, admin peers write; per-role permissions
-follow (TK-013). Until the gateway forwards the signed-in human (TK-007) the
-actor is the socket peer (`peer:<name>`).
+follow (TK-013). The actor is the OIDC human forwarded by the gateway
+(`iss|sub`, SD-022), otherwise the socket peer (`peer:<name>`).
 
 Every successful mutation – from the API, the dispatcher or the sync – is a
 domain event (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,

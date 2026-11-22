@@ -102,9 +102,12 @@ func ticketID(r *http.Request, p ticketing.Provider) (string, error) {
 	return ref.ID, nil
 }
 
-// requestActor is the caller as ticket actor. Until the gateway forwards the
-// signed-in human (TK-007) it is the authenticated socket peer.
+// requestActor is the caller as ticket actor: the human the web gateway
+// forwarded (D-6), otherwise the authenticated socket peer (CLI, scripts).
 func requestActor(r *http.Request) ticketing.Actor {
+	if h, ok := HumanFromContext(r.Context()); ok {
+		return ticketing.Actor{Kind: ticketing.ActorHuman, ID: h.ID, Name: h.Name}
+	}
 	return ticketing.Actor{Kind: ticketing.ActorHuman, ID: "peer:" + actor(r), Name: actor(r)}
 }
 

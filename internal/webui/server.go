@@ -441,6 +441,9 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		// default to read-only (monitor) unless they carry the admin role.
 		role := oidc.RoleAdmin
 		authed := false
+		// Only the gateway may tell the daemon who the human is; a value sent
+		// by the client is always dropped (ADR 0003 D-6).
+		r.Header.Del(model.ActorHeader)
 		if s.bearerOK(r) {
 			authed = true
 		} else if s.oidcSvc != nil {
@@ -448,6 +451,9 @@ func (s *Server) auth(next http.Handler) http.Handler {
 				authed = true
 				if !p.HasRole(oidc.RoleAdmin) {
 					role = oidc.RoleMonitor
+				}
+				if h, err := json.Marshal(model.HumanActor{ID: p.ID(), Name: p.Username, Groups: p.Groups}); err == nil {
+					r.Header.Set(model.ActorHeader, string(h))
 				}
 			}
 		}

@@ -99,8 +99,15 @@ daemon event to be accepted, the gateway's uid must be in `ADMIN_UIDS`
 
 ## Security notes
 
-- Only `iss` + `sub` and the mapped roles are retained; profile claims are
-  never copied into sessions or logs.
+- Retained in the session: `iss` + `sub`, the mapped roles, the IdP groups
+  (authorization data for ticket roles, ADR 0003 D-6a) and
+  `preferred_username` as display handle for attribution in shared tickets.
+  No other profile claim (email, full name, …) is copied into sessions or
+  logs.
+- The gateway forwards the signed-in human to the daemon in
+  `X-DockWeave-Actor` (id `iss|sub`, username, groups) and always drops a
+  client-supplied value. The daemon honours it only from peers in
+  `GATEWAY_UIDS` that are also admin peers (SD-022).
 - The session cookie is encrypted and signed (AES-GCM); tampering yields
   `invalid session`.
 - `state` and `nonce` are single-use and expire; replayed callbacks are

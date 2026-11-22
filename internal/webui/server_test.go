@@ -17,6 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/oidc"
 )
 
@@ -422,5 +423,42 @@ func TestOIDCLoginRedirectsOnceDiscovered(t *testing.T) {
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://idp/auth" {
 		t.Fatalf("login = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// The gateway forwards the signed-in OIDC human to the daemon and always
+// drops a client-supplied actor header (ADR 0003 D-6).
+func TestGatewayForwardsOIDCHumanAndStripsSpoofedHeader(t *testing.T) {
+	got := make(chan string, 4)
+	daemonSock := unixHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got <- r.Header.Get(model.ActorHeader)
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("x"), 0o644)
+	srv, err := New(Config{DaemonSocket: daemonSock, TermSocket: "/nonexistent", WebDir: webDir, Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.oidcSvc = oidc.NewService(stubProvider{}, stubStore{p: oidc.Principal{Issuer: "https://idp", Subject: "sub-1",
+		Roles: []string{"admin"}, Groups: []string{"dw-author"}, Username: "alice"}}, oidc.Config{SessionTTL: time.Hour})
+	spoof := `{"id":"evil","name":"mallory"}`
+
+	// OIDC session: the human is forwarded, the spoofed value replaced.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	req.Header.Set(model.ActorHeader, spoof)
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+	var h model.HumanActor
+	if err := json.Unmarshal([]byte(<-got), &h); err != nil || h.ID != "https://idp|sub-1" || h.Name != "alice" || len(h.Groups) != 1 {
+		t.Fatalf("forwarded human: %+v %v", h, err)
+	}
+
+	// Token (break-glass) users carry no human identity; the spoof is dropped.
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/tickets", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set(model.ActorHeader, spoof)
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+	if v := <-got; v != "" {
+		t.Fatalf("token request forwarded %q", v)
 	}
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strconv"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/ananta888/dockweave/internal/model"
 )
 
 // Role authorizes socket peers (review-005). SO_PEERCRED identifies the
@@ -24,6 +27,18 @@ const (
 type AuthPolicy struct {
 	AdminUIDs   map[uint32]bool
 	MonitorUIDs map[uint32]bool
+	// GatewayUIDs may forward the signed-in human (model.ActorHeader). They
+	// must also be admin peers; any other peer sending the header is refused.
+	GatewayUIDs map[uint32]bool
+}
+
+// WithGateways returns the policy with the given gateway peer UIDs.
+func (p AuthPolicy) WithGateways(uids []uint32) AuthPolicy {
+	p.GatewayUIDs = map[uint32]bool{}
+	for _, u := range uids {
+		p.GatewayUIDs[u] = true
+	}
+	return p
 }
 
 // NewAuthPolicy builds a policy from UID lists.
@@ -52,6 +67,18 @@ func (p AuthPolicy) RoleOf(uid uint32) Role {
 type peerKey struct{}     // display name for audit events
 type peerUIDKey struct{}  // SO_PEERCRED uid
 type peerRoleKey struct{} // resolved Role
+type humanKey struct{}    // model.HumanActor forwarded by the gateway
+
+// HumanFromContext returns the human forwarded by the web gateway, if any.
+func HumanFromContext(ctx context.Context) (model.HumanActor, bool) {
+	h, ok := ctx.Value(humanKey{}).(model.HumanActor)
+	return h, ok
+}
+
+// ContextWithHuman injects a forwarded human (tests).
+func ContextWithHuman(ctx context.Context, h model.HumanActor) context.Context {
+	return context.WithValue(ctx, humanKey{}, h)
+}
 
 // ContextWithPeer injects peer identity into a context (ConnContext and
 // tests).
@@ -80,6 +107,19 @@ func PeerAuthMiddleware(policy AuthPolicy, next http.Handler) http.Handler {
 		if role == RoleMonitor && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "forbidden: monitor role is read-only", http.StatusForbidden)
 			return
+		}
+		// A forwarded human is honoured only from a gateway peer with the
+		// admin role. From any other peer the header is ignored: it grants
+		// nothing, the actor stays the socket peer (and an unconfigured
+		// GATEWAY_UIDS keeps OIDC users working as before).
+		uid, _ := ctx.Value(peerUIDKey{}).(uint32)
+		if raw := r.Header.Get(model.ActorHeader); raw != "" && policy.GatewayUIDs[uid] && role == RoleAdmin {
+			var h model.HumanActor
+			if err := json.Unmarshal([]byte(raw), &h); err != nil || h.Validate() != nil {
+				http.Error(w, "invalid "+model.ActorHeader, http.StatusBadRequest)
+				return
+			}
+			ctx = context.WithValue(ctx, humanKey{}, h)
 		}
 		// Make the resolved role available to handlers (approvals need it).
 		ctx = context.WithValue(ctx, peerRoleKey{}, role)

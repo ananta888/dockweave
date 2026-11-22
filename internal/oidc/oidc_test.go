@@ -248,6 +248,14 @@ func TestProviderAgainstMockIssuer(t *testing.T) {
 	if p.Subject != "user-1" || !p.HasRole(RoleAdmin) {
 		t.Fatalf("principal = %+v", p)
 	}
+	// Groups (deduplicated) and the display handle are kept; no other
+	// profile claim (the email) reaches the principal.
+	if p.Username != "alice" || len(p.Groups) != 2 || p.Groups[1] != "dw-author" || !strings.HasSuffix(p.ID(), "|user-1") {
+		t.Fatalf("principal groups/username = %+v", p)
+	}
+	if b, _ := json.Marshal(p); strings.Contains(string(b), "example.org") {
+		t.Fatalf("profile claim leaked: %s", b)
+	}
 
 	// Wrong nonce is rejected.
 	if _, err := prov.Exchange(context.Background(), "code-1", "verifier-1", "wrong"); err == nil {
@@ -258,7 +266,7 @@ func TestProviderAgainstMockIssuer(t *testing.T) {
 func idTokenPayload(iss, aud string) []byte {
 	now := time.Now().Unix()
 	return []byte(`{"iss":"` + iss + `","sub":"user-1","aud":"` + aud + `","iat":` +
-		itoa(now) + `,"exp":` + itoa(now+3600) + `,"nonce":"nonce-1","groups":["dockweave-admin"]}`)
+		itoa(now) + `,"exp":` + itoa(now+3600) + `,"nonce":"nonce-1","groups":["dockweave-admin","dw-author","dw-author"],"preferred_username":"alice","email":"alice@example.org"}`)
 }
 
 func itoa(n int64) string {

@@ -443,3 +443,33 @@ chmod or read files outside the workspace, and a file swapped between
   them out of host reads; the recorded fingerprint covers their link text,
   and the snapshot is verified against the workspace minus exactly the
   omitted links. A gate therefore never sees content behind such a link.
+
+## SD-022 — The web gateway forwards the signed-in human to the daemon (2026-11-22)
+
+**Context:** ADR 0003 D-6. The daemon authorizes socket peers by UID
+(`SO_PEERCRED`); every web user reaches it as the gateway's UID, so tickets,
+comments and approvals could not name the human who acted, and per-role
+permissions (D-6a) had nothing to evaluate.
+
+**Decision:**
+
+1. The gateway removes any client-supplied `X-DockWeave-Actor` header on
+   every request and, for an OIDC session, sets it to
+   `{"id":"<iss>|<sub>","name":"<preferred_username>","groups":[…]}`. Token
+   (break-glass) users carry no human identity.
+2. The daemon honours the header only when the peer UID is listed in
+   `GATEWAY_UIDS` **and** resolves to the admin role. From any other peer the
+   header is ignored – it grants nothing, the actor stays the socket peer –
+   so an unconfigured `GATEWAY_UIDS` keeps existing installations working.
+   A malformed header from a gateway peer is a 400 (bounded: id ≤ 512 bytes,
+   name ≤ 256, ≤ 128 non-empty groups).
+3. The forwarded human is an attribution and (TK-013) a permission subject;
+   it never raises the peer's own rights.
+
+**Residual risk:** `SO_PEERCRED` identifies a UID, not a program. If the
+gateway runs as the operator's login user, every process of that user (e.g.
+the CLI) shares the UID and could forward an arbitrary human. Such a process
+is already an admin peer, so this is attribution spoofing, not privilege
+escalation. Recommended: run the gateway as a dedicated user and list only
+that UID in `GATEWAY_UIDS`.
+

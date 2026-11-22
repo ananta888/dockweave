@@ -71,6 +71,16 @@ else
 # Unknown UIDs are denied.
 ADMIN_UIDS=0:$REAL_UID
 #
+# Web gateway peers that may forward the signed-in (OIDC) human to the
+# daemon (SD-022). Must also be admin. Best: a dedicated gateway user.
+# GATEWAY_UIDS=$REAL_UID
+#
+# Ticketing (docs/ticketing.md, ADR 0003). Off until set;
+# `dockweave ticket provider detect` proposes a value.
+# TICKET_PROVIDER=native
+# TICKET_MIRROR=none
+# PAPERCLIP_URL=http://127.0.0.1:3100
+#
 # Socket group (0660 root:GROUP). Your primary group makes the CLI work
 # immediately in this shell. After your next login you may switch this to
 # "dockweave" (all members of that group may connect).

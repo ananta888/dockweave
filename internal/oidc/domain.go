@@ -18,14 +18,20 @@ const (
 	RoleMonitor Role = "monitor"
 )
 
-// Principal is the minimal identity the gateway keeps. Only iss + sub (and the
-// mapped roles) are retained; profile claims are never copied into sessions or
-// audit data.
+// Principal is the minimal identity the gateway keeps: iss + sub, the mapped
+// roles, the IdP groups (authorization data for ticket roles, ADR 0003 D-6a)
+// and preferred_username as display handle for attribution in shared
+// tickets. No other profile claims (email, full name, …) are copied.
 type Principal struct {
-	Issuer  string   `json:"iss"`
-	Subject string   `json:"sub"`
-	Roles   []string `json:"roles,omitempty"`
+	Issuer   string   `json:"iss"`
+	Subject  string   `json:"sub"`
+	Roles    []string `json:"roles,omitempty"`
+	Groups   []string `json:"groups,omitempty"`
+	Username string   `json:"username,omitempty"`
 }
+
+// ID is the stable principal id used across DockWeave ("iss|sub").
+func (p Principal) ID() string { return p.Issuer + "|" + p.Subject }
 
 // HasRole reports whether the principal carries the given role.
 func (p Principal) HasRole(r Role) bool {

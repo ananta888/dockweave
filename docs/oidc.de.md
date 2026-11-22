@@ -82,7 +82,14 @@ angenommen wird, muss die Gateway-UID in `ADMIN_UIDS` stehen, z. B.
 
 ## Sicherheit
 
-Nur `iss` + `sub` und Rollen werden behalten; Profile-Claims werden nie in
-Sessions oder Logs kopiert. Das Cookie ist verschlüsselt/signiert; `state`
+In der Session bleiben `iss` + `sub`, die abgeleiteten Rollen, die
+IdP-Gruppen (Berechtigungsdaten für Ticket-Rollen, ADR 0003 D-6a) und
+`preferred_username` als Anzeigename für die Zuordnung in gemeinsamen
+Tickets. Andere Profil-Claims (E-Mail, voller Name, …) werden nie in
+Sessions oder Logs kopiert. Das Gateway reicht den angemeldeten Menschen im
+Header `X-DockWeave-Actor` (ID `iss|sub`, Benutzername, Gruppen) an den
+Daemon weiter und verwirft einen vom Client gesendeten Wert immer; der
+Daemon beachtet ihn nur von Peers in `GATEWAY_UIDS`, die zugleich
+Admin-Peers sind (SD-022). Das Cookie ist verschlüsselt/signiert; `state`
 und `nonce` sind einmalig und laufen ab. Rate-Limit und Header-Härtung
 bleiben aktiv.
