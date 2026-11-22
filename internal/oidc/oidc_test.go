@@ -63,7 +63,7 @@ func TestCookieStoreRoundTripAndTamper(t *testing.T) {
 	if tampered.Value[mid] == 'A' {
 		flip = 'B'
 	}
-	tampered.Value = tampered.Value[:mid] + string(flip) + tampered.Value[mid+1:]"
+	tampered.Value = tampered.Value[:mid] + string(flip) + tampered.Value[mid+1:]
 	req = httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&tampered)
 	if _, err := store.Get(req); err == nil {
