@@ -87,6 +87,11 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"alpha"}`, 409)
 	rec(RoleAdmin, "POST", one+"/release", "/api/v1/tickets/{id}/release", `{"agent":"beta"}`, 200)
 	rec(RoleMonitor, "GET", "/api/v1/tickets/me", "/api/v1/tickets/me", "", 200)
+	f.srv.Dispatcher = f.srv.NewDispatcher(DispatchSettings{}, f.srv.Tickets.Primary, nil)
+	rec(RoleAdmin, "POST", "/api/v1/tickets/run", "/api/v1/tickets/run", `{"agent":"alpha"}`, 200)
+	rec(RoleAdmin, "POST", "/api/v1/tickets/run", "/api/v1/tickets/run", `{"agent":"ghost"}`, 400)
+	rec(RoleAdmin, "POST", one+"/route", "/api/v1/tickets/{id}/route", `{"agent":"alpha"}`, 200)
+	f.srv.Dispatcher = nil
 	f.srv.Tickets = nil
 
 	const prune = "/api/v1/gates/prune"

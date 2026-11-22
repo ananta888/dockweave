@@ -48,6 +48,9 @@ FAKE_DW = textwrap.dedent('''\
         print(json.dumps(cfg.get("gate_run", {"status": "passed", "id": "gate-1", "results": []}))); sys.exit(0)
     if args[:2] == ["gate", "review"]:
         sys.exit(0)
+    if args[:2] == ["ticket", "run"]:
+        print(json.dumps(cfg.get("ticket_run", {"kind": "ran", "status": "done"})))
+        sys.exit(cfg.get("ticket_run_exit", 0))
     print("unexpected: %s" % args, file=sys.stderr); sys.exit(1)
 ''')
 

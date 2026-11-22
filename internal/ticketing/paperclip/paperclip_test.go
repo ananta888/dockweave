@@ -10,6 +10,7 @@ import (
 
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/contracttest"
+	"github.com/ananta888/dockweave/internal/ticketing/paperclip/paperclipfake"
 )
 
 type dir map[string]string
@@ -30,10 +31,10 @@ func agentsDir() (dir, []string) {
 	return d, names
 }
 
-func newProvider(t *testing.T) (*Provider, *fakePaperclip) {
+func newProvider(t *testing.T) (*Provider, *paperclipfake.Server) {
 	d, names := agentsDir()
-	f := newFake(t, names...)
-	return New(Options{BaseURL: f.srv.URL, Agents: d}), f
+	f := paperclipfake.New(t, names...)
+	return New(Options{BaseURL: f.Srv.URL, Agents: d}), f
 }
 
 func TestPaperclipProviderContract(t *testing.T) {
@@ -48,8 +49,8 @@ func TestPaperclipMapsAgentsAndAuthorship(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.issues[tk.Ref.ID]["assigneeAgentId"] != uuid(1001) || tk.Assignee.ID != "ag_b" || tk.Identifier != "PC-1" {
-		t.Fatalf("assignee mapping: %+v / %v", tk, f.issues[tk.Ref.ID]["assigneeAgentId"])
+	if f.Issues[tk.Ref.ID]["assigneeAgentId"] != paperclipfake.UUID(1001) || tk.Assignee.ID != "ag_b" || tk.Identifier != "PC-1" {
+		t.Fatalf("assignee mapping: %+v / %v", tk, f.Issues[tk.Ref.ID]["assigneeAgentId"])
 	}
 	// The Paperclip author is its API identity (no Authorship capability).
 	if tk.CreatedBy == nil || tk.CreatedBy.ID != UserPrefix+"local-board" || p.Capabilities().Authorship {
@@ -61,7 +62,7 @@ func TestPaperclipMapsAgentsAndAuthorship(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored := f.comments[tk.Ref.ID][0]["body"].(string)
+	stored := f.Comments[tk.Ref.ID][0]["body"].(string)
 	if !strings.Contains(stored, "— Alice (via DockWeave)") || !strings.Contains(stored, markerPrefix) {
 		t.Fatalf("stored body: %q", stored)
 	}
@@ -69,9 +70,9 @@ func TestPaperclipMapsAgentsAndAuthorship(t *testing.T) {
 		t.Fatalf("decoded comment: %+v", c)
 	}
 	// A Paperclip agent without a DockWeave binding stays recognisable.
-	f.issues[tk.Ref.ID]["assigneeAgentId"] = uuid(999)
+	f.Issues[tk.Ref.ID]["assigneeAgentId"] = paperclipfake.UUID(999)
 	got, _ := p.Get(ctx, tk.Ref.ID)
-	if got.Assignee.ID != ForeignAgentPrefix+uuid(999) || got.Assignee.Name != "Claude CEO" {
+	if got.Assignee.ID != ForeignAgentPrefix+paperclipfake.UUID(999) || got.Assignee.Name != "Claude CEO" {
 		t.Fatalf("foreign agent: %+v", got.Assignee)
 	}
 	// Assigning a DockWeave agent without a Paperclip process agent fails clearly.
@@ -82,8 +83,8 @@ func TestPaperclipMapsAgentsAndAuthorship(t *testing.T) {
 	if _, err := p.Create(ctx, ticketing.NewTicket{Title: "z", Assignee: &human}, human); !errors.Is(err, ticketing.ErrInvalid) {
 		t.Fatalf("unmapped human: %v", err)
 	}
-	if err := p.Wake(ctx, "ag_c"); err != nil || len(f.wakes) != 1 || f.wakes[0] != uuid(1002) {
-		t.Fatalf("wake: %v %v", err, f.wakes)
+	if err := p.Wake(ctx, "ag_c"); err != nil || len(f.Wakes) != 1 || f.Wakes[0] != paperclipfake.UUID(1002) {
+		t.Fatalf("wake: %v %v", err, f.Wakes)
 	}
 }
 
@@ -93,8 +94,8 @@ func TestPaperclipStatusRaceUsesStatusVersion(t *testing.T) {
 	tk, _ := p.Create(ctx, ticketing.NewTicket{Title: "x"}, ticketing.Actor{Kind: ticketing.ActorSystem})
 	// Someone else changes the status between our read and our write: our
 	// stale ExpectedVersion is refused before writing.
-	f.issues[tk.Ref.ID]["status"] = "blocked"
-	f.issues[tk.Ref.ID]["statusVersion"] = 2
+	f.Issues[tk.Ref.ID]["status"] = "blocked"
+	f.Issues[tk.Ref.ID]["statusVersion"] = 2
 	done := ticketing.StatusDone
 	if _, err := p.Update(ctx, tk.Ref.ID, ticketing.Update{Status: &done, ExpectedVersion: tk.Version}, ticketing.Actor{Kind: ticketing.ActorSystem}); !errors.Is(err, ticketing.ErrConflict) {
 		t.Fatalf("stale version: %v", err)

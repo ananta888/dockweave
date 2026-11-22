@@ -69,3 +69,38 @@ class WrapperModeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DaemonDispatchTest(unittest.TestCase):
+    """ADR 0003 D-4: DOCKWEAVE_DISPATCH=daemon hands the worker loop to dockweaved."""
+
+    setUp = WrapperModeTest.setUp
+    dw_calls = WrapperModeTest.dw_calls
+    endpoint_calls = WrapperModeTest.endpoint_calls
+
+    def run_daemon(self, *args, **extra):
+        env = self.f.env(DOCKWEAVE_PAPERCLIP_HELPER_DIR=DIR, DOCKWEAVE_PAPERCLIP_ENV=os.path.join(self.f.dir, "none.env"),
+                         DOCKWEAVE_DISPATCH="daemon", **extra)
+        return subprocess.run(["sh", os.path.join(DIR, "dockweave-run.sh")] + list(args),
+                              capture_output=True, text=True, env=env, timeout=120)
+
+    def test_worker_calls_ticket_run_only(self):
+        p = self.run_daemon("beta")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.dw_calls(), ["ticket run beta"])
+        self.assertEqual(self.endpoint_calls(), [])
+        self.assertEqual(self.f.log("pc"), [])
+
+    def test_blocked_is_handled_not_an_error(self):
+        self.f.set("dw", {"admissions": {}, "ticket_run": {"kind": "blocked"}, "ticket_run_exit": 3})
+        p = self.run_daemon("beta")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_failure_is_reported_to_paperclip(self):
+        self.f.set("dw", {"admissions": {}, "ticket_run": {"kind": "agent_failed"}, "ticket_run_exit": 1})
+        self.assertEqual(self.run_daemon("beta").returncode, 1)
+
+    def test_orchestrate_and_legacy_keep_the_script(self):
+        self.run_daemon("lead", "orchestrate", DOCKWEAVE_DEFAULT_TASK="Plan")
+        self.assertNotIn("ticket run lead", self.dw_calls())
+

@@ -699,3 +699,45 @@ func (b *blockingDriver) calls() int {
 	}
 	return b.n
 }
+
+func TestSchedulerTicksAndKicks(t *testing.T) {
+	r := newRig(t)
+	r.driver.answer = "ok\nSTATUS: DONE"
+	r.ticket(t, agentTicket("a", "beta"))
+	s := &Scheduler{D: r.d, Interval: 20 * time.Millisecond, Agents: func(context.Context) ([]string, error) { return []string{"beta"}, nil }}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		r.driver.mu.Lock()
+		n := len(r.driver.prompts)
+		r.driver.mu.Unlock()
+		if n >= 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("tick never ran the agent")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// A wake (kick) for another agent runs it without waiting for the tick list.
+	r.ticket(t, agentTicket("b", "gamma"))
+	if err := s.Wake(context.Background(), "gamma", "test"); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		r.driver.mu.Lock()
+		n := len(r.driver.prompts)
+		r.driver.mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("kick never ran gamma")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+}

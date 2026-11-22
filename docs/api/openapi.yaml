@@ -404,6 +404,65 @@ paths:
         "501": { $ref: "#/components/responses/Unsupported" }
         "503": { $ref: "#/components/responses/TicketingUnavailable" }
 
+  /api/v1/tickets/run:
+    post:
+      summary: Run one dispatcher heartbeat for an agent (ADR 0003 D-4)
+      description: >
+        Takes the agent's next ticket of the primary provider and runs the
+        worker loop: blockers, pipeline admission, claim, pre_run gates, the
+        agent turn, STATUS/VERDICT contracts, after_run/post_run gates and
+        routing. Refusals spend no model turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent]
+              additionalProperties: false
+              properties:
+                agent: { type: string }
+      responses:
+        "200":
+          description: Outcome of the heartbeat
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DispatchOutcome" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/{id}/route:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Retry the pipeline routing of a ticket (idempotent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent]
+              additionalProperties: false
+              properties:
+                agent: { type: string, description: "upstream agent" }
+      responses:
+        "200":
+          description: Routing lines (WAKE/REWORK/DENY/ERR)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lines, complete]
+                properties:
+                  lines: { type: array, items: { type: string } }
+                  complete: { type: boolean }
+                  error: { type: string }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
   /api/v1/tickets/me:
     get:
       summary: Caller identity, roles and permissions (for the UI; ADR 0003 D-6a)
@@ -888,6 +947,15 @@ components:
       additionalProperties: false
       properties:
         agent: { type: string, description: "DockWeave agent id or name" }
+
+    DispatchOutcome:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [idle, waiting, blocked, busy, pre_run_failed, agent_failed, ran] }
+        ticket: { $ref: "#/components/schemas/TicketRef" }
+        status: { type: string, enum: [backlog, todo, in_progress, in_review, blocked, done, cancelled] }
+        detail: { type: string }
 
     TicketProviderStatus:
       type: object

@@ -45,6 +45,15 @@ func TestPipelineAndGateCLIProcesses(t *testing.T) {
 				t.Errorf("wrong run attribution: %+v %v", body, err)
 			}
 		}},
+		{"ticket_run_ran", []string{"ticket", "run", "beta"}, 200, `{"kind":"ran","ticket":{"provider":"native","id":"tk_1"},"status":"done"}`, 0, "/api/v1/tickets/run", func(t *testing.T, r *http.Request) {
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body["agent"] != "beta" {
+				t.Errorf("run body: %v %v", body, err)
+			}
+		}},
+		{"ticket_run_blocked", []string{"ticket", "run", "beta"}, 200, `{"kind":"blocked","detail":"Pipeline-Sperre"}`, 3, "/api/v1/tickets/run", nil},
+		{"ticket_run_agent_failed", []string{"ticket", "run", "beta"}, 200, `{"kind":"agent_failed","detail":"no response"}`, 1, "/api/v1/tickets/run", nil},
+		{"ticket_route", []string{"ticket", "route", "native:tk_1", "--agent", "alpha"}, 200, `{"lines":["WAKE\tbeta\tallow"],"complete":true}`, 0, "/api/v1/tickets/native:tk_1/route", nil},
 		{"ticket_provider_off", []string{"ticket", "provider"}, 200, `{"configured":false,"available":["native","paperclip"],"error":"ticketing is not configured"}`, 0, "/api/v1/tickets/provider", nil},
 		{"gate_workspace_query", []string{"gate", "runs", "/work/a & b"}, 200, `{"runs":[]}`, 0, "/api/v1/gates/runs", func(t *testing.T, r *http.Request) {
 			if r.URL.Query().Get("workspace") != "/work/a & b" {

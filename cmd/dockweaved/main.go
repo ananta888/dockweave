@@ -29,6 +29,7 @@ import (
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/config"
 	"github.com/ananta888/dockweave/internal/configio"
+	"github.com/ananta888/dockweave/internal/dispatch"
 	"github.com/ananta888/dockweave/internal/dockerclient"
 	"github.com/ananta888/dockweave/internal/egress"
 	"github.com/ananta888/dockweave/internal/gateexec"
@@ -248,6 +249,7 @@ func run(cfgPath string) error {
 	defer collectCancel()
 	collector := &productivity.Collector{Store: store, Broker: apiSrv.Broker, Interval: time.Minute}
 	go collector.Run(collectCtx)
+	startDispatcher(collectCtx, apiSrv, cfg, agentSvc)
 
 	handler := api.PeerAuthMiddleware(authPolicy, apiSrv)
 	srv := &http.Server{Handler: handler, ConnContext: api.PeerConnContext}
@@ -423,4 +425,47 @@ func openTicketing(apiSrv *api.Server, cfg config.Config, store *persistence.Sto
 		mirror = sel.Mirror.Name()
 	}
 	log.Printf("ticketing: primary=%s mirror=%s", sel.Primary.Name(), mirror)
+}
+
+// startDispatcher wires the ticket worker loop (ADR 0003 D-4/D-9). The
+// native provider gets the daemon's own heartbeat scheduler; Paperclip keeps
+// its heartbeats and calls `dockweave ticket run <agent>`.
+func startDispatcher(ctx context.Context, apiSrv *api.Server, cfg config.Config, agentSvc *agents.Service) {
+	if apiSrv.Tickets == nil {
+		return
+	}
+	primary := apiSrv.Tickets.Primary
+	interval := time.Duration(cfg.DispatchHeartbeatSec) * time.Second
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	sched := &dispatch.Scheduler{
+		Interval:    interval,
+		Concurrency: cfg.DispatchConcurrency,
+		Logf:        log.Printf,
+		Agents: func(ctx context.Context) ([]string, error) {
+			list, err := agentSvc.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			var ids []string
+			for _, a := range list {
+				if a.State == model.AgentRunning {
+					ids = append(ids, a.ID)
+				}
+			}
+			return ids, nil
+		},
+	}
+	d := apiSrv.NewDispatcher(api.DispatchSettings{
+		DefaultWorkspace: cfg.DispatchDefaultWorkspace,
+		Reviewers:        cfg.TicketReviewers,
+		PromptTimeout:    time.Duration(cfg.DispatchPromptTimeoutSec) * time.Second,
+	}, primary, api.AgentWaker{Server: apiSrv, Provider: primary, Scheduler: sched})
+	sched.D = d
+	apiSrv.Dispatcher = d
+	if primary.Name() == "native" {
+		go sched.Run(ctx)
+		log.Printf("dispatch: native heartbeat every %s", sched.Interval)
+	}
 }

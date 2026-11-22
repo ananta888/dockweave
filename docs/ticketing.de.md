@@ -109,8 +109,32 @@ bestätigte Wirkung wird nie wiederholt, ein unbekannter Ausgang sperrt eine
 Wiederholung für das Abgleichsfenster (600 s), eine verlorene
 Anlage-Antwort wird über das Titel-Tag abgeglichen. `go test
 ./internal/dispatch` führt die übertragene Wrapper-Testmatrix gegen einen
-In-Memory-Anbieter aus. Anbindung an den Daemon, der 30-s-Scheduler und
-`dockweave ticket run` folgen (TK-009); der Lead-/Orchestrierungsmodus ist TK-014.
+In-Memory-Anbieter aus; `internal/api` prüft dasselbe Szenario Ende zu Ende
+für den nativen Anbieter und einen Paperclip-Nachbau. Der
+Lead-/Orchestrierungsmodus ist TK-014.
+
+### Betrieb
+
+| | native | paperclip |
+|---|---|---|
+| Heartbeat | Daemon-Scheduler alle `DISPATCH_HEARTBEAT_SEC` (30) für laufende Agenten, höchstens `DISPATCH_CONCURRENCY` (4) gleichzeitig, einer je Agent | Paperclips Heartbeat startet `dockweave-run.sh`; mit `DOCKWEAVE_DISPATCH=daemon` ruft es nur `dockweave ticket run <agent>` auf |
+| Wecken (Routing, Nacharbeit) | Scheduler-Anstoß | Paperclip-`wakeup` |
+
+`dockweave ticket run AGENT` (`POST /api/v1/tickets/run`) führt einen
+Heartbeat aus (Exit 3 = Pipeline gesperrt, 1 = Agenten-Turn fehlgeschlagen).
+`dockweave ticket route TICKET --agent AGENT` wiederholt ein unvollständiges
+Routing. Beides braucht für Menschen `agent.wake`.
+
+Weitere `dockweaved.conf`-Schlüssel: `DISPATCH_DEFAULT_WORKSPACE`
+(Gate-Workspace für Tickets ohne DockWeave-Workspace, wie
+`DOCKWEAVE_HOST_WORKSPACE`), `TICKET_REVIEWERS` (kommagetrennte Agenten mit
+VERDICT-Vertrag), `DISPATCH_PROMPT_TIMEOUT_SEC` (240).
+
+Der Treiber führt die verbrauchende Pipeline-Admission direkt vor dem Turn
+aus (wie der Ausführungsendpunkt) und zeigt den Turn als laufende
+Endpoint-Arbeit im Graphen. Ohne `DOCKWEAVE_DISPATCH=daemon` behält der
+Wrapper seine eigene Logik; der Standard wechselt erst nach der Abnahme auf
+einer echten Installation (TK-015).
 
 ## Adapter
 

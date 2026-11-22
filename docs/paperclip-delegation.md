@@ -221,3 +221,10 @@ run. It is kept only for compatibility. Migration: the container name is
 with `<agent-id>` (or the agent's name) and drop the harness arguments; the
 agent is then driven through the endpoint like any worker.
 
+## Daemon dispatcher (ADR 0003)
+
+With `TICKET_PROVIDER=paperclip` in `dockweaved.conf` and
+`DOCKWEAVE_DISPATCH=daemon` in the wrapper environment, `dockweave-run.sh`
+only calls `dockweave ticket run <agent>`; the worker loop described here runs
+in the daemon (`docs/ticketing.md`). Orchestration mode keeps the script
+logic until TK-014.

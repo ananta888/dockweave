@@ -66,6 +66,13 @@ type Config struct {
 	PaperclipTokenFile string
 	// TicketRolesFile maps IdP groups to roles and permissions (D-6a).
 	TicketRolesFile string
+	// Dispatcher (D-4/D-9): gate workspace for tickets without a DockWeave
+	// workspace, reviewer agents, heartbeat interval, concurrency, turn limit.
+	DispatchDefaultWorkspace string
+	TicketReviewers          []string
+	DispatchHeartbeatSec     int
+	DispatchConcurrency      int
+	DispatchPromptTimeoutSec int
 }
 
 // Default returns the default configuration.
@@ -168,6 +175,16 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.PaperclipTokenFile = v
 		case "TICKET_ROLES_FILE":
 			cfg.TicketRolesFile = v
+		case "DISPATCH_DEFAULT_WORKSPACE":
+			cfg.DispatchDefaultWorkspace = v
+		case "TICKET_REVIEWERS":
+			cfg.TicketReviewers = strings.Split(v, ",")
+		case "DISPATCH_HEARTBEAT_SEC":
+			fmt.Sscanf(v, "%d", &cfg.DispatchHeartbeatSec)
+		case "DISPATCH_CONCURRENCY":
+			fmt.Sscanf(v, "%d", &cfg.DispatchConcurrency)
+		case "DISPATCH_PROMPT_TIMEOUT_SEC":
+			fmt.Sscanf(v, "%d", &cfg.DispatchPromptTimeoutSec)
 		}
 	}
 }

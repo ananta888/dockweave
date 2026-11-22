@@ -73,7 +73,8 @@
       "title": "UI, Migration, Doku",
       "task_ids": [
         "TK-010",
-        "TK-012"
+        "TK-012",
+        "TK-015"
       ],
       "status": "todo"
     }
@@ -331,10 +332,10 @@
       "milestone": "M3",
       "type": "feature",
       "title": "Ausführung: dockweave ticket run <agent> für Paperclip, Scheduler für native",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Paperclip-process-Adapter ruft den dünnen Befehl; nativer Heartbeat-Scheduler je Agent mit Parallelitätsgrenze; Legacy-Wrapper bleibt bis zur Gleichwertigkeit.",
       "components": [
         "cmd/dockweave",
@@ -349,7 +350,10 @@
         "TK-008"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: daemon wiring (api.NewDispatcher with real admission precheck, pipeline edges, gate runner + live gate_run, driver with consuming admission + live endpoint_job + BlockedError, review store; AgentWaker = provider wake or scheduler kick); dispatch.Scheduler (30 s default, concurrency 4, kick); started for the native provider only; POST /api/v1/tickets/run and /{id}/route (agent.wake), OpenAPI + fixtures (43/43); CLI dockweave ticket run|route (exit 3 blocked, 1 agent failed); wrapper switch DOCKWEAVE_DISPATCH=daemon (default off, orchestrate/legacy unchanged) with 4 wrapper tests (57 total); paperclipfake exported; TestDispatcherEndToEndSameForBothProviders (native + Paperclip fake via API). Real-Paperclip write semantics and the default switch moved to TK-015 (acceptance)."
+      ]
     },
     {
       "id": "TK-014",
@@ -457,6 +461,35 @@
       ],
       "verification_files": [],
       "verification_commands": []
+    },
+    {
+      "id": "TK-015",
+      "milestone": "M4",
+      "type": "verification",
+      "title": "Abnahme auf der echten Installation (native und Paperclip, DOCKWEAVE_DISPATCH=daemon)",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Mit dem Nutzer: TICKET_PROVIDER setzen, Wrapper auf DOCKWEAVE_DISPATCH=daemon, echte Tickets durch Gate/Pipeline laufen lassen; Checkout/Release-Schreibsemantik gegen echtes Paperclip verifizieren (aus TK-004 offen); danach Standard umstellen.",
+      "components": [
+        "deployments/paperclip",
+        "internal/dispatch",
+        "internal/ticketing/paperclip"
+      ],
+      "acceptance_criteria": [
+        "Ein echtes Paperclip-Ticket läuft über den Daemon-Dispatcher bis DONE inkl. Gate und Routing.",
+        "Checkout/Release/Next verhalten sich auf echtem Paperclip wie im Nachbau (oder der Adapter ist angepasst).",
+        "Nativer Scheduler bearbeitet ein natives Ticket ohne Paperclip.",
+        "Erst danach wird DOCKWEAVE_DISPATCH=daemon zum Standard."
+      ],
+      "depends_on": [
+        "TK-009",
+        "TK-011",
+        "TK-014"
+      ],
+      "verification_files": [],
+      "verification_commands": []
     }
   ],
   "critical_path_tasks": [
@@ -470,33 +503,34 @@
     "TK-008",
     "TK-009",
     "TK-011",
-    "TK-010"
+    "TK-010",
+    "TK-015"
   ],
   "tasks_status_summary": {
-    "total": 14,
+    "total": 15,
     "by_status": {
       "todo": 5,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 9
+      "done": 10
     },
-    "progress_percent_done": 64.2857,
+    "progress_percent_done": 66.6667,
     "by_priority": {
       "P0": 0,
-      "P1": 11,
+      "P1": 12,
       "P2": 3,
       "P3": 0
     },
     "by_risk": {
       "low": 1,
       "medium": 5,
-      "high": 8,
+      "high": 9,
       "critical": 0
     },
     "critical_path": {
-      "total": 11,
-      "done": 8,
+      "total": 12,
+      "done": 9,
       "remaining": 3
     },
     "milestones": {
@@ -508,13 +542,14 @@
     }
   },
   "tasks_type_summary": {
-    "total": 14,
+    "total": 15,
     "by_type": {
       "docs": 2,
       "feature": 8,
       "security": 2,
       "refactor": 1,
-      "frontend": 1
+      "frontend": 1,
+      "verification": 1
     }
   },
   "progress_summary": {
@@ -523,6 +558,6 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 9
+    "done": 10
   }
 }

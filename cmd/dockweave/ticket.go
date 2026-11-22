@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -88,6 +90,75 @@ func ticketCmd() *cobra.Command {
 			return nil
 		},
 	}
+	run := &cobra.Command{
+		Use:   "run AGENT",
+		Short: "Run one dispatcher heartbeat for AGENT (Paperclip process adapter entrypoint)",
+		Long: "Takes the agent's next ticket and runs the worker loop in the daemon: dependencies, pipeline\n" +
+			"admission, gates, the agent turn, STATUS/VERDICT contracts and routing (ADR 0003 D-4).\n" +
+			"Exit 0 when handled (including idle, waiting, re-queued), 3 when the pipeline blocked the\n" +
+			"agent, 1 on an error or a failed agent turn.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var out struct {
+				Kind   string `json:"kind"`
+				Ticket *struct {
+					Provider string `json:"provider"`
+					ID       string `json:"id"`
+				} `json:"ticket"`
+				Status string `json:"status"`
+				Detail string `json:"detail"`
+			}
+			if err := client().Do(cmd.Context(), http.MethodPost, "/api/v1/tickets/run", map[string]string{"agent": args[0]}, &out); err != nil {
+				return err
+			}
+			if jsonOut {
+				printJSON(out)
+			} else {
+				ref := "-"
+				if out.Ticket != nil {
+					ref = out.Ticket.Provider + ":" + out.Ticket.ID
+				}
+				fmt.Printf("%s\t%s\t%s\t%s\n", out.Kind, ref, orDash(out.Status), out.Detail)
+			}
+			switch out.Kind {
+			case "blocked":
+				os.Exit(3)
+			case "agent_failed":
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	var routeAgent string
+	route := &cobra.Command{
+		Use:   "route TICKET --agent AGENT",
+		Short: "Retry the pipeline routing for a ticket (idempotent; named in 'routing incomplete' notes)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var out struct {
+				Lines    []string `json:"lines"`
+				Complete bool     `json:"complete"`
+				Error    string   `json:"error"`
+			}
+			if err := client().Do(cmd.Context(), http.MethodPost, "/api/v1/tickets/"+url.PathEscape(args[0])+"/route", map[string]string{"agent": routeAgent}, &out); err != nil {
+				return err
+			}
+			if jsonOut {
+				printJSON(out)
+			} else {
+				for _, l := range out.Lines {
+					fmt.Println(l)
+				}
+			}
+			if !out.Complete {
+				return fmt.Errorf("routing incomplete: %s", out.Error)
+			}
+			return nil
+		},
+	}
+	route.Flags().StringVar(&routeAgent, "agent", "", "upstream agent whose gate run is routed")
+	_ = route.MarkFlagRequired("agent")
+	cmd.AddCommand(run, route)
 	detect.Flags().StringVar(&pcURL, "paperclip-url", envOr("PAPERCLIP_API_URL", "http://127.0.0.1:3100"), "Paperclip base URL")
 	provider.AddCommand(detect)
 	cmd.AddCommand(provider)

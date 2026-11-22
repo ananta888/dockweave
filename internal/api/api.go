@@ -17,6 +17,7 @@ import (
 	"github.com/ananta888/dockweave/internal/agents"
 	"github.com/ananta888/dockweave/internal/brokerclient"
 	"github.com/ananta888/dockweave/internal/configio"
+	"github.com/ananta888/dockweave/internal/dispatch"
 	"github.com/ananta888/dockweave/internal/gateexec"
 	"github.com/ananta888/dockweave/internal/memory"
 	"github.com/ananta888/dockweave/internal/model"
@@ -118,6 +119,8 @@ type Server struct {
 	// TicketRoles maps IdP groups of forwarded humans to permissions
 	// (ADR 0003 D-6a); nil uses authz.Default().
 	TicketRoles *authz.Store
+	// Dispatcher runs the ticket worker loop (nil without ticketing).
+	Dispatcher *dispatch.Dispatcher
 
 	blocked blockedAudit
 	live    liveRegistry
@@ -256,6 +259,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/comments", s.ticketComments)
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/checkout", s.ticketClaim(false))
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/release", s.ticketClaim(true))
+	s.mux.HandleFunc("POST /api/v1/tickets/run", s.runTicketHeartbeat)
+	s.mux.HandleFunc("POST /api/v1/tickets/{id}/route", s.routeTicket)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)

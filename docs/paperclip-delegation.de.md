@@ -230,3 +230,10 @@ Containername ist `dockweave-<agent-id>`; das erste Argument
 die Harness-Argumente weglassen. Der Agent läuft dann wie jeder Worker über
 den Endpoint.
 
+## Daemon-Dispatcher (ADR 0003)
+
+Mit `TICKET_PROVIDER=paperclip` in `dockweaved.conf` und
+`DOCKWEAVE_DISPATCH=daemon` in der Wrapper-Umgebung ruft `dockweave-run.sh`
+nur noch `dockweave ticket run <agent>` auf; die hier beschriebene
+Arbeitsschleife läuft im Daemon (`docs/ticketing.de.md`). Der
+Orchestrierungsmodus behält bis TK-014 die Skript-Logik.

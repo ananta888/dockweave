@@ -14,6 +14,12 @@ import (
 	"github.com/ananta888/dockweave/internal/ticketing"
 )
 
+// Route re-applies the pipeline routing for a ticket of upstream (retry of
+// an incomplete routing); idempotent.
+func (d *Dispatcher) Route(ctx context.Context, upstream string, tk *ticketing.Ticket) ([]string, error) {
+	return d.route(ctx, upstream, tk, nil)
+}
+
 // noRework: codes whose failure is not the upstream agent's fixable work.
 var noRework = map[string]bool{"tamper": true, "unavailable": true, "fingerprint_unavailable": true}
 
