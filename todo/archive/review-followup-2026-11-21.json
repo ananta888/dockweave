@@ -4,7 +4,7 @@
   "owner": "dockweave-developer-agent",
   "track": "review-followup-2026-11-21",
   "created": "2026-11-21",
-  "updated": "2026-11-21",
+  "updated": "2026-11-22",
   "language": "de",
   "purpose": "Quellcodegestützter Verbesserungs- und Prüfbacklog nach der Analyse aller 19 Commits vom 21.11.2026. Erfasst bestätigte Fehler, konkrete Sicherheits- und Zuverlässigkeitslücken, fehlende Verifikation sowie unmittelbar betroffene Altlasten.",
   "goal": "Pipeline-Sperren bleiben bei fehlerhaften Eingaben und Teilfehlern wirksam; Graph-Bearbeitung verliert keine Änderungen; Gate-Ergebnisse sind an den tatsächlich geprüften Stand gebunden und dauerhaft nachvollziehbar; Wrapper-Aktionen sind wiederholbar; Tests, CI und Dokumentation belegen das ausgelieferte Verhalten.",
@@ -3244,6 +3244,12 @@
         "Invalid-connector notice shows the target agent id instead of its name; the technical text says 'gate synchronization failed' for the contract check (cosmetic).",
         "CLI appends its usage text on errors, which also lands in the wrapper's blocked comment (cosmetic).",
         "Graph node positions dropped from 12 to 3 during the session; page loads do not save (verified with and without daemon), so most likely a user layout/cleanup action; restorable from graph.json.bak-2026-11-22."
+      ],
+      "observations_resolved_2026_11_22": [
+        "OIDC: internal/oidc/lazy.go LazyProvider discovers on demand with rate-limited retries plus a background warm-up (5 s doubling to 1 min); the IdP button stays visible and /oauth/login answers 503 + Retry-After while the IdP is down; no gateway restart needed (TestLazyProvider*, TestBeginLoginWhileIdPDownIs503, TestOIDCLoginSurvivesIdPStartingAfterGateway, TestOIDCLoginRedirectsOnceDiscovered; docs/oidc{,.de}.md).",
+        "Invalid connector: pipeline_sync.error now reads 'gate contract validation failed: …' (not 'gate synchronization failed'); UI names connector and target agent by display name in both the settings notice and the top banner and no longer repeats the raw error (graph_followup_test, e2e 'an invalid gate contract names the connector and keeps enforcement').",
+        "CLI: root PersistentPreRun sets SilenceUsage, so runtime errors (daemon refusals, unreachable socket) print only the error while flag/argument errors still show usage; the wrapper's blocked comment no longer carries usage text (TestPipelineAndGateCLIProcesses usage_error/unreachable_daemon).",
+        "Graph node positions: not changed; restorable from ~/.local/share/dockweave/graph.json.bak-2026-11-22 on request."
       ]
     }
   }

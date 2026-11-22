@@ -347,7 +347,11 @@ test('an invalid gate contract names the connector and keeps enforcement', async
   });
   await openGraph(page);
   await workspaceInput(page);
-  await expect(page.locator('.invalid-connector')).toContainText('„Tests“ → ag_b');
+  await expect(page.locator('.invalid-connector')).toContainText('„Tests“ → Beta');
+  await expect(page.locator('.invalid-connector')).not.toContainText('ag_b');
+  // The specific notice replaces the generic sync error, so the reason is shown once.
+  await expect(page.getByText('invalid gate contract')).toHaveCount(0);
+  await expect(page.locator('.pipeline-sync-error')).toContainText('ungültiger Gate-Vertrag in Connector „Tests“ → Beta');
   await expect(page.locator('.invalid-connector')).toContainText('bleibt unverändert');
 });
 

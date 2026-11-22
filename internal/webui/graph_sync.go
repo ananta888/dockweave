@@ -60,15 +60,20 @@ func (s *Server) synchronizeGraph(ctx context.Context, path string, body, previo
 	if err == nil {
 		out.Bindings = bindings
 	}
+	var ce *gatesync.ContractError
+	contractInvalid := errors.As(err, &ce)
 	// A partial gate-file sync must not publish a different enforcement set.
-	if out.Gates.Error != "" {
+	switch {
+	case contractInvalid:
+		// Name the actual cause: the contract check failed, not the gate files.
+		out.Pipeline.Error = "gate contract validation failed: " + ce.Err.Error()
+	case out.Gates.Error != "":
 		out.Pipeline.Error = "gate synchronization failed: " + out.Gates.Error
-	} else {
+	default:
 		out.Pipeline = s.syncPipeline(ctx, body, rev, reset)
 	}
 	out.PendingReset = reset && !out.Pipeline.Pushed
-	var ce *gatesync.ContractError
-	if errors.As(err, &ce) {
+	if contractInvalid {
 		out.Pipeline.InvalidConnector = &InvalidConnector{ConnectorID: ce.ConnectorID, TargetAgentID: ce.TargetAgentID, Message: ce.Err.Error()}
 	}
 	data, err := json.Marshal(out)

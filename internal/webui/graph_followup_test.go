@@ -138,6 +138,9 @@ func TestInvalidContractPreservesEnforcedPipeline(t *testing.T) {
 	if out.PipelineSync.Error == "" {
 		t.Fatal("missing sync error")
 	}
+	if !strings.HasPrefix(out.PipelineSync.Error, "gate contract validation failed: ") || strings.Contains(out.PipelineSync.Error, "gate synchronization failed") {
+		t.Fatalf("contract failure must name the contract check, got %q", out.PipelineSync.Error)
+	}
 	if ic := out.PipelineSync.InvalidConnector; ic == nil || ic.ConnectorID != "g1" || ic.TargetAgentID != "b" || ic.Message == "" {
 		t.Fatalf("missing structured connector error: %s", rec.Body)
 	}

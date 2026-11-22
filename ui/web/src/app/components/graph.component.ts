@@ -162,7 +162,7 @@ interface GraphEdge {
         @if (pipelineError()) { <div class="notice warn" role="status">{{ pipelineError() }}</div> }
         @if (pipelineDrift() && !pipelineError()) { <div class="notice warn pipeline-drift" role="status">Erzwungene Pipeline (Revision {{ pipelineRevision }}) weicht vom gespeicherten Graphen (Revision {{ graphRevision }}) ab. Synchronisierung prüfen.</div> }
         @if (pipelineSync()?.error) {
-          <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSync()?.error }}</div>
+          <div class="notice error pipeline-sync-error" role="alert">Pipeline nicht übertragen: {{ pipelineSyncBanner() }}</div>
         }
         @if (pipelineSync()?.error || (pipelineRevision >= 0 && pipelineRevision !== graphRevision)) {
           <button class="small" [disabled]="graphSaveState() !== 'saved' || syncBusy()" (click)="retryPipelineSync()">Synchronisierung erneut versuchen</button>
@@ -617,10 +617,10 @@ interface GraphEdge {
                 <h4>Pipeline (Gate → Agent)</h4>
                 <p class="muted">Gate-Connectoren mit Ziel-Agent werden beim Speichern an den Daemon übertragen. Der Ziel-Agent arbeitet nur, wenn das Gate auf dem aktuellen Workspace-Stand bestanden ist.</p>
                 @if (pipelineSync(); as ps) {
-                  @if (ps.error) { <div class="notice error" role="alert">{{ ps.error }}</div> }
+                  @if (ps.error && !ps.invalid_connector) { <div class="notice error" role="alert">{{ ps.error }}</div> }
                   @if (syncHint(ps.code); as hint) { <div class="notice warn pipeline-sync-hint">{{ hint }}</div> }
                   @if (ps.invalid_connector; as ic) {
-                    <div class="notice error invalid-connector" role="alert">Ungültiger Gate-Vertrag in Connector „{{ connectorName(ic.connector_id) }}“{{ ic.target_agent_id ? ' → ' + ic.target_agent_id : '' }}: {{ ic.message }}. Die bisher erzwungene Pipeline bleibt unverändert.</div>
+                    <div class="notice error invalid-connector" role="alert">Ungültiger Gate-Vertrag in Connector „{{ connectorName(ic.connector_id) }}“{{ ic.target_agent_id ? ' → ' + agentLabel(ic.target_agent_id) : '' }}: {{ ic.message }}. Die bisher erzwungene Pipeline bleibt unverändert.</div>
                   }
                   @else { <p class="muted mono">Übertragen: {{ ps.edges }} Kante(n)</p> }
                   @for (w of ps.warnings || []; track w) { <div class="notice warn">{{ w }}</div> }
@@ -1568,6 +1568,20 @@ export class GraphComponent implements OnChanges, OnDestroy {
 
   connectorName(id: string): string {
     return this.connectors().find(c => c.id === id)?.name || id;
+  }
+
+  /** Top-level banner text; a broken contract is named in plain words. */
+  pipelineSyncBanner(): string {
+    const ps = this.pipelineSync();
+    const ic = ps?.invalid_connector;
+    if (!ic) return ps?.error || '';
+    const target = ic.target_agent_id ? ` → ${this.agentLabel(ic.target_agent_id)}` : '';
+    return `ungültiger Gate-Vertrag in Connector „${this.connectorName(ic.connector_id)}“${target}. Die bisher erzwungene Pipeline bleibt unverändert.`;
+  }
+
+  agentLabel(id: string): string {
+    const a = this.agents.find(x => x.id === id);
+    return a ? (a.display_name || a.name) : id;
   }
 
   /** The daemon enforces a different graph revision than the saved one. */
