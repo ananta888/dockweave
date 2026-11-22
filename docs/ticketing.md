@@ -7,7 +7,8 @@ monitoring apply to every provider. Design: `docs/adr/0003-ticketing-adapters.md
 
 Status: port, both adapters, provider selection and the ticket API, forwarded
 humans and permissions are implemented; live sync, the
-dispatcher and the Lead mode are implemented; the UI follows
+dispatcher, the Lead mode and the Tickets view (`docs/web-ui.md`) are
+implemented; the acceptance on a real installation is TK-015
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Configuration (`/etc/dockweave/dockweaved.conf`)

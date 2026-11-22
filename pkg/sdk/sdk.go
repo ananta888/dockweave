@@ -61,6 +61,16 @@ func (c *Client) url(path string) string {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
+	return c.doH(ctx, method, path, nil, body, out)
+}
+
+// DoWithHeaders is Do with extra request headers (e.g. the web gateway
+// forwarding the signed-in human, model.ActorHeader).
+func (c *Client) DoWithHeaders(ctx context.Context, method, path string, headers map[string]string, body, out any) error {
+	return c.doH(ctx, method, path, headers, body, out)
+}
+
+func (c *Client) doH(ctx context.Context, method, path string, headers map[string]string, body any, out any) error {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -75,6 +85,9 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {

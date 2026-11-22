@@ -76,7 +76,7 @@
         "TK-012",
         "TK-015"
       ],
-      "status": "todo"
+      "status": "in_progress"
     }
   ],
   "tasks": [
@@ -390,10 +390,10 @@
       "milestone": "M4",
       "type": "frontend",
       "title": "Angular: TicketService und Ansicht Tickets (Liste/Board, Detail, Thread, Zuweisung, Freigaben)",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Anbieterneutral gegen /api/v1/tickets; Capabilities blenden aus; Gate-Status, Nachweise, Live-Status je Ticket; Paperclip-Panel wird Anbieter-Einstellung.",
       "components": [
         "ui/web"
@@ -410,7 +410,10 @@
         "TK-013"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: Angular TicketService + Tickets view (list/board, detail with edit/status/assignment, checkout holder, live work via IssueKey, gate runs, review verdict, thread + reply, heartbeat, approval, 'In Tagesplan' creates a productivity task referencing the ticket); provider/mirror/sync chips + 'Sync jetzt'; actions gated by GET /api/v1/tickets/me, capabilities hide threads etc.; unconfigured hint. Gateway enforces terminal.takeover for OIDC humans via the daemon (cached 30 s, fail closed; token users unchanged; sdk.DoWithHeaders). e2e/tickets.spec.ts (6 tests: unconfigured, native flow, create, reader without actions, paperclip profile with capabilities/mirror/IssueKey, board); 44/44 against the embedded bundle. The Paperclip integrations panel stays for agent sync/iframe; ticket work moved to the Tickets view."
+      ]
     },
     {
       "id": "TK-011",
@@ -515,13 +518,13 @@
   "tasks_status_summary": {
     "total": 15,
     "by_status": {
-      "todo": 3,
+      "todo": 2,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 12
+      "done": 13
     },
-    "progress_percent_done": 80.0,
+    "progress_percent_done": 86.6667,
     "by_priority": {
       "P0": 0,
       "P1": 12,
@@ -536,13 +539,13 @@
     },
     "critical_path": {
       "total": 12,
-      "done": 10,
-      "remaining": 2
+      "done": 11,
+      "remaining": 1
     },
     "milestones": {
       "total": 5,
-      "todo": 1,
-      "in_progress": 0,
+      "todo": 0,
+      "in_progress": 1,
       "blocked": 0,
       "done": 4
     }
@@ -560,10 +563,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 3,
+    "todo_remaining": 2,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 12
+    "done": 13
   }
 }

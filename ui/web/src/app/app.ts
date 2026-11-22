@@ -16,17 +16,18 @@ import { IntegrationsComponent } from './components/integrations/integrations.co
 import { CredentialsComponent } from './components/credentials.component';
 import { UsageComponent } from './components/usage.component';
 import { ProductivityComponent } from './components/productivity.component';
+import { TicketsComponent } from './components/tickets.component';
 import { RuntimePresetsService } from './core/services/runtime-presets.service';
 import { RuntimeKind } from './core/domain/integrations';
 import { figureSvg } from './core/figures';
 import { UiBridgeService } from './core/ui-bridge.service';
 import { Agent } from './core/models';
 
-type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills' | 'integrations' | 'credentials' | 'usage' | 'productivity';
+type View = 'agent' | 'graph' | 'analysis' | 'workspaces' | 'types' | 'skills' | 'integrations' | 'credentials' | 'usage' | 'productivity' | 'tickets';
 
 @Component({
   selector: 'app-root',
-  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent, IntegrationsComponent, CredentialsComponent, UsageComponent, ProductivityComponent],
+  imports: [FormsModule, KeyValuePipe, NgFor, TerminalComponent, ConfigComponent, AnalysisComponent, DirPickerComponent, GraphComponent, AgentTypesComponent, SkillsComponent, IntegrationsComponent, CredentialsComponent, UsageComponent, ProductivityComponent, TicketsComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -95,7 +96,7 @@ export class App implements OnInit, OnDestroy {
     if (action === 'select_agent' && agentId) this.selectById(agentId);
     else if (action === 'select_view') {
       const v = String(cmd['view'] || '');
-      if (['agent', 'graph', 'analysis', 'workspaces', 'types', 'productivity'].includes(v)) this.view.set(v as View);
+      if (['agent', 'graph', 'analysis', 'workspaces', 'types', 'productivity', 'tickets'].includes(v)) this.view.set(v as View);
     } else if (action === 'set_main_agent' && agentId) this.setMainAgentById(agentId);
     else if (action === 'show_hint') this.showUiHint(cmd);
   }

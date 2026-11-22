@@ -462,3 +462,44 @@ func TestGatewayForwardsOIDCHumanAndStripsSpoofedHeader(t *testing.T) {
 		t.Fatalf("token request forwarded %q", v)
 	}
 }
+
+// The interactive terminal needs terminal.takeover for a signed-in human;
+// the daemon owns the mapping, and its absence denies (fail closed).
+func TestTerminalNeedsTakeoverPermissionForHumans(t *testing.T) {
+	perms := `["terminal.takeover"]`
+	daemonSock := unixHTTP(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/tickets/me" {
+			_, _ = io.WriteString(w, `{"source":"groups","permissions":`+perms+`}`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("x"), 0o644)
+	srv, err := New(Config{DaemonSocket: daemonSock, TermSocket: "/nonexistent", WebDir: webDir, Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.oidcSvc = oidc.NewService(stubProvider{}, stubStore{p: oidc.Principal{Issuer: "https://idp", Subject: "s", Roles: []string{"admin"}, Groups: []string{"g"}}}, oidc.Config{SessionTTL: time.Hour})
+	call := func() int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ws/term?agent=a", nil))
+		return rec.Code
+	}
+	if code := call(); code == http.StatusForbidden {
+		t.Fatalf("permitted human refused: %d", code)
+	}
+	perms = `[]`
+	srv.permCache = nil
+	if code := call(); code != http.StatusForbidden {
+		t.Fatalf("human without takeover: %d", code)
+	}
+	// Token users are not affected (break-glass).
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ws/term?agent=a", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	srv.ServeHTTP(rec, req)
+	if rec.Code == http.StatusForbidden {
+		t.Fatal("token user refused")
+	}
+}

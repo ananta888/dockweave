@@ -8,7 +8,8 @@ Monitoring gelten für jeden Anbieter. Entwurf:
 
 Stand: Port, beide Adapter, Anbieterwahl und Ticket-API,
 weitergereichte Menschen und Rechte sind umgesetzt; Live-Sync,
-Dispatcher und Lead-Modus sind umgesetzt; die UI folgt
+Dispatcher, Lead-Modus und die Ansicht Tickets (`docs/web-ui.de.md`) sind
+umgesetzt; die Abnahme auf einer echten Installation ist TK-015
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Konfiguration (`/etc/dockweave/dockweaved.conf`)

@@ -153,6 +153,23 @@ abgelehnte Anfragen erscheinen nie.
 
 UI-Test: `npm run e2e:pipeline` enthält `e2e/live-status.spec.ts`.
 
+### Ansicht Tickets
+
+Der Tab **Tickets** (`components/tickets.component.ts`, `TicketService`)
+arbeitet auf der anbieterneutralen Daemon-API: Liste (Suche, Status,
+Zuständige) und Board, Detail mit editierbarem Titel/Beschreibung/Status,
+Zuweisung an einen Agenten, Inhaber der Sperre, laufende Arbeit („● läuft“ aus
+`GET /api/v1/live`, Schlüssel `dispatch.IssueKey`), Gate-Läufe und
+Review-Urteil des Tickets, Verlauf mit Antwort, „Heartbeat jetzt“,
+„Freigeben“ und „In Tagesplan“ (legt eine Produktivitätsaufgabe mit Verweis
+auf das Ticket an). Erreichbarkeit von Anbieter und Spiegel sowie der
+Sync-Zustand erscheinen als Chips; „Sync jetzt“ startet einen Abgleich. Jede
+Aktion erscheint nur, wenn `GET /api/v1/tickets/me` das Recht gewährt;
+Fähigkeiten blenden aus, was der Anbieter nicht kann (z. B. Threads). Ohne
+`TICKET_PROVIDER` erklärt die Ansicht die Einrichtung. Das interaktive
+Terminal braucht für angemeldete Menschen `terminal.takeover` (das Gateway
+fragt den Daemon; Token-Nutzer unverändert). UI-Tests: `e2e/tickets.spec.ts`.
+
 ### Graph-Einstellungen
 
 - **Layout**: Hierarchie, Spalten, Grid, Radial, Frei oder Gemischt;

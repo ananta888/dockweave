@@ -109,6 +109,22 @@ never appear.
 
 UI test: `npm run e2e:pipeline` includes `e2e/live-status.spec.ts`.
 
+### Tickets view
+
+The **Tickets** tab (`components/tickets.component.ts`, `TicketService`)
+works on the daemon's provider-neutral API: list (search, status, assignee)
+and board, detail with editable title/description/status, assignment to an
+agent, checkout holder, live work ("● läuft" from `GET /api/v1/live`, keyed by
+`dispatch.IssueKey`), gate runs and review verdict of the ticket, thread with
+reply, "Heartbeat jetzt", "Freigeben" (approval) and "In Tagesplan" (creates
+a productivity task referencing the ticket). Provider and mirror health and
+the sync state are shown as chips; "Sync jetzt" runs a pass. Every action is
+shown only if `GET /api/v1/tickets/me` grants its permission; capabilities
+hide what the provider cannot do (e.g. threads). Without `TICKET_PROVIDER` the
+view explains the setup. The interactive terminal needs `terminal.takeover`
+for signed-in humans (checked by the gateway against the daemon; token users
+unchanged). UI tests: `e2e/tickets.spec.ts`.
+
 ## Architecture
 
 ```

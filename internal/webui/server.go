@@ -76,6 +76,9 @@ type Server struct {
 	oidcSvc     *oidc.Service
 	// graphMu serialises graph saves (revision check, write, gate sync).
 	graphMu sync.Mutex
+	// permMu guards permCache (daemon permission answers per human).
+	permMu    sync.Mutex
+	permCache map[string]permEntry
 	// pushPipeline transfers the derived pipeline edges to the daemon
 	// (nil: no daemon configured, edges are not enforced).
 	pushPipeline func(ctx context.Context, rev int, reset bool, edges []model.PipelineEdge) error
@@ -475,6 +478,12 @@ func (s *Server) auth(next http.Handler) http.Handler {
 		if !s.allowRole(w, r, role) {
 			return
 		}
+		// A signed-in human needs terminal.takeover for the interactive
+		// terminal (ADR 0003 D-6a; the daemon owns the role mapping).
+		if r.URL.Path == "/ws/term" && r.Header.Get(model.ActorHeader) != "" && !s.humanCan(r, "terminal.takeover") {
+			http.Error(w, "forbidden: missing permission terminal.takeover", http.StatusForbidden)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -663,4 +672,43 @@ func PeekErr(br *bufio.Reader) error {
 	}
 	line, _ := br.ReadString('\n')
 	return errors.New(strings.TrimSpace(line))
+}
+
+// humanCan asks the daemon whether the forwarded human holds perm
+// (GET /api/v1/tickets/me). Answers are cached per human for 30 s; an
+// unreachable daemon or an invalid answer denies (fail closed).
+func (s *Server) humanCan(r *http.Request, perm string) bool {
+	raw := r.Header.Get(model.ActorHeader)
+	s.permMu.Lock()
+	if s.permCache == nil {
+		s.permCache = map[string]permEntry{}
+	}
+	e, ok := s.permCache[raw]
+	s.permMu.Unlock()
+	if !ok || time.Since(e.at) > 30*time.Second {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		var me struct {
+			Permissions []string `json:"permissions"`
+			Source      string   `json:"source"`
+		}
+		cl := sdk.New(s.cfg.DaemonSocket)
+		err := cl.DoWithHeaders(ctx, http.MethodGet, "/api/v1/tickets/me", map[string]string{model.ActorHeader: raw}, nil, &me)
+		if err != nil || me.Source != "groups" {
+			return false
+		}
+		e = permEntry{at: time.Now(), perms: map[string]bool{}}
+		for _, p := range me.Permissions {
+			e.perms[p] = true
+		}
+		s.permMu.Lock()
+		s.permCache[raw] = e
+		s.permMu.Unlock()
+	}
+	return e.perms[perm]
+}
+
+type permEntry struct {
+	at    time.Time
+	perms map[string]bool
 }
