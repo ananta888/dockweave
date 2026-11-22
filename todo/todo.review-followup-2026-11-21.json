@@ -94,8 +94,8 @@
     {
       "id": "M1",
       "title": "Bestätigte Funktionsfehler und Regressionen",
-      "status": "in_progress",
-      "progress_percent": 98.33,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-001",
         "RF-002",
@@ -431,10 +431,10 @@
       "milestone": "M1",
       "type": "bug",
       "title": "Rework- und Kommentar-Idempotenz gegen fehlgeschlagene Seiteneffekte absichern",
-      "status": "partial",
+      "status": "done",
       "priority": "P2",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "rework reserviert den dauerhaften once-Marker vor issue create und entfernt ihn bei Fehlern nicht. report_blocked markiert einen Kommentar ebenfalls vor dem ungeprüften Update. Eine spätere Wiederholung unterdrückt damit nie erfolgreich ausgeführte Aktionen.",
       "evidence_level": "code_confirmed",
       "scope_origin": "today",
@@ -473,12 +473,11 @@
         "make test-wrapper"
       ],
       "audit_2026_11_21": {
-        "verdict": "partial",
-        "remaining_gaps": [
-          "Abgleichfenster-Semantik (bewusst mögliches Duplikat bei Wake/Kommentar statt Dauerblockade) bei Abnahme bestätigen"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: pending-Marker tragen Zeitstempel; Abgleichfenster DOCKWEAVE_PIPELINE_RECONCILE_SEC (Default 600 s, README). Danach: Rework nach erneuter Tag-Suche neu anlegen, Wake/Kommentar wiederholen. report_blocked re-queued den Status auch bei unbekanntem Kommentar-Ausgang. Tests: test_blocked_update_timeout_keeps_requeueing, test_pending_creation_recovers_after_reconcile_window, test_pending_wake_recovers_after_reconcile_window, test_concurrent_prechecks_comment_once"
+          "2026-11-21: pending-Marker tragen Zeitstempel; Abgleichfenster DOCKWEAVE_PIPELINE_RECONCILE_SEC (Default 600 s, README). Danach: Rework nach erneuter Tag-Suche neu anlegen, Wake/Kommentar wiederholen. report_blocked re-queued den Status auch bei unbekanntem Kommentar-Ausgang. Tests: test_blocked_update_timeout_keeps_requeueing, test_pending_creation_recovers_after_reconcile_window, test_pending_wake_recovers_after_reconcile_window, test_concurrent_prechecks_comment_once",
+          "Erledigt 2026-11-22: Abgleichfenster-Semantik vom Nutzer abgenommen (ein mögliches Duplikat bei Wake/Kommentar nach DOCKWEAVE_PIPELINE_RECONCILE_SEC statt Dauerblockade; Rework nur nach erfolgloser Tag-Suche)."
         ]
       }
     },
@@ -3010,8 +3009,7 @@
       "audit_2026_11_21": {
         "verdict": "todo",
         "remaining_gaps": [
-          "Manueller Szenariodurchlauf auf einer echten laufenden Installation steht aus (siehe acceptance_2026_11_21.open_for_acceptance)",
-          "RF-005-Semantik vom Nutzer bestätigen"
+          "Manueller Szenariodurchlauf auf einer echten laufenden Installation steht aus (siehe acceptance_2026_11_21.open_for_acceptance)"
         ],
         "resolved": [
           "2026-11-21: finale Verifikation auf 7bde378 lokal und in CI-Lauf 44957573583 vollständig grün; Regressionen der sechs ursprünglichen Befunde zugeordnet (acceptance_2026_11_21)"
@@ -3103,11 +3101,11 @@
     "by_status": {
       "todo": 0,
       "in_progress": 0,
-      "partial": 2,
+      "partial": 1,
       "blocked": 0,
-      "done": 43
+      "done": 44
     },
-    "progress_percent_done": 95.56,
+    "progress_percent_done": 97.78,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3122,15 +3120,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 21,
-      "remaining": 2
+      "done": 22,
+      "remaining": 1
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 2,
+      "in_progress": 1,
       "blocked": 0,
-      "done": 5
+      "done": 6
     }
   },
   "tasks_type_summary": {
@@ -3152,9 +3150,9 @@
     "state": "in_progress",
     "todo_remaining": 0,
     "in_progress": 0,
-    "partial": 2,
+    "partial": 1,
     "blocked": 0,
-    "done": 43
+    "done": 44
   },
   "evidence_summary": {
     "by_level": {
@@ -3218,10 +3216,11 @@
     },
     "user_decisions": [
       "2026-11-21 overrides bridge failed/missing/stale evidence only (RF-003)",
-      "2026-11-21 configurable symlink_policy hash|ignored|fail, default hash (RF-007)"
+      "2026-11-21 configurable symlink_policy hash|ignored|fail, default hash (RF-007)",
+      "2026-11-22 reconcile-window semantics accepted as implemented (RF-005)",
+      "2026-11-22 manual scenario walkthrough on a real installation is done by the user after deploying the new binary (RF-045 stays open until then)"
     ],
     "open_for_acceptance": [
-      "RF-005: confirm reconcile-window semantics (one possible duplicate wake/comment after DOCKWEAVE_PIPELINE_RECONCILE_SEC instead of a permanent block)",
       "RF-045 criterion 4: manual scenario walkthrough on a real running installation not performed (would change pipeline edges/overrides of the live daemon, which still runs an older binary); all scenarios are covered by automated tests on real code paths"
     ],
     "limits": [
