@@ -95,3 +95,22 @@ func TestDefaultsAreNonRootAndAdminOnlyRoot(t *testing.T) {
 		t.Fatalf("default knowledge dir = %q", cfg.KnowledgeDir)
 	}
 }
+
+func TestLoadTicketing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "dockweaved.conf")
+	body := "TICKET_PROVIDER=Native\nTICKET_MIRROR=paperclip\nPAPERCLIP_URL=http://127.0.0.1:3100\nPAPERCLIP_COMPANY=c1\nPAPERCLIP_TOKEN_FILE=/etc/dockweave/paperclip.token\n"
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TicketProvider != "native" || cfg.TicketMirror != "paperclip" || cfg.PaperclipURL != "http://127.0.0.1:3100" ||
+		cfg.PaperclipCompany != "c1" || cfg.PaperclipTokenFile != "/etc/dockweave/paperclip.token" {
+		t.Fatalf("ticketing config: %+v", cfg)
+	}
+	if Default().TicketProvider != "" {
+		t.Fatal("ticketing must be opt-in (no silent provider)")
+	}
+}

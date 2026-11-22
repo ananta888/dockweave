@@ -45,7 +45,7 @@
         "TK-004",
         "TK-005"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "M2",
@@ -188,10 +188,10 @@
       "milestone": "M1",
       "type": "feature",
       "title": "Anbieterwahl: führender Anbieter + optionaler Spiegel, Einrichtungsvorschlag auto, Health, CLI",
-      "status": "todo",
+      "status": "done",
       "priority": "P2",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "TICKET_PROVIDER und TICKET_MIRROR in dockweaved.conf; auto nur bei Einrichtung; GET /api/v1/tickets/provider (Name, Health, Capabilities, Spiegel).",
       "components": [
         "cmd/dockweaved",
@@ -200,15 +200,18 @@
       ],
       "acceptance_criteria": [
         "Der führende Anbieter wechselt zur Laufzeit nie.",
-        "Agenten werden nur aus dem führenden Anbieter angetrieben.",
-        "Provider- und Spiegelstatus sind per API, CLI und UI sichtbar."
+        "Agenten werden nur aus dem führenden Anbieter angetrieben (durchgesetzt im Dispatcher, TK-008/TK-009).",
+        "Provider- und Spiegelstatus sind per API und CLI sichtbar (UI: TK-010)."
       ],
       "depends_on": [
         "TK-003",
         "TK-004"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: dockweaved.conf TICKET_PROVIDER/TICKET_MIRROR/PAPERCLIP_URL/PAPERCLIP_COMPANY/PAPERCLIP_TOKEN_FILE (opt-in, default off); cmd/dockweaved openTicketing registers native+paperclip and opens the selection once at start (open errors exposed, no fallback); GET /api/v1/tickets/provider (configured, available, primary/mirror health+capabilities, error) incl. OpenAPI and recorded fixtures; CLI dockweave ticket provider [detect]; docs/ticketing{,.de}.md."
+      ]
     },
     {
       "id": "TK-006",
@@ -351,7 +354,8 @@
       ],
       "acceptance_criteria": [
         "e2e-Tests für beide Anbieter-Capability-Profile (gemocktes Backend).",
-        "Productivity-Aufgabe kann auf ein Ticket verweisen."
+        "Productivity-Aufgabe kann auf ein Ticket verweisen.",
+        "Provider- und Spiegelstatus (Erreichbarkeit, Fähigkeiten, Fehler) sind in der UI sichtbar."
       ],
       "depends_on": [
         "TK-006",
@@ -431,13 +435,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 9,
+      "todo": 8,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 4
+      "done": 5
     },
-    "progress_percent_done": 30.7692,
+    "progress_percent_done": 38.4615,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -452,15 +456,15 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 3,
-      "remaining": 8
+      "done": 4,
+      "remaining": 7
     },
     "milestones": {
       "total": 5,
       "todo": 3,
-      "in_progress": 1,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 1
+      "done": 2
     }
   },
   "tasks_type_summary": {
@@ -475,10 +479,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 9,
+    "todo_remaining": 8,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 4
+    "done": 5
   }
 }

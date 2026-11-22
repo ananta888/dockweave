@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/ananta888/dockweave/internal/model"
+	"github.com/ananta888/dockweave/internal/ticketing"
+	"github.com/ananta888/dockweave/internal/ticketing/memory"
 )
 
 // TestRecordPipelineResponsesForOpenAPI records real handler responses for
@@ -56,6 +58,12 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleAdmin, "GET", "/api/v1/pipelines/overrides?agent=beta&active=true", "/api/v1/pipelines/overrides", "", 200)
 	f.saveRun(t, "r-pass", model.GatePassed, "sha256:one")
 	rec(RoleAdmin, "GET", adm+"?agent=beta", adm, "", 200)
+
+	rec(RoleMonitor, "GET", "/api/v1/live", "/api/v1/live", "", 200)
+	rec(RoleMonitor, "GET", "/api/v1/tickets/provider", "/api/v1/tickets/provider", "", 200)
+	f.srv.Tickets = &ticketing.Selection{Primary: memory.New("native"), Mirror: memory.New("paperclip")}
+	rec(RoleMonitor, "GET", "/api/v1/tickets/provider", "/api/v1/tickets/provider", "", 200)
+	f.srv.Tickets = nil
 
 	const prune = "/api/v1/gates/prune"
 	rec(RoleAdmin, "POST", prune, prune, `{"days":7,"keep_per_workspace":5}`, 200)

@@ -246,6 +246,28 @@ paths:
                     items: { $ref: "#/components/schemas/LiveWork" }
                   now: { type: string, format: date-time }
 
+  /api/v1/tickets/provider:
+    get:
+      summary: Configured ticket provider, mirror, health and capabilities (ADR 0003)
+      description: >
+        Ticketing is opt-in (TICKET_PROVIDER in dockweaved.conf). Without it,
+        or when the provider cannot be opened, `configured` is false and
+        `error` says why; no provider is chosen silently. Read-only.
+      responses:
+        "200":
+          description: Provider status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configured, available]
+                properties:
+                  configured: { type: boolean }
+                  available: { type: array, items: { type: string } }
+                  error: { type: string }
+                  primary: { $ref: "#/components/schemas/TicketProviderStatus" }
+                  mirror: { $ref: "#/components/schemas/TicketProviderStatus" }
+
   /api/v1/events:
     get:
       summary: Recent audit events
@@ -596,6 +618,28 @@ components:
         agent_ids: { type: array, items: { type: string } }
         writers: { type: array, items: { type: string } }
         detected_at: { type: string, format: date-time }
+
+    TicketProviderStatus:
+      type: object
+      required: [name, health, capabilities]
+      properties:
+        name: { type: string, enum: [native, paperclip] }
+        health:
+          type: object
+          required: [ok, checked]
+          properties:
+            ok: { type: boolean }
+            detail: { type: string }
+            checked: { type: string, format: date-time }
+        capabilities:
+          type: object
+          properties:
+            threads: { type: boolean }
+            inbox: { type: boolean }
+            children: { type: boolean }
+            approvals: { type: boolean }
+            wake: { type: boolean }
+            authorship: { type: boolean }
 
     LiveWork:
       type: object

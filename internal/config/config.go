@@ -53,6 +53,14 @@ type Config struct {
 	// applies a DockWeave-owned nftables table and refuses the agent start
 	// (fail closed) if it cannot.
 	EgressNftables bool
+
+	// Ticketing (ADR 0003): primary provider (native|paperclip; empty =
+	// ticketing off), optional mirror and Paperclip connection.
+	TicketProvider     string
+	TicketMirror       string
+	PaperclipURL       string
+	PaperclipCompany   string
+	PaperclipTokenFile string
 }
 
 // Default returns the default configuration.
@@ -140,6 +148,16 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.KnowledgeDir = v
 		case "EGRESS_NFTABLES":
 			cfg.EgressNftables = v == "true" || v == "1"
+		case "TICKET_PROVIDER":
+			cfg.TicketProvider = strings.ToLower(v)
+		case "TICKET_MIRROR":
+			cfg.TicketMirror = strings.ToLower(v)
+		case "PAPERCLIP_URL":
+			cfg.PaperclipURL = v
+		case "PAPERCLIP_COMPANY":
+			cfg.PaperclipCompany = v
+		case "PAPERCLIP_TOKEN_FILE":
+			cfg.PaperclipTokenFile = v
 		}
 	}
 }

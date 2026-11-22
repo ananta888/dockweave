@@ -26,6 +26,7 @@ import (
 	"github.com/ananta888/dockweave/internal/persistence"
 	"github.com/ananta888/dockweave/internal/pipeline"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
+	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -108,6 +109,11 @@ type Server struct {
 	// Pipeline evaluates gate -> agent admission (optional; nil uses the
 	// store and the gate fingerprint, see pipelineEvaluator).
 	Pipeline *pipeline.Evaluator
+
+	// Tickets is the configured ticket provider selection (ADR 0003); nil
+	// when ticketing is not configured or failed to open (TicketsError).
+	Tickets      *ticketing.Selection
+	TicketsError string
 
 	blocked blockedAudit
 	live    liveRegistry
@@ -236,6 +242,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/activity", s.activity)
 	s.mux.HandleFunc("GET /api/v1/conflicts", s.conflicts)
 	s.mux.HandleFunc("GET /api/v1/live", s.liveWork)
+	s.mux.HandleFunc("GET /api/v1/tickets/provider", s.ticketProvider)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)

@@ -42,6 +42,9 @@ import (
 	"github.com/ananta888/dockweave/internal/productivity"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/supervisor"
+	"github.com/ananta888/dockweave/internal/ticketing"
+	tnative "github.com/ananta888/dockweave/internal/ticketing/native"
+	pcticket "github.com/ananta888/dockweave/internal/ticketing/paperclip"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -225,6 +228,7 @@ func run(cfgPath string) error {
 		BaseDir:      filepath.Join(cfg.Root, "gates"),
 		AllowedRoots: cfg.AllowedRoots,
 	}
+	openTicketing(apiSrv, cfg, store, agentSvc)
 	apiSrv.ConfigIO = &configio.Service{
 		Store:      store,
 		Agents:     agentSvc,
@@ -364,4 +368,41 @@ func applySocketGroup(path, group string) error {
 		return fmt.Errorf("chown %s to group %s: %w", path, group, err)
 	}
 	return nil
+}
+
+// agentDirectory resolves DockWeave agent names/ids for ticket adapters.
+type agentDirectory struct{ agents *agents.Service }
+
+func (d agentDirectory) Resolve(ctx context.Context, nameOrID string) (string, bool) {
+	a, err := d.agents.Get(ctx, nameOrID)
+	if err != nil {
+		return "", false
+	}
+	return a.ID, true
+}
+
+// openTicketing wires the configured ticket providers (ADR 0003 D-3).
+// Ticketing is opt-in; an open error is reported through the API instead of
+// falling back to another provider.
+func openTicketing(apiSrv *api.Server, cfg config.Config, store *persistence.Store, agentSvc *agents.Service) {
+	tnative.Register(store)
+	pcticket.Register(agentDirectory{agentSvc})
+	if cfg.TicketProvider == "" {
+		log.Printf("ticketing: not configured (TICKET_PROVIDER)")
+		return
+	}
+	sel, err := ticketing.Open(ticketing.Config{Primary: cfg.TicketProvider, Mirror: cfg.TicketMirror, Options: map[string]string{
+		"paperclip.url": cfg.PaperclipURL, "paperclip.company": cfg.PaperclipCompany, "paperclip.token_file": cfg.PaperclipTokenFile,
+	}})
+	if err != nil {
+		apiSrv.TicketsError = err.Error()
+		log.Printf("ticketing: %v", err)
+		return
+	}
+	apiSrv.Tickets = sel
+	mirror := "none"
+	if sel.Mirror != nil {
+		mirror = sel.Mirror.Name()
+	}
+	log.Printf("ticketing: primary=%s mirror=%s", sel.Primary.Name(), mirror)
 }

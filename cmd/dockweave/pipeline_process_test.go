@@ -45,6 +45,7 @@ func TestPipelineAndGateCLIProcesses(t *testing.T) {
 				t.Errorf("wrong run attribution: %+v %v", body, err)
 			}
 		}},
+		{"ticket_provider_off", []string{"ticket", "provider"}, 200, `{"configured":false,"available":["native","paperclip"],"error":"ticketing is not configured"}`, 0, "/api/v1/tickets/provider", nil},
 		{"gate_workspace_query", []string{"gate", "runs", "/work/a & b"}, 200, `{"runs":[]}`, 0, "/api/v1/gates/runs", func(t *testing.T, r *http.Request) {
 			if r.URL.Query().Get("workspace") != "/work/a & b" {
 				t.Errorf("workspace query: %s", r.URL.RawQuery)
