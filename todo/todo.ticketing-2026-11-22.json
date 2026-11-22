@@ -45,7 +45,7 @@
         "TK-004",
         "TK-005"
       ],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "M2",
@@ -106,10 +106,10 @@
       "milestone": "M1",
       "type": "feature",
       "title": "Port internal/ticketing: kanonische Typen, Statussatz, getrennte Schnittstellen, Capabilities, Registry",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Tickets/Threads/Inbox/Approvals/Waker + Provider; TicketRef{provider,id}; Registry/Factory nach Konfiguration; ticketing_unavailable fail-closed.",
       "components": [
         "internal/ticketing",
@@ -124,7 +124,10 @@
         "TK-001"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: internal/ticketing (canonical types, Ref/ParseRef with legacy bare ids, Tickets/Threads/Inbox/Waker, Capabilities, Health, errors incl. ErrUnavailable), registry Open(primary+mirror, no silent fallback), contracttest.Run (roundtrip, validation, not found, versioned update/conflict, filters, children, append-only threads, exclusive checkout incl. race), memory adapter passes the contract; TestPortImportsNoAdapter. Runtime fail-closed (ticketing_unavailable) is wired in TK-005/TK-006."
+      ]
     },
     {
       "id": "TK-003",
@@ -422,13 +425,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 12,
+      "todo": 11,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 1
+      "done": 2
     },
-    "progress_percent_done": 7.7,
+    "progress_percent_done": 15.3846,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -443,13 +446,13 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 1,
-      "remaining": 10
+      "done": 2,
+      "remaining": 9
     },
     "milestones": {
       "total": 5,
-      "todo": 4,
-      "in_progress": 0,
+      "todo": 3,
+      "in_progress": 1,
       "blocked": 0,
       "done": 1
     }
@@ -466,10 +469,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 12,
+    "todo_remaining": 11,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 1
+    "done": 2
   }
 }
