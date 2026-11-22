@@ -86,6 +86,7 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"beta"}`, 200)
 	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"alpha"}`, 409)
 	rec(RoleAdmin, "POST", one+"/release", "/api/v1/tickets/{id}/release", `{"agent":"beta"}`, 200)
+	rec(RoleMonitor, "GET", "/api/v1/tickets/me", "/api/v1/tickets/me", "", 200)
 	f.srv.Tickets = nil
 
 	const prune = "/api/v1/gates/prune"

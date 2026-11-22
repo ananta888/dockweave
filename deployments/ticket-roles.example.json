@@ -1,0 +1,14 @@
+{
+  "groups": {
+    "dockweave-admin": ["admin"],
+    "dockweave-approver": ["approver"],
+    "dockweave-author": ["author"],
+    "dockweave-monitor": ["reader"]
+  },
+  "roles": {
+    "admin": ["*"],
+    "approver": ["ticket.read", "ticket.comment", "ticket.approve", "ticket.assign", "agent.wake", "terminal.view"],
+    "author": ["ticket.read", "ticket.create", "ticket.edit", "ticket.comment", "terminal.view"],
+    "reader": ["ticket.read"]
+  }
+}

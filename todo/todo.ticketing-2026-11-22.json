@@ -55,7 +55,7 @@
         "TK-007",
         "TK-013"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": "M3",
@@ -273,10 +273,10 @@
       "milestone": "M2",
       "type": "security",
       "title": "Rollen und Rechte: Keycloak-Gruppen → Rollen → Rechte (konfigurierbar), Durchsetzung im Daemon",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "ticket-roles.json (Gruppen→Rollen, Rollen→Rechte); Startrechte ticket.*, gate.override, agent.wake, terminal.view/takeover, provider.configure, sync.run; Standardrollen admin/approver/author/reader; Daemon prüft jedes Recht mit dem weitergereichten Akteur; UI blendet aus.",
       "components": [
         "internal/ticketing/authz",
@@ -288,14 +288,16 @@
       "acceptance_criteria": [
         "Jede Ticket-Mutation prüft ein Recht im Daemon; fehlendes Recht → 403 mit Rechtname.",
         "Unbekannte Gruppe gibt keine Rechte; ungültige Konfiguration → Daemon startet mit nur-lesend und meldet den Fehler.",
-        "Rollenänderung in der Datei wirkt ohne Neustart (Reload) und wird auditiert.",
-        "UI zeigt nur erlaubte Aktionen (e2e je Rolle)."
+        "Rollenänderung in der Datei wirkt ohne Neustart (Reload) und wird auditiert."
       ],
       "depends_on": [
         "TK-007"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: internal/ticketing/authz (permissions, Compile rejects unknown permission/undefined role, Default for the bundled realm groups, ReadOnly fallback, Store reloads on change with audit ticket.roles_loaded/invalid); TICKET_ROLES_FILE (default /etc/dockweave/ticket-roles.json), example deployments/ticket-roles.example.json; daemon enforces for every ticket call (read/create/edit/assign/comment) and pipeline override (gate.override) for forwarded humans, 403 names the permission; GET /api/v1/tickets/me; peers keep peer roles; TestTicketPermissionsPerRole, authz tests. UI hiding and terminal.* at the gateway moved to TK-010."
+      ]
     },
     {
       "id": "TK-008",
@@ -361,7 +363,8 @@
       "acceptance_criteria": [
         "e2e-Tests für beide Anbieter-Capability-Profile (gemocktes Backend).",
         "Productivity-Aufgabe kann auf ein Ticket verweisen.",
-        "Provider- und Spiegelstatus (Erreichbarkeit, Fähigkeiten, Fehler) sind in der UI sichtbar."
+        "Provider- und Spiegelstatus (Erreichbarkeit, Fähigkeiten, Fehler) sind in der UI sichtbar.",
+        "UI zeigt nur erlaubte Aktionen (GET /api/v1/tickets/me; e2e je Rolle); terminal.view/terminal.takeover werden am Gateway durchgesetzt."
       ],
       "depends_on": [
         "TK-006",
@@ -441,13 +444,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 6,
+      "todo": 5,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 7
+      "done": 8
     },
-    "progress_percent_done": 53.8462,
+    "progress_percent_done": 61.5385,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -462,15 +465,15 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 6,
-      "remaining": 5
+      "done": 7,
+      "remaining": 4
     },
     "milestones": {
       "total": 5,
       "todo": 2,
-      "in_progress": 1,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 2
+      "done": 3
     }
   },
   "tasks_type_summary": {
@@ -485,10 +488,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 6,
+    "todo_remaining": 5,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 7
+    "done": 8
   }
 }

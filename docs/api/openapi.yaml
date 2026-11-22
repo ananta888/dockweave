@@ -404,6 +404,24 @@ paths:
         "501": { $ref: "#/components/responses/Unsupported" }
         "503": { $ref: "#/components/responses/TicketingUnavailable" }
 
+  /api/v1/tickets/me:
+    get:
+      summary: Caller identity, roles and permissions (for the UI; ADR 0003 D-6a)
+      responses:
+        "200":
+          description: Effective access
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [actor, roles, permissions, source]
+                properties:
+                  actor: { $ref: "#/components/schemas/TicketActor" }
+                  roles: { type: array, items: { type: string } }
+                  permissions: { type: array, items: { type: string } }
+                  source: { type: string, enum: [groups, peer], description: "groups = forwarded human, peer = socket peer role" }
+                  config_error: { type: string, description: "ticket-roles.json invalid; humans are read-only" }
+
   /api/v1/tickets/provider:
     get:
       summary: Configured ticket provider, mirror, health and capabilities (ADR 0003)
@@ -666,6 +684,16 @@ components:
               - properties: { error: { properties: { code: { const: forbidden } } } }
         text/plain:
           schema: { type: string }
+    PermissionDenied:
+      description: A forwarded human lacks a permission (ADR 0003 D-6a)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - { $ref: "#/components/schemas/Error" }
+              - type: object
+                required: [permission]
+                properties: { permission: { type: string } }
     TicketingUnavailable:
       description: No ticket provider configured, or the provider is unreachable (error.code = ticketing_unavailable); fail closed
       content:

@@ -13,6 +13,7 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/persistence"
 	"github.com/ananta888/dockweave/internal/ticketing"
+	"github.com/ananta888/dockweave/internal/ticketing/authz"
 )
 
 // providerView is the public status of one ticket provider.
@@ -35,6 +36,9 @@ func viewOf(ctx context.Context, p ticketing.Provider) *providerView {
 // Ticketing is opt-in: without TICKET_PROVIDER it says so instead of
 // picking a provider silently.
 func (s *Server) ticketProvider(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePerm(w, r, authz.TicketRead) {
+		return
+	}
 	out := map[string]any{"configured": s.Tickets != nil, "available": ticketing.Registered()}
 	if s.TicketsError != "" {
 		out["error"] = s.TicketsError
@@ -139,6 +143,9 @@ func (s *Server) listTickets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.requirePerm(w, r, authz.TicketRead) {
+		return
+	}
 	q := r.URL.Query()
 	var f ticketing.Filter
 	for _, st := range strings.Split(q.Get("status"), ",") {
@@ -204,6 +211,13 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		ticketErr(w, err)
 		return
 	}
+	perms := []authz.Permission{authz.TicketCreate}
+	if n.Assignee != nil {
+		perms = append(perms, authz.TicketAssign)
+	}
+	if !s.requirePerm(w, r, perms...) {
+		return
+	}
 	if err := s.resolveAgent(r, n.Assignee); err != nil {
 		ticketErr(w, err)
 		return
@@ -219,6 +233,9 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.ticketPrimary(w)
 	if !ok {
+		return
+	}
+	if !s.requirePerm(w, r, authz.TicketRead) {
 		return
 	}
 	id, err := ticketID(r, p)
@@ -249,6 +266,16 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		ticketErr(w, err)
 		return
 	}
+	var perms []authz.Permission
+	if u.Title != nil || u.Description != nil || u.Status != nil || u.Priority != nil || (u.Assignee == nil && !u.ClearAssignee) {
+		perms = append(perms, authz.TicketEdit)
+	}
+	if u.Assignee != nil || u.ClearAssignee {
+		perms = append(perms, authz.TicketAssign)
+	}
+	if !s.requirePerm(w, r, perms...) {
+		return
+	}
 	if err := s.resolveAgent(r, u.Assignee); err != nil {
 		ticketErr(w, err)
 		return
@@ -273,6 +300,13 @@ func (s *Server) ticketComments(w http.ResponseWriter, r *http.Request) {
 	id, err := ticketID(r, p)
 	if err != nil {
 		ticketErr(w, err)
+		return
+	}
+	perm := authz.TicketComment
+	if r.Method == http.MethodGet {
+		perm = authz.TicketRead
+	}
+	if !s.requirePerm(w, r, perm) {
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -307,6 +341,9 @@ func (s *Server) ticketClaim(release bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := s.ticketPrimary(w)
 		if !ok {
+			return
+		}
+		if !s.requirePerm(w, r, authz.TicketAssign) {
 			return
 		}
 		if p.Inbox() == nil {
@@ -350,4 +387,64 @@ func (s *Server) ticketClaim(release bool) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, tk)
 	}
+}
+
+// ---- permissions for humans (ADR 0003 D-6a, TK-013) ----
+
+var defaultTicketPolicy = func() *authz.Policy {
+	p, err := authz.Compile(authz.Default())
+	if err != nil {
+		panic(err)
+	}
+	return p
+}()
+
+func (s *Server) ticketPolicy() *authz.Policy {
+	if s.TicketRoles == nil {
+		return defaultTicketPolicy
+	}
+	return s.TicketRoles.Policy()
+}
+
+// requirePerm checks the permissions of a human forwarded by the gateway.
+// Socket peers without a forwarded human (CLI, scripts) are governed by the
+// peer role alone (ADMIN_UIDS/MONITOR_UIDS, enforced by the middleware).
+func (s *Server) requirePerm(w http.ResponseWriter, r *http.Request, perms ...authz.Permission) bool {
+	h, ok := HumanFromContext(r.Context())
+	if !ok {
+		return true
+	}
+	grant := s.ticketPolicy().For(h.Groups)
+	for _, p := range perms {
+		if !grant.Has(p) {
+			writeJSON(w, http.StatusForbidden, map[string]any{
+				"error":      map[string]string{"code": "forbidden", "message": "missing permission " + string(p)},
+				"permission": p,
+			})
+			return false
+		}
+	}
+	return true
+}
+
+// ticketMe tells the UI who the caller is and what it may do.
+func (s *Server) ticketMe(w http.ResponseWriter, r *http.Request) {
+	out := map[string]any{"actor": requestActor(r)}
+	if h, ok := HumanFromContext(r.Context()); ok {
+		g := s.ticketPolicy().For(h.Groups)
+		out["roles"], out["permissions"], out["source"] = g.Roles, g.Permissions, "groups"
+	} else {
+		role, _ := r.Context().Value(peerRoleKey{}).(Role)
+		perms := []authz.Permission{authz.TicketRead}
+		if role == RoleAdmin {
+			perms = authz.All
+		}
+		out["roles"], out["permissions"], out["source"] = []string{string(role)}, perms, "peer"
+	}
+	if s.TicketRoles != nil {
+		if err := s.TicketRoles.Error(); err != nil {
+			out["config_error"] = err.Error()
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }

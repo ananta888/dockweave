@@ -16,7 +16,7 @@ import (
 func TestForwardedHumanOnlyFromGatewayPeer(t *testing.T) {
 	f := ticketFixture(t)
 	h := PeerAuthMiddleware(NewAuthPolicy([]uint32{1000, 1001}, []uint32{2000}).WithGateways([]uint32{1001, 2000}), f.srv.mux)
-	alice, _ := json.Marshal(model.HumanActor{ID: "https://idp/realms/dw|alice-sub", Name: "alice", Groups: []string{"dw-author"}})
+	alice, _ := json.Marshal(model.HumanActor{ID: "https://idp/realms/dw|alice-sub", Name: "alice", Groups: []string{"dockweave-admin"}})
 	create := func(uid uint32, header string) (int, ticketing.Ticket) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/tickets", strings.NewReader(`{"title":"x"}`))
 		req = req.WithContext(ContextWithPeer(req.Context(), "peer", uid, ""))

@@ -6,8 +6,8 @@ mit Tickets. Adapter: `native` (DockWeave-Speicher, im Paperclip-Stil) und
 Monitoring gelten für jeden Anbieter. Entwurf:
 `docs/adr/0003-ticketing-adapters.de.md`.
 
-Stand: Port, beide Adapter, Anbieterwahl und Ticket-API sind umgesetzt;
-Rollen, Dispatcher, Live-Sync und UI folgen
+Stand: Port, beide Adapter, Anbieterwahl und Ticket-API,
+weitergereichte Menschen und Rechte sind umgesetzt; Dispatcher, Live-Sync und UI folgen
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Konfiguration (`/etc/dockweave/dockweaved.conf`)
@@ -42,7 +42,8 @@ weicht nie still auf einen anderen Anbieter aus.
 Agenten dürfen per Name angegeben werden; gespeichert wird die stabile ID.
 Unbekannte JSON-Felder ergeben 400. Ohne Anbieter oder wenn er nicht
 erreichbar ist: `503 ticketing_unavailable` (geschlossen scheitern).
-Monitor-Peers lesen, Admin-Peers schreiben; Rechte je Rolle folgen (TK-013).
+Monitor-Peers lesen, Admin-Peers schreiben; Menschen werden je Recht
+geprüft (unten).
 Akteur ist der vom Gateway weitergereichte OIDC-Mensch (`iss|sub`, SD-022),
 sonst der Socket-Peer (`peer:<name>`).
 
@@ -50,6 +51,30 @@ Jede erfolgreiche Änderung – über API, Dispatcher oder Sync – ist ein
 Domänenereignis (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,
 `.comment_added`, `.checked_out`, `.released`) in der hash-verketteten
 Audit-Kette (Decorator `ticketing.Observe`).
+
+## Rollen und Rechte (D-6a)
+
+Per Keycloak angemeldete Menschen werden über ihre **Gruppen** berechtigt:
+`/etc/dockweave/ticket-roles.json` (`TICKET_ROLES_FILE`) ordnet Gruppen
+Rollen und Rollen Rechte zu; Beispiel: `deployments/ticket-roles.example.json`.
+Ohne Datei gelten die Standards (`dockweave-admin` → alles,
+`dockweave-monitor` → `ticket.read`). Unbekannte Gruppen geben keine Rechte.
+
+Rechte: `ticket.read`, `ticket.create`, `ticket.edit`, `ticket.comment`,
+`ticket.assign`, `ticket.approve`, `ticket.delete`, `gate.override`,
+`agent.wake`, `terminal.view`, `terminal.takeover`, `provider.configure`,
+`sync.run` (`"*"` = alle). Der Daemon setzt sie bei jedem Ticket-Aufruf und
+bei Pipeline-Overrides durch; eine Ablehnung ist `403` mit
+`"permission": "<name>"`. Zuständige ändern oder für einen Agenten sperren
+braucht `ticket.assign`, andere Feldänderungen `ticket.edit`.
+
+Die Datei wird bei Änderung neu gelesen (kein Neustart); jedes Laden und
+jeder Fehler wird auditiert (`ticket.roles_loaded` / `ticket.roles_invalid`).
+Eine ungültige Datei (unbekanntes Recht, undefinierte Rolle, unbekannter
+Schlüssel) macht alle Menschen **nur lesend**, bis sie korrigiert ist – alte
+Rechte gelten nie weiter. `GET /api/v1/tickets/me` liefert Rollen, Rechte und
+einen Konfigurationsfehler für die UI. Socket-Peers ohne weitergereichten
+Menschen (CLI) behalten ihre Peer-Rolle (`ADMIN_UIDS`/`MONITOR_UIDS`).
 
 ## Adapter
 

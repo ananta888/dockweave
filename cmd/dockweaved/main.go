@@ -44,6 +44,7 @@ import (
 	"github.com/ananta888/dockweave/internal/supervisor"
 	"github.com/ananta888/dockweave/internal/ticketing"
 	tnative "github.com/ananta888/dockweave/internal/ticketing/native"
+	"github.com/ananta888/dockweave/internal/ticketing/authz"
 	pcticket "github.com/ananta888/dockweave/internal/ticketing/paperclip"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
@@ -387,6 +388,17 @@ func (d agentDirectory) Resolve(ctx context.Context, nameOrID string) (string, b
 func openTicketing(apiSrv *api.Server, cfg config.Config, store *persistence.Store, agentSvc *agents.Service) {
 	tnative.Register(store)
 	pcticket.Register(agentDirectory{agentSvc})
+	// Permissions of forwarded humans; reloaded when the file changes, every
+	// (re)load or failure is audited (D-6a).
+	apiSrv.TicketRoles = &authz.Store{Path: cfg.TicketRolesFile, OnReload: func(err error) {
+		typ, msg := model.EventType("ticket.roles_loaded"), "ticket roles loaded from "+cfg.TicketRolesFile
+		if err != nil {
+			typ, msg = model.EventType("ticket.roles_invalid"), err.Error()
+			log.Printf("ticketing: %v", err)
+		}
+		_ = store.AppendEvent(context.Background(), &model.Event{ID: model.NewID("evt"), Type: typ, Actor: "dockweaved", Message: msg, Timestamp: time.Now().UTC()})
+	}}
+	_ = apiSrv.TicketRoles.Policy()
 	if cfg.TicketProvider == "" {
 		log.Printf("ticketing: not configured (TICKET_PROVIDER)")
 		return

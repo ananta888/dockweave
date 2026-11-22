@@ -27,6 +27,7 @@ import (
 	"github.com/ananta888/dockweave/internal/pipeline"
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/ticketing"
+	"github.com/ananta888/dockweave/internal/ticketing/authz"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -114,6 +115,9 @@ type Server struct {
 	// when ticketing is not configured or failed to open (TicketsError).
 	Tickets      *ticketing.Selection
 	TicketsError string
+	// TicketRoles maps IdP groups of forwarded humans to permissions
+	// (ADR 0003 D-6a); nil uses authz.Default().
+	TicketRoles *authz.Store
 
 	blocked blockedAudit
 	live    liveRegistry
@@ -243,6 +247,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/conflicts", s.conflicts)
 	s.mux.HandleFunc("GET /api/v1/live", s.liveWork)
 	s.mux.HandleFunc("GET /api/v1/tickets/provider", s.ticketProvider)
+	s.mux.HandleFunc("GET /api/v1/tickets/me", s.ticketMe)
 	s.mux.HandleFunc("GET /api/v1/tickets", s.listTickets)
 	s.mux.HandleFunc("POST /api/v1/tickets", s.createTicket)
 	s.mux.HandleFunc("GET /api/v1/tickets/{id}", s.getTicket)

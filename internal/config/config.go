@@ -64,6 +64,8 @@ type Config struct {
 	PaperclipURL       string
 	PaperclipCompany   string
 	PaperclipTokenFile string
+	// TicketRolesFile maps IdP groups to roles and permissions (D-6a).
+	TicketRolesFile string
 }
 
 // Default returns the default configuration.
@@ -82,6 +84,7 @@ func Default() Config {
 		AllowRootContainer: false,
 		SocketGroup:        "dockweave",
 		KnowledgeDir:       "/var/lib/dockweave/knowledge",
+		TicketRolesFile:    "/etc/dockweave/ticket-roles.json",
 	}
 }
 
@@ -163,6 +166,8 @@ func applyPairs(cfg *Config, lines []string) {
 			cfg.PaperclipCompany = v
 		case "PAPERCLIP_TOKEN_FILE":
 			cfg.PaperclipTokenFile = v
+		case "TICKET_ROLES_FILE":
+			cfg.TicketRolesFile = v
 		}
 	}
 }

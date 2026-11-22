@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ananta888/dockweave/internal/ticketing/authz"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -311,6 +312,9 @@ func (s *Server) allAdmissions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createPipelineOverride(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePerm(w, r, authz.GateOverride) {
+		return
+	}
 	if !isAdmin(r) {
 		writeErr(w, http.StatusForbidden, "forbidden", errors.New("only admins may override pipelines"))
 		return
