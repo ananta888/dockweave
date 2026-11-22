@@ -55,7 +55,7 @@
         "TK-007",
         "TK-013"
       ],
-      "status": "todo"
+      "status": "in_progress"
     },
     {
       "id": "M3",
@@ -218,10 +218,10 @@
       "milestone": "M2",
       "type": "feature",
       "title": "Ticket-API v1 im Daemon + OpenAPI",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "medium",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "/api/v1/tickets (list/get/create/update), /comments, /checkout, /approvals; Rollen: Monitor lesend, Admin schreibend; Ereignisse auf dem Event-Bus (Observer).",
       "components": [
         "internal/api",
@@ -235,7 +235,10 @@
         "TK-005"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: /api/v1/tickets list/create/get/patch, /comments, /checkout, /release on the primary provider; refs bare or provider:id; agents by name resolved to stable ids; strict JSON (unknown fields 400); 503 ticketing_unavailable fail closed; error mapping 400/404/409/501/503; ticketing.Observe decorator emits domain events for every mutation (API, later dispatcher/sync) into the hash-chained audit log (NewTicketAudit, wired in dockweaved); OpenAPI with 13 recorded real responses (validate_openapi 39/39); TestTicketAPILifecycleWithAudit, TestObservedProvider*."
+      ]
     },
     {
       "id": "TK-007",
@@ -435,13 +438,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 8,
+      "todo": 7,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 5
+      "done": 6
     },
-    "progress_percent_done": 38.4615,
+    "progress_percent_done": 46.1538,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -456,13 +459,13 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 4,
-      "remaining": 7
+      "done": 5,
+      "remaining": 6
     },
     "milestones": {
       "total": 5,
-      "todo": 3,
-      "in_progress": 0,
+      "todo": 2,
+      "in_progress": 1,
       "blocked": 0,
       "done": 2
     }
@@ -479,10 +482,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 8,
+    "todo_remaining": 7,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 5
+    "done": 6
   }
 }

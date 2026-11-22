@@ -9,6 +9,7 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/memory"
+	"github.com/ananta888/dockweave/internal/ticketing/native"
 )
 
 // TestRecordPipelineResponsesForOpenAPI records real handler responses for
@@ -63,6 +64,28 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleMonitor, "GET", "/api/v1/tickets/provider", "/api/v1/tickets/provider", "", 200)
 	f.srv.Tickets = &ticketing.Selection{Primary: memory.New("native"), Mirror: memory.New("paperclip")}
 	rec(RoleMonitor, "GET", "/api/v1/tickets/provider", "/api/v1/tickets/provider", "", 200)
+	f.srv.Tickets = nil
+	rec(RoleAdmin, "GET", "/api/v1/tickets", "/api/v1/tickets", "", 503)
+	f.srv.Tickets = &ticketing.Selection{Primary: ticketing.Observe(native.New(f.store), NewTicketAudit(f.store))}
+	created := f.do(t, RoleAdmin, "POST", "/api/v1/tickets", `{"title":"Fix login","priority":"high","assignee":{"kind":"agent","id":"beta"}}`)
+	if created.Code != 201 {
+		t.Fatal(created.Body)
+	}
+	out = append(out, fixture{"POST", "/api/v1/tickets", 201, json.RawMessage(created.Body.Bytes())})
+	var tk ticketing.Ticket
+	_ = json.Unmarshal(created.Body.Bytes(), &tk)
+	one := "/api/v1/tickets/" + tk.Ref.ID
+	rec(RoleAdmin, "POST", "/api/v1/tickets", "/api/v1/tickets", `{"title":""}`, 400)
+	rec(RoleMonitor, "GET", "/api/v1/tickets?status=todo", "/api/v1/tickets", "", 200)
+	rec(RoleMonitor, "GET", one, "/api/v1/tickets/{id}", "", 200)
+	rec(RoleMonitor, "GET", "/api/v1/tickets/nope", "/api/v1/tickets/{id}", "", 404)
+	rec(RoleAdmin, "PATCH", one, "/api/v1/tickets/{id}", `{"status":"in_progress"}`, 200)
+	rec(RoleAdmin, "PATCH", one, "/api/v1/tickets/{id}", `{"status":"done","expected_version":"1"}`, 409)
+	rec(RoleAdmin, "POST", one+"/comments", "/api/v1/tickets/{id}/comments", `{"body":"on it"}`, 201)
+	rec(RoleMonitor, "GET", one+"/comments", "/api/v1/tickets/{id}/comments", "", 200)
+	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"beta"}`, 200)
+	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"alpha"}`, 409)
+	rec(RoleAdmin, "POST", one+"/release", "/api/v1/tickets/{id}/release", `{"agent":"beta"}`, 200)
 	f.srv.Tickets = nil
 
 	const prune = "/api/v1/gates/prune"

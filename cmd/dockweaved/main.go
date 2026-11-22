@@ -399,6 +399,12 @@ func openTicketing(apiSrv *api.Server, cfg config.Config, store *persistence.Sto
 		log.Printf("ticketing: %v", err)
 		return
 	}
+	// Every mutation, whoever triggers it, lands in the audit chain (D-5).
+	audit := api.NewTicketAudit(store)
+	sel.Primary = ticketing.Observe(sel.Primary, audit)
+	if sel.Mirror != nil {
+		sel.Mirror = ticketing.Observe(sel.Mirror, audit)
+	}
 	apiSrv.Tickets = sel
 	mirror := "none"
 	if sel.Mirror != nil {

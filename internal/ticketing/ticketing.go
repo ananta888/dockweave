@@ -73,6 +73,8 @@ const (
 	ActorSystem ActorKind = "system"
 )
 
+func (k ActorKind) String() string { return string(k) }
+
 // Actor is a human (stable principal id, e.g. "iss|sub"), an agent (stable
 // DockWeave agent id) or the system.
 type Actor struct {

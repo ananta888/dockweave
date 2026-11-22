@@ -6,7 +6,7 @@ mit Tickets. Adapter: `native` (DockWeave-Speicher, im Paperclip-Stil) und
 Monitoring gelten für jeden Anbieter. Entwurf:
 `docs/adr/0003-ticketing-adapters.de.md`.
 
-Stand: Port, beide Adapter und die Anbieterwahl sind umgesetzt; Ticket-API,
+Stand: Port, beide Adapter, Anbieterwahl und Ticket-API sind umgesetzt;
 Rollen, Dispatcher, Live-Sync und UI folgen
 (`todo/todo.ticketing-2026-11-22.json`).
 
@@ -26,6 +26,29 @@ umgestellt. `dockweave ticket provider` (und `GET /api/v1/tickets/provider`)
 zeigt führenden Anbieter, Spiegel, Erreichbarkeit und Fähigkeiten. Ein
 unbekannter oder nicht zu öffnender Anbieter wird dort gemeldet – DockWeave
 weicht nie still auf einen anderen Anbieter aus.
+
+## API (`/api/v1/tickets`)
+
+| Methode | Pfad | |
+|---|---|---|
+| GET | `/api/v1/tickets?status=a,b&assignee=agent:<id\|name>&parent=&q=&updated_since=&limit=` | Liste (führender Anbieter) |
+| POST | `/api/v1/tickets` | anlegen (`title`, `description`, `status`, `priority`, `assignee`, `parent`, `workspace_id`) |
+| GET / PATCH | `/api/v1/tickets/{id}` | lesen / ändern; `expected_version` → 409, wenn veraltet |
+| GET / POST | `/api/v1/tickets/{id}/comments` | nur anhängbarer Thread |
+| POST | `/api/v1/tickets/{id}/checkout`, `/release` | `{"agent": "<id\|name>"}`; exklusiv, 409 bei Konflikt |
+
+`{id}` ist eine nackte ID oder `<anbieter>:<id>` des führenden Anbieters.
+Agenten dürfen per Name angegeben werden; gespeichert wird die stabile ID.
+Unbekannte JSON-Felder ergeben 400. Ohne Anbieter oder wenn er nicht
+erreichbar ist: `503 ticketing_unavailable` (geschlossen scheitern).
+Monitor-Peers lesen, Admin-Peers schreiben; Rechte je Rolle folgen (TK-013).
+Bis das Gateway den angemeldeten Menschen weiterreicht (TK-007), ist der
+Akteur der Socket-Peer (`peer:<name>`).
+
+Jede erfolgreiche Änderung – über API, Dispatcher oder Sync – ist ein
+Domänenereignis (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,
+`.comment_added`, `.checked_out`, `.released`) in der hash-verketteten
+Audit-Kette (Decorator `ticketing.Observe`).
 
 ## Adapter
 

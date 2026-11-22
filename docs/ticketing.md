@@ -5,8 +5,8 @@ DockWeave works on tickets through a provider-neutral port
 and `paperclip` (Paperclip HTTP API). Gates, pipeline admission, evidence and
 monitoring apply to every provider. Design: `docs/adr/0003-ticketing-adapters.md`.
 
-Status: port, both adapters and provider selection are implemented; the
-ticket API, roles, dispatcher, live sync and UI follow
+Status: port, both adapters, provider selection and the ticket API are
+implemented; roles, dispatcher, live sync and UI follow
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Configuration (`/etc/dockweave/dockweaved.conf`)
@@ -24,6 +24,28 @@ ticket API, roles, dispatcher, live sync and UI follow
 `dockweave ticket provider` (and `GET /api/v1/tickets/provider`) shows
 primary, mirror, health and capabilities. An unknown or unopenable provider is
 reported there – DockWeave never falls back to another provider silently.
+
+## API (`/api/v1/tickets`)
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/v1/tickets?status=a,b&assignee=agent:<id\|name>&parent=&q=&updated_since=&limit=` | list (primary provider) |
+| POST | `/api/v1/tickets` | create (`title`, `description`, `status`, `priority`, `assignee`, `parent`, `workspace_id`) |
+| GET / PATCH | `/api/v1/tickets/{id}` | read / update; `expected_version` → 409 when stale |
+| GET / POST | `/api/v1/tickets/{id}/comments` | append-only thread |
+| POST | `/api/v1/tickets/{id}/checkout`, `/release` | `{"agent": "<id\|name>"}`; exclusive, 409 on conflict |
+
+`{id}` is a bare id or `<provider>:<id>` of the primary provider. Agents may be
+given by name; the API stores the stable id. Unknown JSON fields are 400.
+Without a provider, or when it is unreachable: `503 ticketing_unavailable`
+(fail closed). Monitor peers read, admin peers write; per-role permissions
+follow (TK-013). Until the gateway forwards the signed-in human (TK-007) the
+actor is the socket peer (`peer:<name>`).
+
+Every successful mutation – from the API, the dispatcher or the sync – is a
+domain event (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,
+`.comment_added`, `.checked_out`, `.released`) in the hash-chained audit log
+(`ticketing.Observe` decorator).
 
 ## Adapters
 

@@ -246,6 +246,164 @@ paths:
                     items: { $ref: "#/components/schemas/LiveWork" }
                   now: { type: string, format: date-time }
 
+  /api/v1/tickets:
+    get:
+      summary: List tickets of the primary provider (ADR 0003)
+      parameters:
+        - { name: status, in: query, schema: { type: string }, description: "comma-separated canonical statuses" }
+        - { name: assignee, in: query, schema: { type: string }, description: "agent:<id|name> or human:<id>" }
+        - { name: parent, in: query, schema: { type: string }, description: "ticket ref or id" }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: updated_since, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 0, maximum: 1000 } }
+      responses:
+        "200":
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [provider, tickets]
+                properties:
+                  provider: { type: string }
+                  tickets: { type: array, items: { $ref: "#/components/schemas/Ticket" } }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+    post:
+      summary: Create a ticket (audited as ticket.created)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewTicket" }
+      responses:
+        "201":
+          description: Created ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string }, description: "id or <provider>:<id> of the primary provider" }
+    get:
+      summary: Get a ticket
+      responses:
+        "200":
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+    patch:
+      summary: Update a ticket (optimistic with expected_version)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketUpdate" }
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/{id}/comments:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Ticket thread (append-only)
+      responses:
+        "200":
+          description: Comments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [comments]
+                properties:
+                  comments: { type: array, items: { $ref: "#/components/schemas/TicketComment" } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { $ref: "#/components/responses/Unsupported" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+    post:
+      summary: Add a comment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              additionalProperties: false
+              properties:
+                body: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: Comment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TicketComment" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "501": { $ref: "#/components/responses/Unsupported" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/{id}/checkout:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Claim a ticket for an agent (exclusive; one agent per ticket)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketClaim" }
+      responses:
+        "200":
+          description: Ticket after the claim
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "501": { $ref: "#/components/responses/Unsupported" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/{id}/release:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Release a claimed ticket (only the holder)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketClaim" }
+      responses:
+        "200":
+          description: Ticket after the release
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "501": { $ref: "#/components/responses/Unsupported" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
   /api/v1/tickets/provider:
     get:
       summary: Configured ticket provider, mirror, health and capabilities (ADR 0003)
@@ -508,6 +666,16 @@ components:
               - properties: { error: { properties: { code: { const: forbidden } } } }
         text/plain:
           schema: { type: string }
+    TicketingUnavailable:
+      description: No ticket provider configured, or the provider is unreachable (error.code = ticketing_unavailable); fail closed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unsupported:
+      description: The provider lacks this capability (error.code = unsupported)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     Internal:
       description: Persistence or mandatory audit write failed; the mutation was rolled back
       content:
@@ -618,6 +786,78 @@ components:
         agent_ids: { type: array, items: { type: string } }
         writers: { type: array, items: { type: string } }
         detected_at: { type: string, format: date-time }
+
+    TicketActor:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [human, agent, system] }
+        id: { type: string }
+        name: { type: string }
+    TicketRef:
+      type: object
+      required: [provider, id]
+      properties:
+        provider: { type: string }
+        id: { type: string }
+    Ticket:
+      type: object
+      required: [ref, title, status, created_at, updated_at, version]
+      properties:
+        ref: { $ref: "#/components/schemas/TicketRef" }
+        identifier: { type: string }
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [backlog, todo, in_progress, in_review, blocked, done, cancelled] }
+        priority: { type: string, enum: [critical, high, medium, low] }
+        assignee: { $ref: "#/components/schemas/TicketActor" }
+        parent: { $ref: "#/components/schemas/TicketRef" }
+        workspace_id: { type: string }
+        created_by: { $ref: "#/components/schemas/TicketActor" }
+        checked_out_by: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: string }
+        extra: { type: object, description: "provider fields without canonical meaning (read-only)" }
+    NewTicket:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1 }
+        description: { type: string }
+        status: { type: string, enum: [backlog, todo, in_progress, in_review, blocked, done, cancelled] }
+        priority: { type: string, enum: [critical, high, medium, low] }
+        assignee: { $ref: "#/components/schemas/TicketActor" }
+        parent: { $ref: "#/components/schemas/TicketRef" }
+        workspace_id: { type: string }
+    TicketUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1 }
+        description: { type: string }
+        status: { type: string, enum: [backlog, todo, in_progress, in_review, blocked, done, cancelled] }
+        priority: { type: string, enum: [critical, high, medium, low] }
+        assignee: { $ref: "#/components/schemas/TicketActor" }
+        clear_assignee: { type: boolean }
+        expected_version: { type: string }
+    TicketComment:
+      type: object
+      required: [id, ticket, author, body, created_at]
+      properties:
+        id: { type: string }
+        ticket: { $ref: "#/components/schemas/TicketRef" }
+        author: { $ref: "#/components/schemas/TicketActor" }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+        origin: { type: string }
+    TicketClaim:
+      type: object
+      required: [agent]
+      additionalProperties: false
+      properties:
+        agent: { type: string, description: "DockWeave agent id or name" }
 
     TicketProviderStatus:
       type: object
