@@ -12,7 +12,7 @@ SPEC.loader.exec_module(VALIDATOR)
 
 class TrackValidationTest(unittest.TestCase):
     def setUp(self):
-        self.track = json.loads((ROOT / "todo/todo.review-followup-2026-11-21.json").read_text())
+        self.track = json.loads((ROOT / "todo/archive/review-followup-2026-11-21.json").read_text())
 
     def test_current_track(self):
         VALIDATOR.validate_track(self.track)

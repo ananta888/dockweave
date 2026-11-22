@@ -405,7 +405,7 @@
   ],
   "review_followup_addendum": {
     "date": "2026-11-21",
-    "followup_track": "todo/todo.review-followup-2026-11-21.json",
+    "followup_track": "todo/archive/review-followup-2026-11-21.json",
     "note": "Nachtrag 2026-11-21 (Review-Folgetrack review-followup-2026-11-21): Status, Testergebnisse und Zeitbezug dieses Archivs bleiben unverändert. Das Review der Commits bac167c..29eaa00 fand Lücken in den unten genannten Aufgaben; diese werden ausschließlich im aktiven Track verfolgt. Ein 'done' hier bedeutet 'damals abgeschlossen', nicht 'fehlerfrei nach heutigem Review'.",
     "links": {
       "CR-002": {

@@ -184,8 +184,8 @@
     {
       "id": "M7",
       "title": "Dokumentation, Track-Validierung und Gesamtabnahme",
-      "status": "in_progress",
-      "progress_percent": 96.67,
+      "status": "done",
+      "progress_percent": 100.0,
       "task_ids": [
         "RF-041",
         "RF-042",
@@ -2920,10 +2920,10 @@
       "milestone": "M7",
       "type": "verification",
       "title": "Korrigierten Gesamtstand anhand der kritischen Szenarien erneut abnehmen",
-      "status": "partial",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 90,
+      "progress_percent": 100,
       "description": "Die ursprünglichen grünen Tests beziehen sich auf den fehlerhaften reviewed_head. Ein Folgeabschluss benötigt neue Nachweise auf dem tatsächlichen Endstand, insbesondere für Sicherheitsgrenzen und zusammengesetzte Fehlerpfade.",
       "evidence_level": "coverage_gap",
       "scope_origin": "followup",
@@ -3007,12 +3007,11 @@
         "Privilegierte Integration nur im isolierten Harness. Ausgelassene Prüfungen ausdrücklich kennzeichnen; kein fehlender Nachweis als Erfolg."
       ],
       "audit_2026_11_21": {
-        "verdict": "todo",
-        "remaining_gaps": [
-          "Manueller Szenariodurchlauf auf einer echten laufenden Installation steht aus (siehe acceptance_2026_11_21.open_for_acceptance)"
-        ],
+        "verdict": "done",
+        "remaining_gaps": [],
         "resolved": [
-          "2026-11-21: finale Verifikation auf 7bde378 lokal und in CI-Lauf 44957573583 vollständig grün; Regressionen der sechs ursprünglichen Befunde zugeordnet (acceptance_2026_11_21)"
+          "2026-11-21: finale Verifikation auf 7bde378 lokal und in CI-Lauf 44957573583 vollständig grün; Regressionen der sechs ursprünglichen Befunde zugeordnet (acceptance_2026_11_21)",
+          "Erledigt 2026-11-22: finale Verifikation auf 7bde378 (lokal + CI 44957573583) und manueller Szenariodurchlauf auf der echten lokalen Installation (acceptance_2026_11_21.manual_walkthrough_2026_11_22); alle Szenarien bestanden."
         ]
       }
     }
@@ -3101,11 +3100,11 @@
     "by_status": {
       "todo": 0,
       "in_progress": 0,
-      "partial": 1,
+      "partial": 0,
       "blocked": 0,
-      "done": 44
+      "done": 45
     },
-    "progress_percent_done": 97.78,
+    "progress_percent_done": 100.0,
     "by_priority": {
       "P0": 1,
       "P1": 18,
@@ -3120,15 +3119,15 @@
     },
     "critical_path": {
       "total": 23,
-      "done": 22,
-      "remaining": 1
+      "done": 23,
+      "remaining": 0
     },
     "milestones": {
       "total": 7,
       "todo": 0,
-      "in_progress": 1,
+      "in_progress": 0,
       "blocked": 0,
-      "done": 6
+      "done": 7
     }
   },
   "tasks_type_summary": {
@@ -3147,12 +3146,12 @@
     }
   },
   "progress_summary": {
-    "state": "in_progress",
+    "state": "done",
     "todo_remaining": 0,
     "in_progress": 0,
-    "partial": 1,
+    "partial": 0,
     "blocked": 0,
-    "done": 44
+    "done": 45
   },
   "evidence_summary": {
     "by_level": {
@@ -3220,12 +3219,32 @@
       "2026-11-22 reconcile-window semantics accepted as implemented (RF-005)",
       "2026-11-22 manual scenario walkthrough on a real installation is done by the user after deploying the new binary (RF-045 stays open until then)"
     ],
-    "open_for_acceptance": [
-      "RF-045 criterion 4: manual scenario walkthrough on a real running installation not performed (would change pipeline edges/overrides of the live daemon, which still runs an older binary); all scenarios are covered by automated tests on real code paths"
-    ],
+    "open_for_acceptance": [],
     "limits": [
       "No release, deployment or production migration performed. Migrations 19 and 20 run on next daemon start.",
       "The app shell is not usable at 390 px width (pre-existing, unchanged since the review base)."
-    ]
+    ],
+    "manual_walkthrough_2026_11_22": {
+      "installation": "local dockweaved (systemd) updated to 4124fd0 via scripts/install.sh, DB schema 20, web gateway restarted; backup /var/lib/dockweave/backup-2026-11-22, graph.json.bak-2026-11-22",
+      "surfaces": "real daemon, real CLI, real web gateway and UI (user browser and headless Playwright with the gateway token), real sandbox gate runner",
+      "results": {
+        "edge via graph editor pushed": "pass (revision 11)",
+        "no_run/PASS/stale/FAIL+rework": "pass",
+        "single-use override once, reusable override 3x, reads never consume": "pass",
+        "override never releases deny after PASS": "pass",
+        "tamper blocks despite active override": "pass",
+        "broken contract: structured error, enforcement unchanged, repair via UI": "pass",
+        "two sessions: 409 conflict, no overwrite, load server state, discard draft": "pass (headless, two browser contexts)",
+        "Paperclip CLI unreachable: blocked-check fail-closed": "pass",
+        "daemon unreachable: wrapper spends no turn, CLI exit 1, UI 'Status unbekannt' + banner, recovery and sync retry": "pass (daemon stopped/started by the user)",
+        "cleanup": "connector deleted via UI (0 edges, revision 22), test agents and workspace removed"
+      },
+      "observations": [
+        "Web gateway disables OIDC login when Keycloak is not ready at gateway start (one-shot discovery); restart of dockweave-web restores it (pre-existing).",
+        "Invalid-connector notice shows the target agent id instead of its name; the technical text says 'gate synchronization failed' for the contract check (cosmetic).",
+        "CLI appends its usage text on errors, which also lands in the wrapper's blocked comment (cosmetic).",
+        "Graph node positions dropped from 12 to 3 during the session; page loads do not save (verified with and without daemon), so most likely a user layout/cleanup action; restorable from graph.json.bak-2026-11-22."
+      ]
+    }
   }
 }

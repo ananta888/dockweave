@@ -398,7 +398,7 @@ concurrent override consumption), `tests/integration/pipeline_e2e_test.go`
 
 ## SD-021 — Rooted workspace access for gates and fingerprints (2026-11-21)
 
-**Context:** The review of 2026-11-21 (track `review-followup-2026-11-21`,
+**Context:** The review of 2026-11-21 (track `review-followup-2026-11-21`, archived in `todo/archive/`,
 RF-007..RF-011) found that gate preparation (`cp -a` plus `chmod -R`), host
 hashing and the admission fingerprint resolved workspace paths by name. A
 symlink inside an agent-writable workspace could make the root-run daemon
