@@ -41,8 +41,11 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 			got.Assignee == nil || got.Assignee.Kind != ticketing.ActorAgent || got.Assignee.ID != agentA.ID {
 			t.Fatalf("get: %+v", got)
 		}
-		if got.CreatedBy == nil || got.CreatedBy.ID != human.ID || got.CreatedAt.IsZero() || got.UpdatedAt.IsZero() {
-			t.Fatalf("authorship/timestamps: %+v", got)
+		if got.CreatedAt.IsZero() || got.UpdatedAt.IsZero() {
+			t.Fatalf("timestamps: %+v", got)
+		}
+		if p.Capabilities().Authorship && (got.CreatedBy == nil || got.CreatedBy.ID != human.ID) {
+			t.Fatalf("authorship: %+v", got.CreatedBy)
 		}
 	})
 

@@ -281,6 +281,10 @@ type Capabilities struct {
 	Children  bool `json:"children"`
 	Approvals bool `json:"approvals"`
 	Wake      bool `json:"wake"`
+	// Authorship: the provider stores the DockWeave actor as ticket author.
+	// Without it the author is the provider's API identity; the DockWeave
+	// audit trail keeps the real actor either way.
+	Authorship bool `json:"authorship"`
 }
 
 // Health is the provider's reachability.

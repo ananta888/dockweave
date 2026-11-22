@@ -162,10 +162,10 @@
       "milestone": "M1",
       "type": "feature",
       "title": "Adapter paperclip über die HTTP-API statt CLI",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Client gegen Paperclip-OpenAPI (Version geprüft), Statusabbildung, Inbox/Checkout/Kommentare/Unteraufgaben/Freigaben/Wake; Anti-Corruption-Layer.",
       "components": [
         "internal/ticketing/paperclip"
@@ -178,7 +178,10 @@
         "TK-002"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: internal/ticketing/paperclip over the HTTP API (health incl. MinVersion 2026.1106.0, company auto-detect, optional board token file, error mapping 404/409/400-422/5xx-401-403 -> NotFound/Conflict/Invalid/Unavailable), agent mapping via process adapterConfig.args[0] (foreign agents paperclip-agent:<uuid>, users paperclip-user:<id>), version digest + expectedStatusVersion, comment authorship via body marker (Paperclip metadata schema is closed), atomic checkout with expectedStatuses, wakeup. Passes contracttest against fakePaperclip (shapes observed on the real 2026.1106.0 instance); read-only smoke against the real instance passed (DOCKWEAVE_PAPERCLIP_SMOKE_URL). Open: write semantics of checkout/release on a real instance are verified in TK-009 (isolated test-drive instance; the running service blocks test-drive without --force). New capability Authorship (paperclip: false)."
+      ]
     },
     {
       "id": "TK-005",
@@ -428,13 +431,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 10,
+      "todo": 9,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 3
+      "done": 4
     },
-    "progress_percent_done": 23.0769,
+    "progress_percent_done": 30.7692,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -472,10 +475,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 10,
+    "todo_remaining": 9,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 3
+    "done": 4
   }
 }

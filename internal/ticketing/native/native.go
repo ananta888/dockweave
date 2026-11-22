@@ -55,7 +55,7 @@ func (p *Provider) Health(context.Context) ticketing.Health {
 }
 
 func (p *Provider) Capabilities() ticketing.Capabilities {
-	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true}
+	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Authorship: true}
 }
 func (p *Provider) Tickets() ticketing.Tickets { return p }
 func (p *Provider) Threads() ticketing.Threads { return p }
