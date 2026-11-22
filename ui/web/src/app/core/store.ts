@@ -3,7 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
-  EgressStatus, Event, FileConflict, Grant, MountState, Workspace,
+  EgressStatus, Event, FileConflict, Grant, LiveWork, MountState, Workspace,
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -17,6 +17,10 @@ export class Store {
   readonly mounts = signal<MountState[]>([]);
   readonly events = signal<Event[]>([]);
   readonly conflicts = signal<FileConflict[]>([]);
+  /** Work in flight; null = unknown (older daemon or request failed). */
+  readonly live = signal<LiveWork[] | null>(null);
+  /** False after a refresh in which the daemon did not answer. */
+  readonly daemonReachable = signal(true);
   readonly broker = signal<BrokerStatus | null>(null);
   readonly brokerGrants = signal<BrokerGrant[]>([]);
   readonly brokerRequests = signal<BrokerRequestEntry[]>([]);
@@ -63,8 +67,11 @@ export class Store {
       firstValueFrom(this.api.brokerGrants()),
       firstValueFrom(this.api.brokerRequests()),
       firstValueFrom(this.api.providers()),
+      firstValueFrom(this.api.live()),
     ]);
-    const [agents, activity, workspaces, grants, mounts, events, conflicts, broker, bgrants, breqs, providers] = results;
+    const [agents, activity, workspaces, grants, mounts, events, conflicts, broker, bgrants, breqs, providers, live] = results;
+    this.daemonReachable.set(agents.status === 'fulfilled');
+    this.live.set(live.status === 'fulfilled' ? (live.value?.items ?? []) : null);
     if (agents.status === 'fulfilled') {
       this.agents.set(agents.value);
       if (!this.selectedId() && agents.value.length) {

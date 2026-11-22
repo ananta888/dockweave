@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 import {
   Agent, AgentActivity, AgentPaths, BrokerGrant, BrokerRequestEntry, BrokerStatus,
-  AgentMCP, AgentSkill, AgentTypeMCP, AgentTypeSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, MemoryInfo, MemorySnapshot,
+  AgentMCP, AgentSkill, AgentTypeMCP, AgentTypeSkill, BrokerUsage, DirListing, EgressStatus, Event, FileConflict, Grant, LiveWork, MemoryInfo, MemorySnapshot,
   MountState, ProviderStatus, Workspace, SkillCatalog, SkillCatalogEntry,
 } from './models';
 import { HerdrStatus, HerdrPrepareResult } from './domain/integrations';
@@ -81,6 +81,7 @@ export class ApiService {
   }
 
   activity(): Observable<AgentActivity[]> { return this.req(this.http.get<AgentActivity[]>(`${this.base}/activity`)); }
+  live(): Observable<{ items: LiveWork[]; now: string }> { return this.req(this.http.get<{ items: LiveWork[]; now: string }>(`${this.base}/live`)); }
   conflicts(): Observable<FileConflict[]> { return this.req(this.http.get<FileConflict[]>(`${this.base}/conflicts`)); }
   events(limit = 100): Observable<Event[]> { return this.req(this.http.get<Event[]>(`${this.base}/events?limit=${limit}`)); }
   providers(): Observable<ProviderStatus> { return this.req(this.http.get<ProviderStatus>(`${this.base}/monitor/providers`)); }

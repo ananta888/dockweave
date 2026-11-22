@@ -1,0 +1,214 @@
+{
+  "$schema": "./todo.track.schema.json",
+  "version": "1.0",
+  "owner": "dockweave",
+  "track": "graph-live-status",
+  "created": "2026-11-22",
+  "updated": "2026-11-22",
+  "language": "de",
+  "purpose": "Live-Status im 2D-Graphen: aktive und miteinander redende Knoten/Kanten pulsieren grün, Probleme blinken rot – schneller und härter je Schwere.",
+  "goal": "Vom Nutzer am 2026-11-22 freigegebener Katalog (Farben, Rhythmen, Zustände, Quellen) ist umgesetzt, getestet und dokumentiert.",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Live-Status",
+      "task_ids": [
+        "LS-001",
+        "LS-002",
+        "LS-003",
+        "LS-004"
+      ],
+      "status": "done"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "LS-001",
+      "milestone": "M1",
+      "type": "feature",
+      "title": "Daemon: Arbeit in Ausführung abfragbar (GET /api/v1/live)",
+      "status": "done",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 100,
+      "description": "Endpoint-Aufträge (/v1/chat/completions) und Gate-Läufe (/api/v1/gates/run) werden während der Ausführung in einem In-Memory-Register geführt und nur lesend gelistet.",
+      "components": [
+        "internal/api",
+        "internal/model",
+        "docs/api"
+      ],
+      "acceptance_criteria": [
+        "Ein laufender Endpoint-Auftrag erscheint mit stabiler Agent-ID und Issue-ID und verschwindet nach Ende der Anfrage.",
+        "Von der Pipeline-Admission abgelehnte Anfragen erscheinen nie.",
+        "Monitor-Rolle darf lesen; OpenAPI dokumentiert Pfad und Schema."
+      ],
+      "depends_on": [],
+      "verification_files": [
+        "internal/api/live_test.go"
+      ],
+      "verification_commands": [
+        "go test -race ./internal/api -run Live",
+        "python3 scripts/validate_openapi.py"
+      ]
+    },
+    {
+      "id": "LS-002",
+      "milestone": "M1",
+      "type": "frontend",
+      "title": "Live-Status-Logik: grün aktiv/redend, Hinweise, rot nach Schwere",
+      "status": "done",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 100,
+      "description": "Reine Funktion computeLiveStatus über echte Daten (Monitor, Konflikte, Live-Arbeit, Admission, Gate-Läufe, Reviews, Grants); schwerster Zustand gewinnt; Unbekanntes nie grün.",
+      "components": [
+        "ui/web/src/app/components/graph-live-status.ts",
+        "ui/web/src/app/core"
+      ],
+      "acceptance_criteria": [
+        "Pipeline-Fluss, gemeinsamer Workspace und Endpoint-Aufträge markieren beteiligte Knoten und Kanten grün.",
+        "Start/Stopp blau, Override/Review gelb, Drift grau.",
+        "Rot: no_run/stale/expired/denied langsam; failed/error/unknown/Daemon weg mittel; tamper/Dateikonflikt hart.",
+        "Nicht verfügbare Monitor-Daten und ein nicht erreichbarer Daemon erzeugen nie Grün."
+      ],
+      "depends_on": [
+        "LS-001"
+      ],
+      "verification_files": [
+        "ui/web/e2e/live-status.spec.ts"
+      ],
+      "verification_commands": [
+        "cd ui/web && npm run build && npm run e2e:pipeline"
+      ]
+    },
+    {
+      "id": "LS-003",
+      "milestone": "M1",
+      "type": "frontend",
+      "title": "Darstellung: Animationen, Symbole, Tooltips, reduzierte Bewegung",
+      "status": "done",
+      "priority": "P2",
+      "risk": "low",
+      "progress_percent": 100,
+      "description": "Knoten-Glow und Kanten-Puls je Zustand, Symbolpunkt und Tooltip/aria-label mit Gründen; prefers-reduced-motion stoppt Animationen; bloßes running pulsiert nicht mehr.",
+      "components": [
+        "ui/web/src/app/components/graph.component.ts",
+        "ui/web/src/styles.scss"
+      ],
+      "acceptance_criteria": [
+        "Jeder Zustand hat Symbol und Text, nicht nur Farbe.",
+        "Hartes Blinken 0,4 s für schwere Probleme.",
+        "Mit reduzierter Bewegung keine Animation, Farbe und Symbol bleiben."
+      ],
+      "depends_on": [
+        "LS-002"
+      ],
+      "verification_files": [
+        "ui/web/e2e/live-status.spec.ts"
+      ],
+      "verification_commands": [
+        "cd ui/web && npm run e2e:pipeline"
+      ]
+    },
+    {
+      "id": "LS-004",
+      "milestone": "M1",
+      "type": "docs",
+      "title": "Doku Live-Status (DE/EN)",
+      "status": "done",
+      "priority": "P3",
+      "risk": "low",
+      "progress_percent": 100,
+      "description": "Tabelle Zustand/Farbe/Rhythmus/Quelle in docs/web-ui{,.de}.md.",
+      "components": [
+        "docs"
+      ],
+      "acceptance_criteria": [
+        "Katalog und /api/v1/live sind zweisprachig dokumentiert."
+      ],
+      "depends_on": [
+        "LS-003"
+      ],
+      "verification_files": [
+        "docs/web-ui.md",
+        "docs/web-ui.de.md"
+      ],
+      "verification_commands": []
+    }
+  ],
+  "tasks_status_summary": {
+    "total": 4,
+    "by_status": {
+      "todo": 0,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 4
+    },
+    "progress_percent_done": 100.0,
+    "by_priority": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 1
+    },
+    "by_risk": {
+      "low": 2,
+      "medium": 2,
+      "high": 0,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 3,
+      "done": 3,
+      "remaining": 0
+    },
+    "milestones": {
+      "total": 1,
+      "todo": 0,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 1
+    }
+  },
+  "critical_path_tasks": [
+    "LS-001",
+    "LS-002",
+    "LS-003"
+  ],
+  "tasks_type_summary": {
+    "total": 4,
+    "by_type": {
+      "feature": 1,
+      "frontend": 2,
+      "docs": 1
+    }
+  },
+  "progress_summary": {
+    "state": "done",
+    "todo_remaining": 0,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 4
+  }
+}

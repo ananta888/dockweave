@@ -77,6 +77,38 @@ socket).
 UI test without a daemon: `cd ui/web && npm run build && npm run e2e:pipeline`
 (Playwright, mocked backend).
 
+### Live status in the graph
+
+Nodes and edges show what is happening right now, derived only from real
+data (monitor activity, `GET /api/v1/conflicts`, `GET /api/v1/live`, pipeline
+admission, gate runs and reviews). Unknown is never shown as green.
+
+| Colour / rhythm | State | Source |
+|---|---|---|
+| green, calm pulse (2.5 s) | agent works (reading/writing or CPU ≥ 10 %) | monitor |
+| green | endpoint job running (agent) | `/api/v1/live` `endpoint_job` |
+| green | gate run in flight: checked agent, agent → gate edge, gate | `/api/v1/live` `gate_run` |
+| green | pipeline flow: gate → agent edge, gate and agent while the agent works on a released edge or ≤ 60 s after the release | admission + live |
+| green | two active agents on a shared workspace (grant edges, workspace node) or on an agent → agent edge (talking) | grants, monitor |
+| blue | agent starting/stopping (`created`, `restarting`, `removing`) | agent state |
+| yellow, slow | override active (edge + gate) · review pending (gate) | admission · gate runs/reviews |
+| grey dashed | graph and enforced pipeline not in sync | revision drift |
+| red, slow (2 s) | blocked: `no_run`, `stale`, `expired`, `denied` | admission |
+| red, medium (1 s) | `failed`, `error`, `internal`, `unknown_gate`, `fingerprint_unavailable`, status unknown, daemon unreachable, container `dead` | admission, shell refresh |
+| red, hard blink (0.4 s) | `tamper`, file conflict between agents | admission, conflicts |
+
+The most severe state wins. Every marked node has a symbol dot
+(● ◐ ⏳ ⚑ ⇄ ! ⚠ ✖) and a tooltip / accessible name with the reasons; edge
+labels carry the same symbol and text. With *reduce motion* in the OS only
+colour and symbol remain. A merely `running` agent no longer pulses.
+
+`GET /api/v1/live` (admin + monitor, read-only) lists the endpoint jobs and
+gate runs the daemon executes right now; entries disappear when the request
+ends and are kept in memory only. Requests refused by pipeline admission
+never appear.
+
+UI test: `npm run e2e:pipeline` includes `e2e/live-status.spec.ts`.
+
 ## Architecture
 
 ```

@@ -80,6 +80,17 @@ export interface Event {
   timestamp: string;
 }
 
+/** Work the daemon executes right now (GET /api/v1/live). */
+export interface LiveWork {
+  id: string;
+  kind: 'endpoint_job' | 'gate_run' | string;
+  agent_id?: string;
+  upstream_agent_id?: string;
+  workspace?: string;
+  issue_id?: string;
+  started_at: string;
+}
+
 export interface FileConflict {
   path: string;
   agent_ids: string[];

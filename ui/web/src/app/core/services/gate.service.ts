@@ -41,6 +41,7 @@ export interface GateRunView {
     reason?: string;
   };
   warnings?: string[];
+  upstream_agent_id?: string;
   started_at?: string;
   finished_at?: string;
 }

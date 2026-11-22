@@ -117,6 +117,39 @@ und kopiert die Assets vor `make build`. Die Graph-Ansicht nutzt
 UI-Test ohne Daemon: `cd ui/web && npm run build && npm run e2e:pipeline`
 (Playwright, gemocktes Backend).
 
+### Live-Status im Graphen
+
+Knoten und Kanten zeigen, was gerade passiert – nur aus echten Daten
+(Monitor-Aktivität, `GET /api/v1/conflicts`, `GET /api/v1/live`,
+Pipeline-Admission, Gate-Läufe und Reviews). Unbekanntes wird nie grün.
+
+| Farbe / Rhythmus | Zustand | Quelle |
+|---|---|---|
+| grün, ruhiges Auf- und Abblenden (2,5 s) | Agent arbeitet (liest/schreibt oder CPU ≥ 10 %) | Monitor |
+| grün | Endpoint-Auftrag läuft (Agent) | `/api/v1/live` `endpoint_job` |
+| grün | Gate-Lauf läuft: geprüfter Agent, Kante Agent → Gate, Gate | `/api/v1/live` `gate_run` |
+| grün | Pipeline-Fluss: Kante Gate → Agent, Gate und Agent, solange der Agent auf einer freigegebenen Kante arbeitet oder ≤ 60 s nach der Freigabe | Admission + Live |
+| grün | zwei aktive Agenten im selben Workspace (Grant-Kanten, Workspace-Knoten) oder auf einer Agent → Agent-Kante („reden“) | Grants, Monitor |
+| blau | Agent startet/stoppt (`created`, `restarting`, `removing`) | Agent-Zustand |
+| gelb, langsam | Override aktiv (Kante + Gate) · Review ausstehend (Gate) | Admission · Gate-Läufe/Reviews |
+| grau gestrichelt | Graph und erzwungene Pipeline nicht synchron | Revisions-Drift |
+| rot, langsam (2 s) | blockiert: `no_run`, `stale`, `expired`, `denied` | Admission |
+| rot, mittel (1 s) | `failed`, `error`, `internal`, `unknown_gate`, `fingerprint_unavailable`, Status unbekannt, Daemon nicht erreichbar, Container `dead` | Admission, Shell-Refresh |
+| rot, hartes Blinken (0,4 s) | `tamper`, Dateikonflikt zwischen Agenten | Admission, Konflikte |
+
+Der schwerste Zustand gewinnt. Jeder markierte Knoten hat einen Symbolpunkt
+(● ◐ ⏳ ⚑ ⇄ ! ⚠ ✖) und einen Tooltip bzw. zugänglichen Namen mit den Gründen;
+Kanten-Labels tragen dasselbe Symbol und denselben Text. Bei „Bewegung
+reduzieren“ im Betriebssystem bleiben nur Farbe und Symbol. Ein lediglich
+laufender (`running`) Agent pulsiert nicht mehr.
+
+`GET /api/v1/live` (Admin + Monitor, nur lesend) listet die Endpoint-Aufträge
+und Gate-Läufe, die der Daemon gerade ausführt; Einträge verschwinden mit
+Ende der Anfrage und liegen nur im Speicher. Von der Pipeline-Admission
+abgelehnte Anfragen erscheinen nie.
+
+UI-Test: `npm run e2e:pipeline` enthält `e2e/live-status.spec.ts`.
+
 ### Graph-Einstellungen
 
 - **Layout**: Hierarchie, Spalten, Grid, Radial, Frei oder Gemischt;

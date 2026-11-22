@@ -13,7 +13,8 @@ import { BuiltinFigure, FIGURES, figureSvg, sanitizeSvg } from '../core/figures'
 import { ConnectionType, DEFAULT_GRAPH_SCHEMA, GraphSchema, McpServerContract, McpToolContract, NodePorts, Side } from '../core/graph-schema';
 import { LayoutEdge, LayoutNode, borderPoint, optimizeLayout } from '../core/graph-layout-optimizer';
 import { RouterRect, routeAroundNodes } from '../core/graph-edge-router';
-import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, Grant, Workspace } from '../core/models';
+import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, FileConflict, Grant, LiveWork, Workspace } from '../core/models';
+import { LIVE_TONE_TEXT, LiveMark, LiveTone, computeLiveStatus } from './graph-live-status';
 
 type GraphMode = 'organization' | 'resources';
 type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'stress' | 'star' | 'free' | 'mixed';
@@ -210,6 +211,7 @@ interface GraphEdge {
                 [fSelectionDisabled]="true"
                 [fReassignDisabled]="true"
                 [attr.data-kind]="edge.kind"
+                [attr.data-live]="liveEdge(edge.id)?.tone || null"
                 [class.selected-edge]="selectedEdge()?.id === edge.id"
                 (click)="$event.stopPropagation(); selectEdge(edge, $event)"
                 (contextmenu)="openEdgeContext($event, edge)">
@@ -221,10 +223,11 @@ interface GraphEdge {
                 }
                 <div fConnectionContent [position]="0.5" class="edge-content">
                   <span class="edge-label" [class]="'edge-' + edge.kind + (edge.state ? ' edge-state-' + edge.state : '')"
-                    [attr.title]="edge.tooltip || null"
-                    [attr.tabindex]="edge.tooltip ? 0 : null"
-                    [attr.role]="edge.tooltip ? 'note' : null"
-                    [attr.aria-label]="edge.tooltip || null">{{ edge.label }}</span>
+                    [attr.data-live]="liveEdge(edge.id)?.tone || null"
+                    [attr.title]="edgeTitle(edge)"
+                    [attr.tabindex]="edgeTitle(edge) ? 0 : null"
+                    [attr.role]="edgeTitle(edge) ? 'note' : null"
+                    [attr.aria-label]="edgeTitle(edge)">@if (liveEdge(edge.id); as lm) {<span class="live-sym" aria-hidden="true">{{ liveSymbol(lm.tone) }}</span>}{{ edge.label }}</span>
                   <span class="edge-actions">
                     <button fDragBlocker type="button" title="Node auf Kante einfügen" (click)="$event.stopPropagation(); insertNodeOnEdge(edge)">＋</button>
                     <button fDragBlocker type="button" title="Verbindung löschen" (click)="$event.stopPropagation(); deleteEdge(edge)">×</button>
@@ -238,6 +241,8 @@ interface GraphEdge {
                 fDragHandle
                 [fGroupId]="node.id"
                 [attr.data-node-id]="node.id"
+                [attr.data-live]="liveNode(node.id)?.tone || null"
+                [attr.title]="liveTitle(liveNode(node.id))"
                 [fGroupPosition]="animatedPos(node)"
                 (fGroupPositionChange)="moveNode(node.id, $event)"
                 class="gw-node"
@@ -292,6 +297,9 @@ interface GraphEdge {
                   <div class="node-sub">{{ node.subtitle }}</div>
                   @if (node.detail) { <div class="node-detail">{{ node.detail }}</div> }
                   @if (node.role) { <div class="role-badge inline">{{ node.role }}</div> }
+                }
+                @if (liveNode(node.id); as lm) {
+                  <span class="live-dot" [attr.data-live]="lm.tone" role="img" [attr.aria-label]="liveTitle(lm)">{{ liveSymbol(lm.tone) }}</span>
                 }
                 @if (node.kind !== 'ghost') {
                   <span class="node-actions">
@@ -1046,14 +1054,46 @@ interface GraphEdge {
     .role-badge.inline { margin-top:.2rem; }
     .figure { display:flex; flex-direction:column; align-items:center; padding:.4rem; border-radius:12px; border:1px solid #30363d; background:#161b22; transition:border-color .15s, box-shadow .15s; }
     .figure { border:2px solid #484f58; }
-    .figure.on { border-color:#3fb950; animation:pulse-green 1.6s ease-out infinite; }
-    .figure.error { border-color:#f85149; animation:blink-red 1s steps(2, jump-none) infinite; }
+    .figure.on { border-color:#3fb950; }
+    .figure.error { border-color:#f85149; }
     .figure.selected { border-color:#58a6ff; }
-    .gw-node.kind-agent.active { border-color:#3fb950; animation:pulse-green 1.6s ease-out infinite; }
+    .gw-node.kind-agent.active { border-color:#3fb950; }
     .gw-node.kind-agent.inactive { border-color:#484f58; }
-    .gw-node.kind-agent.error { border-color:#f85149; animation:blink-red 1s steps(2, jump-none) infinite; }
+    .gw-node.kind-agent.error { border-color:#f85149; }
     @keyframes pulse-green { 0% { box-shadow:0 0 0 0 #3fb95088; } 70% { box-shadow:0 0 0 9px #3fb95000; } 100% { box-shadow:0 0 0 0 #3fb95000; } }
     @keyframes blink-red { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
+    /* Live status: green = active/talking, blue = transition, yellow = hint,
+       grey = unsynced, red = problem (slow → fast with severity). The worst
+       state wins; every state has a symbol and a tooltip (not colour only). */
+    @keyframes live-glow-green { 0%, 100% { box-shadow:0 0 0 1px #3fb95055, 0 0 4px #3fb95022; } 50% { box-shadow:0 0 0 2px #3fb950cc, 0 0 16px #3fb95088; } }
+    @keyframes live-glow-blue { 0%, 100% { box-shadow:0 0 0 1px #58a6ff44; } 50% { box-shadow:0 0 0 2px #58a6ffcc, 0 0 12px #58a6ff66; } }
+    @keyframes live-glow-yellow { 0%, 100% { box-shadow:0 0 0 1px #d2992244; } 50% { box-shadow:0 0 0 2px #d29922cc, 0 0 12px #d2992266; } }
+    @keyframes live-glow-red { 0%, 100% { box-shadow:0 0 0 1px #f8514944; } 50% { box-shadow:0 0 0 3px #f85149dd, 0 0 18px #f8514999; } }
+    @keyframes live-blink-red { 0%, 49% { box-shadow:0 0 0 3px #ff3b30, 0 0 22px #ff3b30cc; border-color:#ff3b30; } 50%, 100% { box-shadow:0 0 0 1px #f8514933; } }
+    @keyframes live-dot-fade { 0%, 100% { opacity:.45; } 50% { opacity:1; } }
+    .gw-node[data-live="active"] { border-color:#3fb950; animation:live-glow-green 2.5s ease-in-out infinite; }
+    .gw-node[data-live="transition"] { border-color:#58a6ff; animation:live-glow-blue 1.8s ease-in-out infinite; }
+    .gw-node[data-live="override"], .gw-node[data-live="review"] { border-color:#d29922; animation:live-glow-yellow 3s ease-in-out infinite; }
+    .gw-node[data-live="unsynced"] { border-style:dashed; border-color:#6e7681; }
+    .gw-node[data-live="err1"] { border-color:#f85149; animation:live-glow-red 2s ease-in-out infinite; }
+    .gw-node[data-live="err2"] { border-color:#f85149; animation:live-glow-red 1s ease-in-out infinite; }
+    .gw-node[data-live="err3"] { border-color:#ff3b30; animation:live-blink-red .4s steps(1, end) infinite; }
+    .gw-node[data-live] .figure { border-color:inherit; }
+    .live-dot { position:absolute; top:-7px; left:-7px; z-index:6; width:16px; height:16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.6rem; line-height:1; color:#0b0e14; background:#8b949e; border:1px solid #0b0e14; pointer-events:none; }
+    .live-dot[data-live="active"] { background:#3fb950; animation:live-dot-fade 2.5s ease-in-out infinite; }
+    .live-dot[data-live="transition"] { background:#58a6ff; }
+    .live-dot[data-live="override"], .live-dot[data-live="review"] { background:#d29922; animation:live-dot-fade 3s ease-in-out infinite; }
+    .live-dot[data-live="unsynced"] { background:#6e7681; }
+    .live-dot[data-live^="err"] { background:#f85149; color:#fff; font-weight:700; }
+    .edge-label[data-live="active"] { color:#3fb950; border-color:#3fb950; }
+    .edge-label[data-live="override"], .edge-label[data-live="review"] { color:#d29922; border-color:#d29922; border-style:dashed; }
+    .edge-label[data-live^="err"] { color:#f85149; border-color:#f85149; }
+    .live-sym { margin-right:.25rem; }
+    @media (prefers-reduced-motion: reduce) {
+      .gw-node[data-live], .live-dot[data-live] { animation:none !important; }
+      .gw-node[data-live="active"] { box-shadow:0 0 0 2px #3fb950aa; }
+      .gw-node[data-live^="err"] { box-shadow:0 0 0 3px #f85149cc; }
+    }
     .avatar { width:76px; height:90px; }
     .avatar-picker { border:1px solid #21262d; border-radius:6px; padding:.45rem; display:flex; flex-direction:column; gap:.4rem; }
     .avatar-preview { width:76px; height:90px; align-self:center; }
@@ -1139,6 +1179,10 @@ export class GraphComponent implements OnChanges, OnDestroy {
   @Input() activity: AgentActivity[] = [];
   @Input() workspaces: Workspace[] = [];
   @Input() grants: Grant[] = [];
+  @Input() conflicts: FileConflict[] = [];
+  /** Work in flight from GET /api/v1/live; null = unknown. */
+  @Input() live: LiveWork[] | null = null;
+  @Input() daemonReachable = true;
   @Input() brokerGrants: BrokerGrant[] = [];
   @Input() paths: Record<string, AgentPaths> = {};
   @Input() selectedAgentId: string | null = null;
@@ -2699,8 +2743,60 @@ export class GraphComponent implements OnChanges, OnDestroy {
   canUndo(): boolean { return this.undoStack.length > 0; }
   canRedo(): boolean { return this.redoStack.length > 0; }
 
-  ariaLabel(n: { title: string; state?: string }): string {
-    return n.title + (n.state ? ' · ' + n.state : '');
+  ariaLabel(n: { id?: string; title: string; state?: string }): string {
+    const lm = n.id ? this.liveNode(n.id) : undefined;
+    return n.title + (n.state ? ' · ' + n.state : '') + (lm ? ' · ' + LIVE_TONE_TEXT[lm.tone] : '');
+  }
+
+  // ---- live status (green = active/talking, red = problems by severity) ----
+
+  readonly liveStatus = computed(() => {
+    this.dataVersion();
+    const nodes = this.nodes();
+    const edges = this.edges();
+    const gates = this.connectors().filter(c => c.enabled && c.kind === 'gate').map(c => {
+      let reviewRequired = false;
+      try { reviewRequired = !!(JSON.parse(c.contract || '{}') as { review_required?: boolean }).review_required; } catch { /* ignore */ }
+      return { id: c.id, agentId: c.agentId, targetAgentId: c.targetAgentId, name: c.name, reviewRequired };
+    });
+    return computeLiveStatus({
+      now: Date.now(),
+      daemonReachable: this.daemonReachable,
+      agents: this.agents.map(a => ({ id: a.id, name: a.display_name || a.name, state: a.state })),
+      activity: this.activity, conflicts: this.conflicts, live: this.live,
+      workspaces: this.workspaces, grants: this.grants,
+      pipelineKnown: !this.pipelineError() && this.pipelineRevision >= 0,
+      pipelineDrift: this.pipelineDrift() || this.pipelineRevision !== this.graphRevision || this.editVersion !== this.savedVersion,
+      admissions: this.pipelineAdmissions(), bindings: this.bindings, gates,
+      gateRuns: this.gateRuns(), reviews: this.gateReviews(),
+      nodes: nodes.map(n => ({ id: n.id, kind: n.kind })),
+      edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, kind: e.kind })),
+    });
+  });
+
+  liveNode(id: string): LiveMark | undefined { return this.liveStatus().nodes.get(id); }
+  liveEdge(id: string): LiveMark | undefined { return this.liveStatus().edges.get(id); }
+
+  liveTitle(m: LiveMark | undefined): string | null {
+    return m ? `${LIVE_TONE_TEXT[m.tone]}: ${m.reasons.join(' · ')}` : null;
+  }
+
+  edgeTitle(edge: GraphEdge): string | null {
+    const live = this.liveTitle(this.liveEdge(edge.id));
+    return [edge.tooltip, live].filter(Boolean).join(' · ') || null;
+  }
+
+  liveSymbol(t: LiveTone): string {
+    switch (t) {
+      case 'active': return '●';
+      case 'transition': return '◐';
+      case 'review': return '⏳';
+      case 'override': return '⚑';
+      case 'unsynced': return '⇄';
+      case 'err1': return '!';
+      case 'err2': return '⚠';
+      case 'err3': return '✖';
+    }
   }
 
   onKeydown(ev: KeyboardEvent): void {

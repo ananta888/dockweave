@@ -10,7 +10,7 @@ const dir = process.env['PIPELINE_E2E_DIR'] || 'dist/dockweave-web/browser';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /pipeline\.spec\.ts/,
+  testMatch: /(pipeline|live-status)\.spec\.ts/,
   timeout: 45000,
   use: { baseURL: `http://127.0.0.1:${port}`, headless: true, trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   webServer: {
