@@ -1,0 +1,23 @@
+# TLS proxy for DockWeave LAN access. See README.md (EN) / README.de.md (DE).
+#   LAN_HOST=myhost.fritz.box LAN_IP=192.168.178.88 docker compose up -d
+services:
+  caddy:
+    image: caddy:2.10.2@sha256:c3d7ee5d2b11f9dc54f947f68a734c84e9c9666c92c88a7f30b9cba5da182adb
+    container_name: dockweave-lan-proxy
+    restart: unless-stopped
+    # Host network: reaches the loopback-only gateway (127.0.0.1:8790) and
+    # Keycloak (127.0.0.1:8080) without publishing them.
+    network_mode: host
+    environment:
+      LAN_HOST: ${LAN_HOST:?set LAN_HOST, e.g. myhost.fritz.box}
+      LAN_IP: ${LAN_IP:?set LAN_IP, e.g. 192.168.178.88}
+      GATEWAY_PORT: ${GATEWAY_PORT:-8790}
+      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8080}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

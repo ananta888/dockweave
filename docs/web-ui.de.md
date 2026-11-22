@@ -66,6 +66,9 @@ Autorisierung gilt weiterhin.
 
 ## Sicherheitshinweise
 
+- **Zugriff im LAN:** Das Gateway lauscht bewusst nur auf Loopback; für
+  andere Rechner den TLS-Proxy in `deployments/lan-access` (README.de.md)
+  nutzen, nicht `--listen 0.0.0.0`.
 - Listener standardmäßig `127.0.0.1`; andere Bind-Adressen warnen.
 - Jede Anfrage außer `/favicon.ico` braucht das zufällige Token-Cookie. Das
   Token entspricht deinem Admin-Zugang — URL nicht teilen.

@@ -1,0 +1,31 @@
+# DockWeave LAN access: TLS in front of the loopback-only web gateway and the
+# bundled Keycloak. Certificates come from Caddy's own local CA (no ACME, no
+# public exposure); clients import the root once (see README).
+{
+	local_certs
+	skip_install_trust
+	admin 127.0.0.1:2019
+}
+
+# Web gateway (UI, API proxy, terminals over WebSocket). Host is preserved, so
+# the gateway's same-origin WebSocket check keeps working; Caddy replaces any
+# client-supplied X-Forwarded-For, and the gateway trusts it only from
+# loopback (internal/webui clientAddr).
+{$LAN_HOST}:8443, {$LAN_IP}:8443 {
+	tls internal
+	reverse_proxy 127.0.0.1:{$GATEWAY_PORT:8790}
+}
+
+# Keycloak: only what the DockWeave login flow needs (dockweave realm and
+# static resources). Admin console and the master realm stay local
+# (http://127.0.0.1:8080).
+{$LAN_HOST}:8444, {$LAN_IP}:8444 {
+	tls internal
+	@login path /realms/dockweave/* /resources/*
+	handle @login {
+		reverse_proxy 127.0.0.1:{$KEYCLOAK_PORT:8080}
+	}
+	handle {
+		respond "not available from the network" 403
+	}
+}

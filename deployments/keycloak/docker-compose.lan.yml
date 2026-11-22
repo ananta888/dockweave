@@ -1,0 +1,9 @@
+# Overlay for LAN access through deployments/lan-access (TLS on :8444).
+#   LAN_HOST=myhost.fritz.box docker compose -f docker-compose.yml -f docker-compose.lan.yml up -d --wait
+# The issuer becomes https://$LAN_HOST:8444/realms/dockweave for every
+# client, including the local gateway.
+services:
+  keycloak:
+    environment:
+      KC_HOSTNAME: https://${LAN_HOST:?set LAN_HOST}:8444
+      KC_PROXY_HEADERS: xforwarded

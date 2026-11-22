@@ -124,6 +124,9 @@ authorization still applies.
 
 ## Security notes
 
+- **LAN access:** the gateway is loopback-only by design; to reach it from
+  other machines use the TLS proxy in `deployments/lan-access` (README), not
+  `--listen 0.0.0.0`.
 - Listener defaults to `127.0.0.1`; binding elsewhere prints a warning.
 - Every request except `/favicon.ico` needs the random token cookie. The
   token is equivalent to your admin access — do not share the URL.
