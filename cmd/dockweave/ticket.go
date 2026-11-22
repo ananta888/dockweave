@@ -158,7 +158,40 @@ func ticketCmd() *cobra.Command {
 	}
 	route.Flags().StringVar(&routeAgent, "agent", "", "upstream agent whose gate run is routed")
 	_ = route.MarkFlagRequired("agent")
-	cmd.AddCommand(run, route)
+	var syncInitial, syncDry bool
+	syncCmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Live sync primary <-> mirror: show status, or run a pass (--initial imports every ticket)",
+		Long: "Without flags prints the sync status. --initial imports every ticket of both sides\n" +
+			"(e.g. existing Paperclip tickets into the native store); --dry-run only plans. Idempotent.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if !syncInitial && !syncDry && !cmd.Flags().Changed("run") {
+				var out map[string]any
+				if err := client().Do(cmd.Context(), http.MethodGet, "/api/v1/tickets/sync", nil, &out); err != nil {
+					return err
+				}
+				printJSON(out)
+				return nil
+			}
+			var out struct {
+				Report   map[string]any `json:"report"`
+				Complete bool           `json:"complete"`
+			}
+			if err := client().Do(cmd.Context(), http.MethodPost, "/api/v1/tickets/sync", map[string]bool{"initial": syncInitial, "dry_run": syncDry}, &out); err != nil {
+				return err
+			}
+			printJSON(out)
+			if !out.Complete {
+				return fmt.Errorf("sync incomplete (see errors)")
+			}
+			return nil
+		},
+	}
+	syncCmd.Flags().BoolVar(&syncInitial, "initial", false, "consider every ticket (initial import)")
+	syncCmd.Flags().BoolVar(&syncDry, "dry-run", false, "plan only, write nothing")
+	syncCmd.Flags().Bool("run", false, "run an incremental pass now")
+	cmd.AddCommand(run, route, syncCmd)
 	detect.Flags().StringVar(&pcURL, "paperclip-url", envOr("PAPERCLIP_API_URL", "http://127.0.0.1:3100"), "Paperclip base URL")
 	provider.AddCommand(detect)
 	cmd.AddCommand(provider)

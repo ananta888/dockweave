@@ -29,6 +29,7 @@ import (
 	"github.com/ananta888/dockweave/internal/skillcatalog"
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/authz"
+	"github.com/ananta888/dockweave/internal/ticketing/tsync"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -121,6 +122,8 @@ type Server struct {
 	TicketRoles *authz.Store
 	// Dispatcher runs the ticket worker loop (nil without ticketing).
 	Dispatcher *dispatch.Dispatcher
+	// Sync mirrors tickets between primary and mirror (nil without mirror).
+	Sync *tsync.Syncer
 
 	blocked blockedAudit
 	live    liveRegistry
@@ -260,6 +263,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/checkout", s.ticketClaim(false))
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/release", s.ticketClaim(true))
 	s.mux.HandleFunc("POST /api/v1/tickets/run", s.runTicketHeartbeat)
+	s.mux.HandleFunc("GET /api/v1/tickets/sync", s.ticketSyncStatus)
+	s.mux.HandleFunc("POST /api/v1/tickets/sync", s.ticketSyncRun)
 	s.mux.HandleFunc("POST /api/v1/tickets/{id}/route", s.routeTicket)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)

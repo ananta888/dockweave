@@ -463,6 +463,48 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/TicketingUnavailable" }
 
+  /api/v1/tickets/sync:
+    get:
+      summary: Live sync status (ADR 0003 D-8)
+      responses:
+        "200":
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configured]
+                properties:
+                  configured: { type: boolean }
+                  hint: { type: string }
+                  status: { type: object, description: "primary, mirror, linked, last_pass, last_success, lag_seconds, conflicts_total, last_report" }
+    post:
+      summary: Run a sync pass now (initial import, dry run)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                initial: { type: boolean }
+                dry_run: { type: boolean }
+      responses:
+        "200":
+          description: Pass report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [report, complete]
+                properties:
+                  report: { type: object }
+                  complete: { type: boolean }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
   /api/v1/tickets/me:
     get:
       summary: Caller identity, roles and permissions (for the UI; ADR 0003 D-6a)

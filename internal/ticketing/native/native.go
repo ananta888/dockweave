@@ -338,13 +338,18 @@ func (p *Provider) Comments(ctx context.Context, id string) ([]ticketing.Comment
 }
 
 func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing.Actor) (*ticketing.Comment, error) {
+	return p.AddCommentWithOrigin(ctx, id, body, by, "")
+}
+
+// AddCommentWithOrigin implements ticketing.OriginCommenter.
+func (p *Provider) AddCommentWithOrigin(ctx context.Context, id, body string, by ticketing.Actor, origin string) (*ticketing.Comment, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, fmt.Errorf("%w: empty comment", ticketing.ErrInvalid)
 	}
 	if !by.Valid() {
 		return nil, fmt.Errorf("%w: invalid author", ticketing.ErrInvalid)
 	}
-	c := &model.TicketComment{TaskID: id, AuthorKind: string(by.Kind), AuthorID: by.ID, AuthorName: by.Name, Body: body}
+	c := &model.TicketComment{TaskID: id, AuthorKind: string(by.Kind), AuthorID: by.ID, AuthorName: by.Name, Body: body, Origin: origin}
 	if err := p.store.AddTicketComment(ctx, c); err != nil {
 		return nil, mapErr(err, id)
 	}

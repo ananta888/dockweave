@@ -47,6 +47,7 @@ import (
 	tnative "github.com/ananta888/dockweave/internal/ticketing/native"
 	"github.com/ananta888/dockweave/internal/ticketing/authz"
 	pcticket "github.com/ananta888/dockweave/internal/ticketing/paperclip"
+	"github.com/ananta888/dockweave/internal/ticketing/tsync"
 	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
@@ -413,11 +414,20 @@ func openTicketing(apiSrv *api.Server, cfg config.Config, store *persistence.Sto
 		log.Printf("ticketing: %v", err)
 		return
 	}
-	// Every mutation, whoever triggers it, lands in the audit chain (D-5).
+	// Every mutation, whoever triggers it, lands in the audit chain (D-5);
+	// with a mirror the same events feed the live sync outbox (D-8).
 	audit := api.NewTicketAudit(store)
-	sel.Primary = ticketing.Observe(sel.Primary, audit)
+	var pub ticketing.Publisher = audit
+	var syncer *tsync.Syncer
 	if sel.Mirror != nil {
-		sel.Mirror = ticketing.Observe(sel.Mirror, audit)
+		syncer = &tsync.Syncer{Links: store, Marks: store, Audit: audit}
+		pub = ticketing.Publishers(audit, syncer)
+	}
+	sel.Primary = ticketing.Observe(sel.Primary, pub)
+	if sel.Mirror != nil {
+		sel.Mirror = ticketing.Observe(sel.Mirror, pub)
+		syncer.Primary, syncer.Mirror = sel.Primary, sel.Mirror
+		apiSrv.Sync = syncer
 	}
 	apiSrv.Tickets = sel
 	mirror := "none"
@@ -464,6 +474,10 @@ func startDispatcher(ctx context.Context, apiSrv *api.Server, cfg config.Config,
 	}, primary, api.AgentWaker{Server: apiSrv, Provider: primary, Scheduler: sched})
 	sched.D = d
 	apiSrv.Dispatcher = d
+	if apiSrv.Sync != nil {
+		go apiSrv.Sync.Run(ctx)
+		log.Printf("ticketing: live sync %s <-> %s every %s", primary.Name(), apiSrv.Tickets.Mirror.Name(), apiSrv.Sync.Interval)
+	}
 	if primary.Name() == "native" {
 		go sched.Run(ctx)
 		log.Printf("dispatch: native heartbeat every %s", sched.Interval)

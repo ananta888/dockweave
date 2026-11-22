@@ -7,7 +7,8 @@ Monitoring gelten für jeden Anbieter. Entwurf:
 `docs/adr/0003-ticketing-adapters.de.md`.
 
 Stand: Port, beide Adapter, Anbieterwahl und Ticket-API,
-weitergereichte Menschen und Rechte sind umgesetzt; Dispatcher, Live-Sync und UI folgen
+weitergereichte Menschen und Rechte sind umgesetzt; Live-Sync und
+Dispatcher sind umgesetzt; Lead-Modus und UI folgen
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Konfiguration (`/etc/dockweave/dockweaved.conf`)
@@ -135,6 +136,43 @@ aus (wie der Ausführungsendpunkt) und zeigt den Turn als laufende
 Endpoint-Arbeit im Graphen. Ohne `DOCKWEAVE_DISPATCH=daemon` behält der
 Wrapper seine eigene Logik; der Standard wechselt erst nach der Abnahme auf
 einer echten Installation (TK-015).
+
+## Live-Sync (D-8, `internal/ticketing/tsync`)
+
+Mit gesetztem `TICKET_MIRROR` hält der Daemon führendes System und Spiegel
+synchron:
+
+- **Zuordnungen** (`ticket_links`, Migration 23) verbinden jedes Ticket mit
+  seinem Spiegel; der zuletzt synchronisierte Stand (`base`) ermöglicht einen
+  feldweisen Drei-Wege-Abgleich von Titel, Beschreibung, Status, Priorität und
+  Zuständigem.
+- **Konflikte:** auf beiden Seiten geändertes Feld → die neuere Änderung
+  gewinnt, bei Gleichstand das führende System; jeder Konflikt ist ein
+  Audit-Ereignis `ticket.sync_conflict` mit beiden Werten.
+- **Kommentare** werden nur angehängt und nach Herkunft zusammengeführt; ein
+  Kommentar wandert nie zur Seite zurück, von der er kam; jede Kopie ist über
+  eine Idempotenz-Markierung abgesichert.
+- **Auslöser:** Domänenereignisse (Outbox, auch für reine
+  Kommentar-Änderungen) und alle 30 s ein Abgleich über Tickets, die seit dem
+  letzten erfolgreichen Lauf geändert wurden. Fehler stehen im Status und
+  blockieren nie das führende System.
+- **Struktur:** Eltern und `blocked_by` werden über die Zuordnungen übersetzt;
+  DockWeave-Workspaces bleiben auf der nativen Seite. Ein Wert, den die andere
+  Seite nicht darstellen kann (z. B. ein DockWeave-Mensch als
+  Paperclip-Zuständiger), wird gemeldet und dort nicht gesetzt.
+- **Agenten werden nur aus dem führenden System angetrieben.**
+
+**Erstübernahme** bestehender Paperclip-Tickets:
+
+```bash
+dockweave ticket sync --initial --dry-run   # Plan: was angelegt würde
+dockweave ticket sync --initial             # Übernahme (idempotent)
+dockweave ticket sync                       # Status: verknüpft, Verzug, Konflikte, letzter Bericht
+```
+
+Gate-Läufe, Reviews und Freigaben behalten ihre Schlüssel: Paperclip-Tickets
+verwenden die nackte Issue-ID, die der Wrapper immer gespeichert hat
+(`dispatch.IssueKey`); die bestehende Historie braucht keine Umschlüsselung.
 
 ## Adapter
 

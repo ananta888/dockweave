@@ -448,3 +448,39 @@ func (s *Server) ticketMe(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+// ---- live sync (D-8) ----
+
+func (s *Server) ticketSyncStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePerm(w, r, authz.TicketRead) {
+		return
+	}
+	if s.Sync == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false, "hint": "set TICKET_MIRROR in dockweaved.conf"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "status": s.Sync.Status(r.Context())})
+}
+
+// ticketSyncRun runs a pass now; {"initial":true} imports every ticket,
+// {"dry_run":true} only plans.
+func (s *Server) ticketSyncRun(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePerm(w, r, authz.SyncRun) {
+		return
+	}
+	if s.Sync == nil {
+		writeErr(w, http.StatusServiceUnavailable, "ticketing_unavailable", errors.New("no mirror configured (TICKET_MIRROR)"))
+		return
+	}
+	var req struct {
+		Initial bool `json:"initial"`
+		DryRun  bool `json:"dry_run"`
+	}
+	if err := decodeStrict(w, r, &req); err != nil {
+		ticketErr(w, err)
+		return
+	}
+	rep, err := s.Sync.Pass(r.Context(), req.Initial, req.DryRun)
+	out := map[string]any{"report": rep, "complete": err == nil}
+	writeJSON(w, http.StatusOK, out)
+}

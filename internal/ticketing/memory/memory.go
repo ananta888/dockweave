@@ -198,7 +198,12 @@ func (p *Provider) Comments(_ context.Context, id string) ([]ticketing.Comment, 
 	return append([]ticketing.Comment(nil), p.cm[id]...), nil
 }
 
-func (p *Provider) AddComment(_ context.Context, id, body string, by ticketing.Actor) (*ticketing.Comment, error) {
+func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing.Actor) (*ticketing.Comment, error) {
+	return p.AddCommentWithOrigin(ctx, id, body, by, "")
+}
+
+// AddCommentWithOrigin implements ticketing.OriginCommenter.
+func (p *Provider) AddCommentWithOrigin(_ context.Context, id, body string, by ticketing.Actor, origin string) (*ticketing.Comment, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, fmt.Errorf("%w: empty comment", ticketing.ErrInvalid)
 	}
@@ -213,7 +218,10 @@ func (p *Provider) AddComment(_ context.Context, id, body string, by ticketing.A
 	}
 	p.seq++
 	c := ticketing.Comment{ID: "c" + strconv.Itoa(p.seq), Ticket: t.Ref, Author: by, Body: body, CreatedAt: p.stamp()}
-	c.Origin = p.name + ":" + c.ID
+	c.Origin = origin
+	if c.Origin == "" {
+		c.Origin = p.name + ":" + c.ID
+	}
 	p.cm[id] = append(p.cm[id], c)
 	return &c, nil
 }

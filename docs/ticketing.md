@@ -6,7 +6,8 @@ and `paperclip` (Paperclip HTTP API). Gates, pipeline admission, evidence and
 monitoring apply to every provider. Design: `docs/adr/0003-ticketing-adapters.md`.
 
 Status: port, both adapters, provider selection and the ticket API, forwarded
-humans and permissions are implemented; dispatcher, live sync and UI follow
+humans and permissions are implemented; live sync and the
+dispatcher are implemented; Lead mode and UI follow
 (`todo/todo.ticketing-2026-11-22.json`).
 
 ## Configuration (`/etc/dockweave/dockweaved.conf`)
@@ -125,6 +126,40 @@ The driver runs the consuming pipeline admission right before the turn (as
 the execution endpoint does) and shows the turn as live endpoint work in the
 graph. Without `DOCKWEAVE_DISPATCH=daemon` the wrapper keeps its own logic;
 the default switches only after the acceptance on a real installation (TK-015).
+
+## Live sync (D-8, `internal/ticketing/tsync`)
+
+With `TICKET_MIRROR` set, the daemon keeps primary and mirror in sync:
+
+- **Links** (`ticket_links`, migration 23) pair each ticket with its mirror;
+  the last synced state (`base`) enables a field-level three-way merge of
+  title, description, status, priority and assignee.
+- **Conflicts:** a field changed on both sides → the newer change wins, a tie
+  goes to the primary; each conflict is an audit event
+  `ticket.sync_conflict` with both values.
+- **Comments** are append-only and merged by origin; a comment never travels
+  back to the side it came from; each copy is guarded by an idempotency
+  marker.
+- **Triggers:** domain events (outbox, also for comment-only changes) and a
+  reconcile pass every 30 s over tickets changed since the last successful
+  pass. Failures are reported in the status and never block the primary.
+- **Structure:** parent and `blocked_by` are translated through the links;
+  DockWeave workspaces stay on the native side. A value the other side cannot
+  represent (e.g. a DockWeave human as Paperclip assignee) is reported and
+  left unset there.
+- **Agents are driven only from the primary.**
+
+**Initial import** of existing Paperclip tickets:
+
+```bash
+dockweave ticket sync --initial --dry-run   # plan: what would be created
+dockweave ticket sync --initial             # import (idempotent)
+dockweave ticket sync                       # status: linked, lag, conflicts, last report
+```
+
+Gate runs, reviews and approvals keep their keys: Paperclip tickets use the
+bare issue id the wrapper always stored (`dispatch.IssueKey`), so the existing
+history needs no re-keying.
 
 ## Adapters
 

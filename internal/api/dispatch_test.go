@@ -119,7 +119,7 @@ func TestDispatcherEndToEndSameForBothProviders(t *testing.T) {
 			if !strings.Contains(last.Body, "implemented") || last.Author.Kind != ticketing.ActorAgent || last.Author.ID != "ag_b" {
 				t.Fatalf("answer comment: %+v", last)
 			}
-			if len(gates.calls) < 2 || gates.calls[len(gates.calls)-1].UpstreamAgentID != "ag_b" || gates.calls[len(gates.calls)-1].IssueID != tk.Ref.String() {
+			if len(gates.calls) < 2 || gates.calls[len(gates.calls)-1].UpstreamAgentID != "ag_b" || gates.calls[len(gates.calls)-1].IssueID != dispatch.IssueKey(tk.Ref) {
 				t.Fatalf("gates: %+v", gates.calls)
 			}
 			// The blocked heartbeat and the turn are in the audit chain.

@@ -741,6 +741,12 @@ func decodeMarker(body string) (string, marker, bool) {
 }
 
 func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing.Actor) (*ticketing.Comment, error) {
+	return p.AddCommentWithOrigin(ctx, id, body, by, "")
+}
+
+// AddCommentWithOrigin implements ticketing.OriginCommenter (the origin
+// travels in the hidden body marker).
+func (p *Provider) AddCommentWithOrigin(ctx context.Context, id, body string, by ticketing.Actor, origin string) (*ticketing.Comment, error) {
 	if strings.TrimSpace(body) == "" {
 		return nil, fmt.Errorf("%w: empty comment", ticketing.ErrInvalid)
 	}
@@ -750,7 +756,7 @@ func (p *Provider) AddComment(ctx context.Context, id, body string, by ticketing
 	if _, err := p.getIssue(ctx, id); err != nil {
 		return nil, err
 	}
-	req := map[string]any{"body": encodeMarker(body, marker{Actor: by})}
+	req := map[string]any{"body": encodeMarker(body, marker{Actor: by, Origin: origin})}
 	var c pcComment
 	if err := p.do(ctx, http.MethodPost, "/api/issues/"+url.PathEscape(id)+"/comments", req, &c); err != nil {
 		return nil, err

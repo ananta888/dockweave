@@ -2,6 +2,7 @@ package ticketing
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -35,6 +36,17 @@ type Publisher interface {
 type PublisherFunc func(ctx context.Context, e Event)
 
 func (f PublisherFunc) Publish(ctx context.Context, e Event) { f(ctx, e) }
+
+// Publishers fans an event out to several publishers.
+func Publishers(ps ...Publisher) Publisher {
+	return PublisherFunc(func(ctx context.Context, e Event) {
+		for _, p := range ps {
+			if p != nil {
+				p.Publish(ctx, e)
+			}
+		}
+	})
+}
 
 // Observe decorates p so that every successful mutation publishes an event,
 // whoever triggers it (API, dispatcher, sync). Reads pass through.
@@ -131,6 +143,19 @@ func (t *obsThreads) AddComment(ctx context.Context, id, body string, by Actor) 
 	c, err := t.Threads.AddComment(ctx, id, body, by)
 	if err == nil {
 		t.o.emit(ctx, EventCommentAdded, c.Ticket, by, map[string]any{"comment_id": c.ID})
+	}
+	return c, err
+}
+
+// AddCommentWithOrigin forwards to the provider when it supports origins.
+func (t *obsThreads) AddCommentWithOrigin(ctx context.Context, id, body string, by Actor, origin string) (*Comment, error) {
+	oc, ok := t.Threads.(OriginCommenter)
+	if !ok {
+		return nil, fmt.Errorf("%w: comment origins", ErrUnsupported)
+	}
+	c, err := oc.AddCommentWithOrigin(ctx, id, body, by, origin)
+	if err == nil {
+		t.o.emit(ctx, EventCommentAdded, c.Ticket, by, map[string]any{"comment_id": c.ID, "origin": origin})
 	}
 	return c, err
 }

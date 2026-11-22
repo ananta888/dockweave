@@ -54,6 +54,13 @@ func TestPipelineAndGateCLIProcesses(t *testing.T) {
 		{"ticket_run_blocked", []string{"ticket", "run", "beta"}, 200, `{"kind":"blocked","detail":"Pipeline-Sperre"}`, 3, "/api/v1/tickets/run", nil},
 		{"ticket_run_agent_failed", []string{"ticket", "run", "beta"}, 200, `{"kind":"agent_failed","detail":"no response"}`, 1, "/api/v1/tickets/run", nil},
 		{"ticket_route", []string{"ticket", "route", "native:tk_1", "--agent", "alpha"}, 200, `{"lines":["WAKE\tbeta\tallow"],"complete":true}`, 0, "/api/v1/tickets/native:tk_1/route", nil},
+		{"ticket_sync_status", []string{"ticket", "sync"}, 200, `{"configured":true,"status":{"linked":3}}`, 0, "/api/v1/tickets/sync", nil},
+		{"ticket_sync_initial_dry", []string{"ticket", "sync", "--initial", "--dry-run"}, 200, `{"report":{"dry_run":true,"created_on_primary":2},"complete":true}`, 0, "/api/v1/tickets/sync", func(t *testing.T, r *http.Request) {
+			var body map[string]bool
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body["initial"] || !body["dry_run"] || r.Method != http.MethodPost {
+				t.Errorf("sync body: %v %v", body, err)
+			}
+		}},
 		{"ticket_provider_off", []string{"ticket", "provider"}, 200, `{"configured":false,"available":["native","paperclip"],"error":"ticketing is not configured"}`, 0, "/api/v1/tickets/provider", nil},
 		{"gate_workspace_query", []string{"gate", "runs", "/work/a & b"}, 200, `{"runs":[]}`, 0, "/api/v1/gates/runs", func(t *testing.T, r *http.Request) {
 			if r.URL.Query().Get("workspace") != "/work/a & b" {

@@ -11,6 +11,7 @@ import (
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/memory"
 	"github.com/ananta888/dockweave/internal/ticketing/native"
+	"github.com/ananta888/dockweave/internal/ticketing/tsync"
 )
 
 func providerStatus(t *testing.T, f *pipelineFixture) map[string]any {
@@ -175,5 +176,37 @@ func TestTicketAPILifecycleWithAudit(t *testing.T) {
 		if seen[typ] != 1 {
 			t.Fatalf("audit %s = %d (all: %v)", typ, seen[typ], seen)
 		}
+	}
+}
+
+func TestTicketSyncEndpoints(t *testing.T) {
+	f := newPipelineFixture(t)
+	if rec := f.do(t, RoleMonitor, http.MethodGet, "/api/v1/tickets/sync", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"configured":false`) {
+		t.Fatalf("unconfigured: %d %s", rec.Code, rec.Body)
+	}
+	if rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/tickets/sync", `{}`); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("run unconfigured: %d", rec.Code)
+	}
+	prim, mirr := memory.New("native"), memory.New("paperclip")
+	if _, err := mirr.Create(context.Background(), ticketing.NewTicket{Title: "from paperclip"}, ticketing.Actor{Kind: ticketing.ActorSystem}); err != nil {
+		t.Fatal(err)
+	}
+	f.srv.Sync = &tsync.Syncer{Primary: prim, Mirror: mirr, Links: f.store, Marks: f.store}
+	rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/tickets/sync", `{"initial":true,"dry_run":true}`)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"created_on_primary":1`) || !strings.Contains(rec.Body.String(), `"dry_run":true`) {
+		t.Fatalf("dry run: %d %s", rec.Code, rec.Body)
+	}
+	if l, _ := prim.List(context.Background(), ticketing.Filter{}); len(l) != 0 {
+		t.Fatal("dry run wrote")
+	}
+	if rec := f.do(t, RoleAdmin, http.MethodPost, "/api/v1/tickets/sync", `{"initial":true}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"complete":true`) {
+		t.Fatalf("initial: %d %s", rec.Code, rec.Body)
+	}
+	rec = f.do(t, RoleMonitor, http.MethodGet, "/api/v1/tickets/sync", "")
+	if !strings.Contains(rec.Body.String(), `"linked":1`) {
+		t.Fatalf("status: %s", rec.Body)
+	}
+	if rec := asHuman(t, f, []string{"dockweave-monitor"}, http.MethodPost, "/api/v1/tickets/sync", `{}`); rec.Code != http.StatusForbidden {
+		t.Fatalf("sync.run permission: %d", rec.Code)
 	}
 }

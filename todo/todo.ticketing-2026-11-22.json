@@ -414,10 +414,10 @@
       "milestone": "M3",
       "type": "feature",
       "title": "Live-Sync führend ↔ Spiegel und Erstübernahme bestehender Paperclip-Tickets",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "ticket_links-Zuordnung, Outbox aus Domänenereignissen, Abgleich alle 30 s (updated_since), feldweise Konfliktregel (neuer gewinnt, Gleichstand → führend), Kommentare append-only nach Herkunfts-ID; dockweave ticket sync --initial/--dry-run; Gate-Läufe/Reviews/Freigaben auf TicketRef umschlüsseln.",
       "components": [
         "internal/ticketing/sync",
@@ -437,7 +437,10 @@
         "TK-006"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: internal/ticketing/tsync (links + base in ticket_links, migration 23; field-level three-way merge, newer wins / tie primary; ticket.sync_conflict audit; append-only comment merge by origin with OriginCommenter on all adapters; outbox via Observe/Publishers incl. comment-only changes; 30-s reconcile; mirror failures reported, never blocking; parent/blocked_by translation; dry run). Daemon wiring with TICKET_MIRROR; GET/POST /api/v1/tickets/sync (sync.run), CLI dockweave ticket sync [--initial] [--dry-run]; OpenAPI 47/47. Gate/review history kept without re-keying via dispatch.IssueKey (bare Paperclip ids). Tests: initial import complete+idempotent+dry run, both directions, conflict audited, outbox, mirror down, API endpoints + permission."
+      ]
     },
     {
       "id": "TK-012",
@@ -509,13 +512,13 @@
   "tasks_status_summary": {
     "total": 15,
     "by_status": {
-      "todo": 5,
+      "todo": 4,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 10
+      "done": 11
     },
-    "progress_percent_done": 66.6667,
+    "progress_percent_done": 73.3333,
     "by_priority": {
       "P0": 0,
       "P1": 12,
@@ -530,8 +533,8 @@
     },
     "critical_path": {
       "total": 12,
-      "done": 9,
-      "remaining": 3
+      "done": 10,
+      "remaining": 2
     },
     "milestones": {
       "total": 5,
@@ -554,10 +557,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 5,
+    "todo_remaining": 4,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 10
+    "done": 11
   }
 }

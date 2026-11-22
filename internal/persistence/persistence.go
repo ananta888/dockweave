@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 22
+const schemaVersion = 23
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -423,6 +423,14 @@ var migrations = []string{
 		since TEXT NOT NULL,
 		result TEXT NOT NULL DEFAULT '',
 		updated_at TEXT NOT NULL
+	);`,
+	// 23: live sync links between primary and mirror tickets (ADR 0003
+	// D-8). base is the last synced canonical state (field-level merge).
+	`CREATE TABLE ticket_links (
+		primary_ref TEXT PRIMARY KEY,
+		mirror_ref TEXT NOT NULL UNIQUE,
+		base TEXT NOT NULL DEFAULT '{}',
+		synced_at TEXT NOT NULL
 	);`,
 }
 

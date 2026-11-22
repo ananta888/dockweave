@@ -94,6 +94,17 @@ func (d *Dispatcher) applyDefaults() {
 	}
 }
 
+// IssueKey is the ticket key stored with gate runs, reviews and live work.
+// Paperclip tickets keep the bare issue id the wrapper always used, so the
+// existing gate/review history stays valid without re-keying (ADR 0003 D-8);
+// every other provider uses "<provider>:<id>".
+func IssueKey(r ticketing.Ref) string {
+	if r.Provider == "paperclip" {
+		return r.ID
+	}
+	return r.String()
+}
+
 func agentActor(id string) ticketing.Actor {
 	return ticketing.Actor{Kind: ticketing.ActorAgent, ID: id}
 }
@@ -173,7 +184,7 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 		workspace = d.Config.Workspace(ctx, tk.WorkspaceID)
 	}
 	if workspace != "" {
-		run, err := d.Gates.Run(ctx, GateRequest{Workspace: workspace, IssueID: ref.String(), Phases: []string{"pre_run"}})
+		run, err := d.Gates.Run(ctx, GateRequest{Workspace: workspace, IssueID: IssueKey(ref), Phases: []string{"pre_run"}})
 		if !gateOK(run, err) {
 			st := ticketing.StatusTodo
 			finalStatus = st
@@ -191,7 +202,7 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 	}
 	reviewer := d.Config.Reviewer != nil && d.Config.Reviewer(agentID)
 	pctx, cancel := context.WithTimeout(ctx, d.Config.PromptTimeout)
-	content, err := d.Driver.Prompt(pctx, agentID, ref.String(), BuildPrompt(tk, reviewer))
+	content, err := d.Driver.Prompt(pctx, agentID, IssueKey(ref), BuildPrompt(tk, reviewer))
 	cancel()
 	if err != nil {
 		var be *BlockedError
@@ -222,7 +233,7 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 			status = ticketing.StatusInProgress
 			notes = append(notes, "\nGate fehlgeschlagen - STATUS: DONE wird nicht akzeptiert.\n\n### Gate config\n```\nkein Workspace fuer dieses Ticket konfiguriert; das DONE-Gate kann nicht laufen\n```")
 		} else {
-			run, gerr := d.Gates.Run(ctx, GateRequest{Workspace: workspace, IssueID: ref.String(), UpstreamAgentID: agentID,
+			run, gerr := d.Gates.Run(ctx, GateRequest{Workspace: workspace, IssueID: IssueKey(ref), UpstreamAgentID: agentID,
 				Phases: []string{"after_run", "post_run"}})
 			lines, rerr := d.route(ctx, agentID, tk, run)
 			if len(lines) > 0 {
@@ -243,11 +254,11 @@ func (d *Dispatcher) RunOnce(ctx context.Context, agentID string) (Outcome, erro
 		reason := ParseReason(content)
 		note := d.reviewRework(ctx, tk, reason)
 		if d.Reviews != nil {
-			_ = d.Reviews.RecordVerdict(ctx, ref.String(), "FAIL", reason, agentID)
+			_ = d.Reviews.RecordVerdict(ctx, IssueKey(ref), "FAIL", reason, agentID)
 		}
 		notes = append(notes, "\nRework: "+note)
 	} else if verdict == "PASS" && d.Reviews != nil {
-		_ = d.Reviews.RecordVerdict(ctx, ref.String(), "PASS", ParseReason(content), agentID)
+		_ = d.Reviews.RecordVerdict(ctx, IssueKey(ref), "PASS", ParseReason(content), agentID)
 	}
 
 	// 7. Record the answer and the resulting state.

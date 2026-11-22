@@ -131,7 +131,7 @@ func TestMigrationMarksExistingPolicyFailuresGlobal(t *testing.T) {
 // migrations after an older schema version.
 func undoTicketMigration(t *testing.T, s *Store) {
 	t.Helper()
-	stmts := []string{"DROP TABLE IF EXISTS dispatch_actions", "DROP TABLE ticket_comments", "DROP INDEX idx_tasks_ticket_seq", "DROP INDEX idx_tasks_parent", "DROP INDEX idx_tasks_inbox"}
+	stmts := []string{"DROP TABLE IF EXISTS ticket_links", "DROP TABLE IF EXISTS dispatch_actions", "DROP TABLE ticket_comments", "DROP INDEX idx_tasks_ticket_seq", "DROP INDEX idx_tasks_parent", "DROP INDEX idx_tasks_inbox"}
 	for _, c := range []string{"parent_id", "assignee_id", "assignee_name", "created_by", "version", "checked_out_by", "checked_out_at", "ticket_seq"} {
 		stmts = append(stmts, "ALTER TABLE tasks DROP COLUMN "+c)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/memory"
 	"github.com/ananta888/dockweave/internal/ticketing/native"
+	"github.com/ananta888/dockweave/internal/ticketing/tsync"
 )
 
 // TestRecordPipelineResponsesForOpenAPI records real handler responses for
@@ -92,6 +93,12 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleAdmin, "POST", "/api/v1/tickets/run", "/api/v1/tickets/run", `{"agent":"ghost"}`, 400)
 	rec(RoleAdmin, "POST", one+"/route", "/api/v1/tickets/{id}/route", `{"agent":"alpha"}`, 200)
 	f.srv.Dispatcher = nil
+	rec(RoleMonitor, "GET", "/api/v1/tickets/sync", "/api/v1/tickets/sync", "", 200)
+	rec(RoleAdmin, "POST", "/api/v1/tickets/sync", "/api/v1/tickets/sync", `{}`, 503)
+	f.srv.Sync = &tsync.Syncer{Primary: f.srv.Tickets.Primary, Mirror: memory.New("paperclip"), Links: f.store, Marks: f.store}
+	rec(RoleAdmin, "POST", "/api/v1/tickets/sync", "/api/v1/tickets/sync", `{"initial":true,"dry_run":true}`, 200)
+	rec(RoleMonitor, "GET", "/api/v1/tickets/sync", "/api/v1/tickets/sync", "", 200)
+	f.srv.Sync = nil
 	f.srv.Tickets = nil
 
 	const prune = "/api/v1/gates/prune"

@@ -181,6 +181,22 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 		}
 	})
 
+	t.Run("comment_origin_kept", func(t *testing.T) {
+		p := newProvider(t)
+		oc, ok := p.Threads().(ticketing.OriginCommenter)
+		if !ok {
+			t.Skip("no origin support")
+		}
+		tk := mustCreate(t, p, ticketing.NewTicket{Title: "t"}, human)
+		if _, err := oc.AddCommentWithOrigin(ctx, tk.Ref.ID, "mirrored", agentA, "other:c-77"); err != nil {
+			t.Fatal(err)
+		}
+		cs, err := p.Threads().Comments(ctx, tk.Ref.ID)
+		if err != nil || len(cs) != 1 || cs[0].Origin != "other:c-77" || cs[0].Body != "mirrored" || cs[0].Author.ID != agentA.ID {
+			t.Fatalf("origin: %+v %v", cs, err)
+		}
+	})
+
 	t.Run("inbox_checkout_exclusive", func(t *testing.T) {
 		p := newProvider(t)
 		if !p.Capabilities().Inbox || p.Inbox() == nil {

@@ -354,7 +354,7 @@ func TestDoneDrivesGateAndWakesReleasedDownstreamOnce(t *testing.T) {
 		t.Fatalf("done ticket: %+v", got)
 	}
 	call := r.gates.calls[len(r.gates.calls)-1]
-	if call.UpstreamAgentID != "alpha" || call.Workspace != "/ws" || call.IssueID != tk.Ref.String() {
+	if call.UpstreamAgentID != "alpha" || call.Workspace != "/ws" || call.IssueID != IssueKey(tk.Ref) {
 		t.Fatalf("gate call: %+v", call)
 	}
 	if len(r.waker.woken) != 1 || r.waker.woken[0] != "beta" {
@@ -740,4 +740,13 @@ func TestSchedulerTicksAndKicks(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+func TestIssueKeyKeepsLegacyPaperclipIDs(t *testing.T) {
+	if k := IssueKey(ticketing.Ref{Provider: "paperclip", ID: "3f2a"}); k != "3f2a" {
+		t.Fatal(k)
+	}
+	if k := IssueKey(ticketing.Ref{Provider: "native", ID: "tk_1"}); k != "native:tk_1" {
+		t.Fatal(k)
+	}
 }

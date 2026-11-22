@@ -261,6 +261,12 @@ type Threads interface {
 	AddComment(ctx context.Context, id, body string, by Actor) (*Comment, error)
 }
 
+// OriginCommenter adds a comment that keeps the origin it had in another
+// system (live sync, ADR 0003 D-8); optional for adapters.
+type OriginCommenter interface {
+	AddCommentWithOrigin(ctx context.Context, id, body string, by Actor, origin string) (*Comment, error)
+}
+
 // Inbox hands work to agents. Checkout is exclusive: one agent per ticket.
 type Inbox interface {
 	// Next returns the next open ticket assigned to agentID that no other
