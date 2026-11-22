@@ -33,6 +33,13 @@ func main() {
 	root := &cobra.Command{
 		Use:   "dockweave",
 		Short: "DockWeave — dynamic workspaces for isolated AI agents",
+		// Arguments and flags are validated before this hook runs, so usage
+		// errors still print the usage text; errors from the command itself
+		// (daemon refusals, unreachable socket) print only the error. The
+		// Paperclip wrapper copies stderr into blocking comments.
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			cmd.Root().SilenceUsage = true
+		},
 	}
 	root.PersistentFlags().StringVar(&socketPath, "socket", envOr("DOCKWEAVE_SOCKET", "/run/dockweave/dockweaved.sock"), "daemon socket")
 	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON")

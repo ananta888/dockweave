@@ -82,6 +82,26 @@ func TestPipelineAndGateCLIProcesses(t *testing.T) {
 			if (tc.exit == 0 || tc.exit == 3) && !json.Valid(out) {
 				t.Fatalf("stdout not JSON: %s", out)
 			}
+			// Runtime errors (daemon answers, refusals) must not append the
+			// usage text: the wrapper copies stderr into blocking comments.
+			if strings.Contains(string(out), "Usage:") {
+				t.Fatalf("runtime error printed usage: %s", out)
+			}
 		})
 	}
+	// Genuine usage errors still show the usage text.
+	t.Run("usage_error", func(t *testing.T) {
+		command := exec.CommandContext(t.Context(), binary, "pipeline", "status", "--no-such-flag")
+		out, err := command.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "Usage:") {
+			t.Fatalf("usage error without usage text: err=%v out=%s", err, out)
+		}
+	})
+	t.Run("unreachable_daemon", func(t *testing.T) {
+		command := exec.CommandContext(t.Context(), binary, "--socket", filepath.Join(root, "absent.sock"), "pipeline", "list")
+		out, err := command.CombinedOutput()
+		if err == nil || strings.Contains(string(out), "Usage:") {
+			t.Fatalf("daemon error: err=%v out=%s", err, out)
+		}
+	})
 }
