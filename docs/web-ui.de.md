@@ -161,8 +161,12 @@ Zuständige) und Board, Detail mit editierbarem Titel/Beschreibung/Status,
 Zuweisung an einen Agenten, Inhaber der Sperre, laufende Arbeit („● läuft“ aus
 `GET /api/v1/live`, Schlüssel `dispatch.IssueKey`), Gate-Läufe und
 Review-Urteil des Tickets, Verlauf mit Antwort, „Heartbeat jetzt“,
-„Freigeben“ und „In Tagesplan“ (legt eine Produktivitätsaufgabe mit Verweis
-auf das Ticket an). Erreichbarkeit von Anbieter und Spiegel sowie der
+„Freigeben“, „In Tagesplan“ (legt eine Produktivitätsaufgabe mit Verweis auf
+das Ticket an) und „Löschen“ (mit Rückfrage). Tickets lassen sich Agenten oder
+bekannten Menschen zuweisen (alle, die sich über Keycloak angemeldet haben,
+`GET /api/v1/tickets/humans`) und an einen DockWeave-Workspace binden
+(Gate-Workspace; sonst `DISPATCH_DEFAULT_WORKSPACE`) – beides beim nativen
+Anbieter. Erreichbarkeit von Anbieter und Spiegel sowie der
 Sync-Zustand erscheinen als Chips; „Sync jetzt“ startet einen Abgleich. Jede
 Aktion erscheint nur, wenn `GET /api/v1/tickets/me` das Recht gewährt;
 Fähigkeiten blenden aus, was der Anbieter nicht kann (z. B. Threads). Ohne

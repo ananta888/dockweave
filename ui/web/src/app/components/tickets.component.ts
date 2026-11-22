@@ -1,10 +1,10 @@
 import { Component, Input, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Agent, LiveWork } from '../core/models';
+import { Agent, LiveWork, Workspace } from '../core/models';
 import { GateReviewView, GateRunView, GateService } from '../core/services/gate.service';
 import { ProductivityService } from '../core/services/productivity.service';
 import {
-  Me, ProviderStatus, SyncState, TICKET_STATUSES, Ticket, TicketActor, TicketComment, TicketService, TicketStatus, issueKey, refString,
+  KnownHuman, Me, ProviderStatus, SyncState, TICKET_STATUSES, Ticket, TicketActor, TicketComment, TicketService, TicketStatus, issueKey, refString,
 } from '../core/services/ticket.service';
 
 const STATUS_TEXT: Record<TicketStatus, string> = {
@@ -87,7 +87,22 @@ const STATUS_TEXT: Record<TicketStatus, string> = {
                 <label>Zuständig
                   <select [(ngModel)]="newAssignee" name="newAssignee">
                     <option value="">niemand</option>
-                    @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }} (Agent)</option> }
+                    <optgroup label="Agenten">
+                      @for (a of agents; track a.id) { <option [value]="'agent:' + a.id">{{ a.display_name || a.name }}</option> }
+                    </optgroup>
+                    @if (caps()?.human_assignee && humans().length) {
+                      <optgroup label="Menschen">
+                        @for (h of humans(); track h.id) { <option [value]="'human:' + h.id">{{ h.name || h.id }}</option> }
+                      </optgroup>
+                    }
+                  </select>
+                </label>
+              }
+              @if (caps()?.workspaces && workspaces.length) {
+                <label>Workspace
+                  <select [(ngModel)]="newWorkspace" name="newWorkspace">
+                    <option value="">Standard (DISPATCH_DEFAULT_WORKSPACE)</option>
+                    @for (w of workspaces; track w.id) { <option [value]="w.id">{{ w.name }}</option> }
                   </select>
                 </label>
               }
@@ -151,11 +166,27 @@ const STATUS_TEXT: Record<TicketStatus, string> = {
                   </select>
                 </label>
                 <label>Zuständig
-                  <select [ngModel]="t.assignee?.kind === 'agent' ? t.assignee?.id : ''" name="detailAssignee" [disabled]="!can('ticket.assign')" (ngModelChange)="assign($event)">
-                    <option value="">{{ t.assignee && t.assignee.kind !== 'agent' ? assigneeName(t) : 'niemand' }}</option>
-                    @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }}</option> }
+                  <select [ngModel]="assigneeValue(t)" name="detailAssignee" [disabled]="!can('ticket.assign')" (ngModelChange)="assign($event)">
+                    <option value="">niemand</option>
+                    @if (t.assignee?.kind === 'human' && !knownHuman(t.assignee?.id)) { <option [value]="assigneeValue(t)">{{ assigneeName(t) }}</option> }
+                    <optgroup label="Agenten">
+                      @for (a of agents; track a.id) { <option [value]="'agent:' + a.id">{{ a.display_name || a.name }}</option> }
+                    </optgroup>
+                    @if (caps()?.human_assignee && humans().length) {
+                      <optgroup label="Menschen">
+                        @for (h of humans(); track h.id) { <option [value]="'human:' + h.id">{{ h.name || h.id }}</option> }
+                      </optgroup>
+                    }
                   </select>
                 </label>
+                @if (caps()?.workspaces) {
+                  <label>Workspace
+                    <select [ngModel]="t.workspace_id || ''" name="detailWorkspace" [disabled]="!can('ticket.edit')" (ngModelChange)="setWorkspace($event)">
+                      <option value="">Standard</option>
+                      @for (w of workspaces; track w.id) { <option [value]="w.id">{{ w.name }}</option> }
+                    </select>
+                  </label>
+                }
                 @if (t.checked_out_by) { <span class="chip">gesperrt von {{ agentName(t.checked_out_by) }}</span> }
                 @if (liveFor(t); as lw) { <span class="chip live-chip">● Agent arbeitet ({{ agentName(lw.agent_id || '') }})</span> }
                 @if (t.extra?.['verified']) { <span class="chip ok">nachgewiesen</span> }
@@ -176,6 +207,9 @@ const STATUS_TEXT: Record<TicketStatus, string> = {
                   @else { <button class="small" (click)="approve(t)">Freigeben</button> }
                 }
                 <button class="small" (click)="toDailyPlan(t)">In Tagesplan</button>
+                @if (can('ticket.delete') && caps()?.delete) {
+                  <button class="small danger" (click)="remove(t)">Löschen</button>
+                }
               </div>
 
               <h4>Gates</h4>
@@ -249,6 +283,7 @@ const STATUS_TEXT: Record<TicketStatus, string> = {
     .reply { display: flex; flex-direction: column; gap: .3rem; }
     .notice { padding: .4rem .6rem; border: 1px solid #30363d; border-radius: 6px; font-size: .82rem; }
     .notice.error { border-color: #f85149; color: #f85149; }
+    button.danger { border-color: #da3633; color: #f85149; }
     @media (max-width: 900px) { .body { flex-direction: column; } .detail { width: auto; border-left: 0; padding-left: 0; } }
   `],
 })
@@ -259,6 +294,7 @@ export class TicketsComponent implements OnInit, OnDestroy {
 
   @Input() agents: Agent[] = [];
   @Input() live: LiveWork[] | null = null;
+  @Input() workspaces: Workspace[] = [];
 
   readonly statuses = TICKET_STATUSES;
   readonly boardColumns: TicketStatus[] = ['todo', 'in_progress', 'in_review', 'blocked', 'done'];
@@ -271,6 +307,7 @@ export class TicketsComponent implements OnInit, OnDestroy {
   readonly runs = signal<GateRunView[]>([]);
   readonly reviews = signal<GateReviewView[]>([]);
   readonly approval = signal<{ actor: string } | null>(null);
+  readonly humans = signal<KnownHuman[]>([]);
   readonly error = signal('');
   readonly message = signal('');
   readonly mode = signal<'list' | 'board'>('list');
@@ -283,6 +320,7 @@ export class TicketsComponent implements OnInit, OnDestroy {
   newDescription = '';
   newPriority = '';
   newAssignee = '';
+  newWorkspace = '';
   editTitle = '';
   editDescription = '';
   reply = '';
@@ -316,10 +354,14 @@ export class TicketsComponent implements OnInit, OnDestroy {
     const a = this.agents.find(x => x.id === id);
     return a ? (a.display_name || a.name) : id;
   }
+  assigneeValue(t: Ticket): string { return t.assignee && t.assignee.kind !== 'system' ? `${t.assignee.kind}:${t.assignee.id}` : ''; }
+  knownHuman(id?: string): boolean { return !!id && this.humans().some(h => h.id === id); }
+  humanName(id: string): string { const h = this.humans().find(x => x.id === id); return h?.name || id; }
+
   assigneeName(t: Ticket): string {
     const a = t.assignee;
     if (!a) return '';
-    return a.kind === 'agent' ? this.agentName(a.id || '') : (a.name || a.id || '');
+    return a.kind === 'agent' ? this.agentName(a.id || '') : (a.name || this.humanName(a.id || ''));
   }
   actorText(a: TicketActor): string {
     if (a.kind === 'agent') return this.agentName(a.id || '') + ' (Agent)';
@@ -343,6 +385,7 @@ export class TicketsComponent implements OnInit, OnDestroy {
     this.api.provider().subscribe({ next: p => this.provider.set(p), error: this.fail });
     this.api.me().subscribe({ next: m => this.me.set(m), error: () => this.me.set(null) });
     this.api.syncStatus().subscribe({ next: s => this.sync.set(s), error: () => this.sync.set(null) });
+    this.api.humans().subscribe({ next: h => this.humans.set(h.humans ?? []), error: () => this.humans.set([]) });
     this.loadTickets();
     this.gates.runs('', 50).subscribe({ next: r => this.runs.set(r?.runs ?? []), error: () => this.runs.set([]) });
     this.gates.reviews(50).subscribe({ next: r => this.reviews.set(r?.reviews ?? []), error: () => this.reviews.set([]) });
@@ -394,10 +437,12 @@ export class TicketsComponent implements OnInit, OnDestroy {
   create(): void {
     const body: Record<string, unknown> = { title: this.newTitle.trim(), description: this.newDescription };
     if (this.newPriority) body['priority'] = this.newPriority;
-    if (this.newAssignee) body['assignee'] = { kind: 'agent', id: this.newAssignee };
+    const asg = this.actorFrom(this.newAssignee);
+    if (asg) body['assignee'] = asg;
+    if (this.newWorkspace) body['workspace_id'] = this.newWorkspace;
     this.api.create(body as never).subscribe({
       next: t => {
-        this.newTitle = ''; this.newDescription = ''; this.newPriority = ''; this.newAssignee = '';
+        this.newTitle = ''; this.newDescription = ''; this.newPriority = ''; this.newAssignee = ''; this.newWorkspace = '';
         this.creating.set(false);
         this.message.set(`Ticket ${t.identifier || t.ref.id} angelegt.`);
         this.loadTickets();
@@ -416,10 +461,33 @@ export class TicketsComponent implements OnInit, OnDestroy {
     });
   }
 
-  assign(agentId: string): void {
+  private actorFrom(v: string): TicketActor | null {
+    if (!v) return null;
+    const i = v.indexOf(':');
+    const kind = v.slice(0, i) as 'agent' | 'human';
+    const id = v.slice(i + 1);
+    return kind === 'human' ? { kind, id, name: this.humanName(id) } : { kind, id };
+  }
+
+  setWorkspace(id: string): void {
     const t = this.selected();
-    if (!t) return;
-    const u = agentId ? { assignee: { kind: 'agent', id: agentId } } : { clear_assignee: true };
+    if (!t || id === (t.workspace_id || '')) return;
+    this.api.update(refString(t.ref), { workspace_id: id }).subscribe({ next: x => { this.setSelected(x); this.loadTickets(); }, error: this.fail });
+  }
+
+  remove(t: Ticket): void {
+    if (!confirm(`Ticket ${t.identifier || t.ref.id} „${t.title}“ wirklich löschen? Kommentare werden mitgelöscht.`)) return;
+    this.api.remove(refString(t.ref)).subscribe({
+      next: () => { this.selected.set(null); this.message.set(`Ticket ${t.identifier || t.ref.id} gelöscht.`); this.loadTickets(); },
+      error: this.fail,
+    });
+  }
+
+  assign(value: string): void {
+    const t = this.selected();
+    if (!t || value === this.assigneeValue(t)) return;
+    const a = this.actorFrom(value);
+    const u = a ? { assignee: a } : { clear_assignee: true };
     this.api.update(refString(t.ref), u).subscribe({ next: x => { this.setSelected(x); this.loadTickets(); }, error: this.fail });
   }
 

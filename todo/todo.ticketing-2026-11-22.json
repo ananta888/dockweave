@@ -74,7 +74,8 @@
       "task_ids": [
         "TK-010",
         "TK-012",
-        "TK-015"
+        "TK-015",
+        "TK-016"
       ],
       "status": "in_progress"
     }
@@ -502,6 +503,36 @@
       ],
       "verification_files": [],
       "verification_commands": []
+    },
+    {
+      "id": "TK-016",
+      "milestone": "M4",
+      "type": "feature",
+      "title": "Workspace-Auswahl, Zuweisung an Menschen, Löschen (native ohne Paperclip nutzbar)",
+      "status": "done",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 100,
+      "description": "Nutzerwunsch 2026-11-22: Lücken vor dem Einschalten ohne Paperclip schließen.",
+      "components": [
+        "internal/ticketing",
+        "internal/api",
+        "internal/persistence",
+        "ui/web"
+      ],
+      "acceptance_criteria": [
+        "Ticket an DockWeave-Workspace binden (API prüft, UI-Auswahl); Gates laufen dort.",
+        "Bekannte Menschen (über Gateway gesehen) sind zuweisbar.",
+        "Löschen mit ticket.delete, 409 bei Kindern, Audit; Blocker-Verweise werden entfernt; Sync überträgt Löschungen nicht und importiert nicht zurück."
+      ],
+      "depends_on": [
+        "TK-010"
+      ],
+      "verification_files": [],
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: Update.WorkspaceID + capabilities workspaces/human_assignee/delete; Deleter on native (refuses parents with children, unlinks blocked_by in the same transaction), paperclip (DELETE /api/issues), memory; Observe emits ticket.deleted; DELETE /api/v1/tickets/{id} (ticket.delete); humans registry (migration 24, throttled TouchHuman from forwarded requests) + GET /api/v1/tickets/humans; workspace resolved/validated by id or name; sync: deletion → tombstone, never propagated, never re-imported. UI: workspace select (create/detail), agents+humans optgroups, delete with confirmation; e2e 7 ticket tests (45 total). Contract tests for delete/workspace/human assignee on all adapters."
+      ]
     }
   ],
   "critical_path_tasks": [
@@ -519,24 +550,24 @@
     "TK-015"
   ],
   "tasks_status_summary": {
-    "total": 15,
+    "total": 16,
     "by_status": {
       "todo": 1,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 14
+      "done": 15
     },
-    "progress_percent_done": 93.3333,
+    "progress_percent_done": 93.75,
     "by_priority": {
       "P0": 0,
-      "P1": 12,
+      "P1": 13,
       "P2": 3,
       "P3": 0
     },
     "by_risk": {
       "low": 1,
-      "medium": 5,
+      "medium": 6,
       "high": 9,
       "critical": 0
     },
@@ -554,10 +585,10 @@
     }
   },
   "tasks_type_summary": {
-    "total": 15,
+    "total": 16,
     "by_type": {
       "docs": 2,
-      "feature": 8,
+      "feature": 9,
       "security": 2,
       "refactor": 1,
       "frontend": 1,
@@ -570,6 +601,6 @@
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 14
+    "done": 15
   }
 }

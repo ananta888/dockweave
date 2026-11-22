@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ananta888/dockweave/internal/model"
@@ -124,6 +125,19 @@ func decodeStrict(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 
+// resolveWorkspace checks a given workspace and stores its stable id.
+func (s *Server) resolveWorkspace(r *http.Request, ws *string) error {
+	if ws == nil || *ws == "" || s.Workspaces == nil {
+		return nil
+	}
+	w, err := s.Workspaces.Get(r.Context(), *ws)
+	if err != nil {
+		return fmt.Errorf("%w: workspace %q: %v", ticketing.ErrInvalid, *ws, err)
+	}
+	*ws = w.ID
+	return nil
+}
+
 // resolveAgent maps a DockWeave agent name or id to its stable id; foreign
 // provider agents ("paperclip-agent:…") pass through.
 func (s *Server) resolveAgent(r *http.Request, a *ticketing.Actor) error {
@@ -222,6 +236,10 @@ func (s *Server) createTicket(w http.ResponseWriter, r *http.Request) {
 		ticketErr(w, err)
 		return
 	}
+	if err := s.resolveWorkspace(r, &n.WorkspaceID); err != nil {
+		ticketErr(w, err)
+		return
+	}
 	tk, err := p.Tickets().Create(r.Context(), n, requestActor(r))
 	if err != nil {
 		ticketErr(w, err)
@@ -277,6 +295,10 @@ func (s *Server) updateTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.resolveAgent(r, u.Assignee); err != nil {
+		ticketErr(w, err)
+		return
+	}
+	if err := s.resolveWorkspace(r, u.WorkspaceID); err != nil {
 		ticketErr(w, err)
 		return
 	}
@@ -483,4 +505,81 @@ func (s *Server) ticketSyncRun(w http.ResponseWriter, r *http.Request) {
 	rep, err := s.Sync.Pass(r.Context(), req.Initial, req.DryRun)
 	out := map[string]any{"report": rep, "complete": err == nil}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// ---- known humans and deletion ----
+
+// humanCache throttles the humans registry to one write per human and
+// 5 minutes (or when name/groups change).
+type humanCache struct {
+	mu   sync.Mutex
+	seen map[string]humanSeen
+}
+
+type humanSeen struct {
+	at  time.Time
+	sig string
+}
+
+func (s *Server) rememberHuman(ctx context.Context, h model.HumanActor) {
+	if s.Store == nil {
+		return
+	}
+	sig := h.Name + "|" + strings.Join(h.Groups, ",")
+	s.humans.mu.Lock()
+	if s.humans.seen == nil {
+		s.humans.seen = map[string]humanSeen{}
+	}
+	prev, ok := s.humans.seen[h.ID]
+	fresh := ok && prev.sig == sig && time.Since(prev.at) < 5*time.Minute
+	if !fresh {
+		s.humans.seen[h.ID] = humanSeen{at: time.Now(), sig: sig}
+	}
+	s.humans.mu.Unlock()
+	if !fresh {
+		_ = s.Store.TouchHuman(ctx, h)
+	}
+}
+
+// ticketHumans lists humans that can be assigned (seen via the gateway).
+func (s *Server) ticketHumans(w http.ResponseWriter, r *http.Request) {
+	if !s.requirePerm(w, r, authz.TicketRead) {
+		return
+	}
+	list, err := s.Store.ListHumans(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal", err)
+		return
+	}
+	if list == nil {
+		list = []model.KnownHuman{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"humans": list})
+}
+
+// deleteTicket removes a ticket (permission ticket.delete; a ticket with
+// children is 409). Audited as ticket.deleted.
+func (s *Server) deleteTicket(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.ticketPrimary(w)
+	if !ok {
+		return
+	}
+	if !s.requirePerm(w, r, authz.TicketDelete) {
+		return
+	}
+	id, err := ticketID(r, p)
+	if err != nil {
+		ticketErr(w, err)
+		return
+	}
+	del, ok := p.Tickets().(ticketing.Deleter)
+	if !ok || !p.Capabilities().Delete {
+		ticketErr(w, fmt.Errorf("%w: delete", ticketing.ErrUnsupported))
+		return
+	}
+	if err := del.Delete(r.Context(), id, requestActor(r)); err != nil {
+		ticketErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

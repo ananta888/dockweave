@@ -148,7 +148,7 @@
           <dw-usage />
         }
         @case ('tickets') {
-          <dw-tickets [agents]="store.agents()" [live]="store.live()" />
+          <dw-tickets [agents]="store.agents()" [live]="store.live()" [workspaces]="store.workspaces()" />
         }
         @case ('productivity') {
           <dw-productivity />

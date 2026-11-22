@@ -33,7 +33,8 @@ export interface Ticket {
 
 export interface TicketComment { id: string; ticket: TicketRef; author: TicketActor; body: string; created_at: string; origin?: string }
 
-export interface Capabilities { threads: boolean; inbox: boolean; children: boolean; approvals: boolean; wake: boolean; authorship: boolean }
+export interface Capabilities { threads: boolean; inbox: boolean; children: boolean; approvals: boolean; wake: boolean; authorship: boolean; workspaces?: boolean; human_assignee?: boolean; delete?: boolean }
+export interface KnownHuman { id: string; name?: string; groups?: string[]; last_seen: string }
 export interface ProviderView { name: string; health: { ok: boolean; detail?: string; checked: string }; capabilities: Capabilities }
 export interface ProviderStatus { configured: boolean; available: string[]; error?: string; primary?: ProviderView; mirror?: ProviderView }
 
@@ -95,6 +96,8 @@ export class TicketService {
   comment(id: string, body: string): Observable<TicketComment> {
     return this.req(this.http.post<TicketComment>(`${this.base}/${encodeURIComponent(id)}/comments`, { body }));
   }
+  humans(): Observable<{ humans: KnownHuman[] }> { return this.req(this.http.get<{ humans: KnownHuman[] }>(`${this.base}/humans`)); }
+  remove(id: string): Observable<unknown> { return this.req(this.http.delete(`${this.base}/${encodeURIComponent(id)}`)); }
   run(agent: string): Observable<DispatchOutcome> { return this.req(this.http.post<DispatchOutcome>(`${this.base}/run`, { agent })); }
   syncStatus(): Observable<SyncState> { return this.req(this.http.get<SyncState>(`${this.base}/sync`)); }
   syncRun(initial = false, dryRun = false): Observable<{ report: unknown; complete: boolean }> {

@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 23
+const schemaVersion = 24
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -431,6 +431,14 @@ var migrations = []string{
 		mirror_ref TEXT NOT NULL UNIQUE,
 		base TEXT NOT NULL DEFAULT '{}',
 		synced_at TEXT NOT NULL
+	);`,
+	// 24: humans seen through the web gateway (assignable in tickets; ADR
+	// 0003 D-6). Only id (iss|sub), display handle and groups.
+	`CREATE TABLE humans (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL DEFAULT '',
+		groups TEXT NOT NULL DEFAULT '[]',
+		last_seen TEXT NOT NULL
 	);`,
 }
 

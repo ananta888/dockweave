@@ -127,6 +127,7 @@ type Server struct {
 
 	blocked blockedAudit
 	live    liveRegistry
+	humans  humanCache
 	mux     *http.ServeMux
 }
 
@@ -254,6 +255,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/v1/live", s.liveWork)
 	s.mux.HandleFunc("GET /api/v1/tickets/provider", s.ticketProvider)
 	s.mux.HandleFunc("GET /api/v1/tickets/me", s.ticketMe)
+	s.mux.HandleFunc("GET /api/v1/tickets/humans", s.ticketHumans)
+	s.mux.HandleFunc("DELETE /api/v1/tickets/{id}", s.deleteTicket)
 	s.mux.HandleFunc("GET /api/v1/tickets", s.listTickets)
 	s.mux.HandleFunc("POST /api/v1/tickets", s.createTicket)
 	s.mux.HandleFunc("GET /api/v1/tickets/{id}", s.getTicket)
@@ -294,7 +297,12 @@ func (s *Server) routes() {
 }
 
 // ServeHTTP implements http.Handler.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h, ok := HumanFromContext(r.Context()); ok {
+		s.rememberHuman(r.Context(), h)
+	}
+	s.mux.ServeHTTP(w, r)
+}
 
 // actor extracts the authenticated peer name from the request context.
 func actor(r *http.Request) string {

@@ -247,3 +247,30 @@ func TestMirrorDownIsReportedNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A ticket deleted on one side is unlinked and reported, never deleted on
+// the other side.
+func TestDeletedTicketIsUnlinkedNotPropagated(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	tk := mustCreate(t, e.p, ticketing.NewTicket{Title: "x"})
+	e.pass(t, true)
+	mt := e.mirrorOf(t, tk.Ref)
+	if err := e.p.Tickets().(ticketing.Deleter).Delete(ctx, tk.Ref.ID, alice); err != nil {
+		t.Fatal(err)
+	}
+	rep := e.pass(t, true)
+	if len(rep.Unlinked) != 1 {
+		t.Fatalf("unlinked: %+v", rep)
+	}
+	if _, err := e.m.Tickets().Get(ctx, mt.Ref.ID); err != nil {
+		t.Fatalf("mirror copy was deleted: %v", err)
+	}
+	// The deletion does not come back: no re-import, reported only once.
+	if rep := e.pass(t, true); rep.CreatedOnPrim != 0 || len(rep.Unlinked) != 0 {
+		t.Fatalf("after tombstone: %+v", rep)
+	}
+	if n := len(list(t, e.p)); n != 0 {
+		t.Fatalf("deleted ticket came back: %d", n)
+	}
+}

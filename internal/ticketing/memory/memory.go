@@ -38,7 +38,7 @@ func (p *Provider) Health(context.Context) ticketing.Health {
 	return ticketing.Health{OK: true, Checked: p.now().UTC()}
 }
 func (p *Provider) Capabilities() ticketing.Capabilities {
-	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Authorship: true}
+	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Authorship: true, Workspaces: true, HumanAssignee: true, Delete: true}
 }
 func (p *Provider) Tickets() ticketing.Tickets { return p }
 func (p *Provider) Threads() ticketing.Threads { return p }
@@ -186,6 +186,9 @@ func (p *Provider) Update(_ context.Context, id string, u ticketing.Update, _ ti
 	if u.BlockedBy != nil {
 		t.BlockedBy = append([]ticketing.Ref(nil), (*u.BlockedBy)...)
 	}
+	if u.WorkspaceID != nil {
+		t.WorkspaceID = *u.WorkspaceID
+	}
 	v, _ := strconv.Atoi(t.Version)
 	t.Version = strconv.Itoa(v + 1)
 	t.UpdatedAt = p.stamp()
@@ -278,5 +281,22 @@ func (p *Provider) Release(_ context.Context, id, agentID string) error {
 		return fmt.Errorf("%w: not checked out by %s", ticketing.ErrConflict, agentID)
 	}
 	t.CheckedOutBy = ""
+	return nil
+}
+
+// Delete implements ticketing.Deleter.
+func (p *Provider) Delete(_ context.Context, id string, _ ticketing.Actor) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.tk[id]; !ok {
+		return fmt.Errorf("%w: %s", ticketing.ErrNotFound, id)
+	}
+	for _, t := range p.tk {
+		if t.Parent != nil && t.Parent.ID == id {
+			return fmt.Errorf("%w: ticket %s has children", ticketing.ErrConflict, id)
+		}
+	}
+	delete(p.tk, id)
+	delete(p.cm, id)
 	return nil
 }

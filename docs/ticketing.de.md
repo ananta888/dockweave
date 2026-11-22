@@ -54,6 +54,22 @@ Domänenereignis (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,
 `.comment_added`, `.checked_out`, `.released`) in der hash-verketteten
 Audit-Kette (Decorator `ticketing.Observe`).
 
+### Löschen, Menschen, Workspaces
+
+- `DELETE /api/v1/tickets/{id}` (Recht `ticket.delete`) entfernt ein Ticket
+  samt Kommentaren; ein Eltern-Ticket mit Kindern wird abgelehnt (409).
+  Nachweise und Messungen bleiben; Tickets, die davon blockiert waren,
+  verlieren diesen Blocker. Auditiert als `ticket.deleted`. Mit Spiegel wird
+  die Löschung **nicht** übertragen: Die Verknüpfung wird zum Grabstein, die
+  andere Kopie bleibt und wird nicht zurückimportiert.
+- `GET /api/v1/tickets/humans` listet die über das Gateway gesehenen Menschen
+  (`humans`, Migration 24: ID `iss|sub`, Benutzername, Gruppen, zuletzt
+  gesehen). Der native Anbieter akzeptiert sie als Zuständige (Fähigkeit
+  `human_assignee`); Paperclip nur seine eigenen Nutzer.
+- `workspace_id` (ID oder Name, geprüft) bindet ein natives Ticket an einen
+  DockWeave-Workspace; die Gates laufen dort statt in
+  `DISPATCH_DEFAULT_WORKSPACE`.
+
 ## Rollen und Rechte (D-6a)
 
 Per Keycloak angemeldete Menschen werden über ihre **Gruppen** berechtigt:

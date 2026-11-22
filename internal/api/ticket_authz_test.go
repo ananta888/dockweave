@@ -15,6 +15,7 @@ import (
 	"github.com/ananta888/dockweave/internal/model"
 	"github.com/ananta888/dockweave/internal/ticketing"
 	"github.com/ananta888/dockweave/internal/ticketing/authz"
+	"github.com/ananta888/dockweave/internal/workspaces"
 )
 
 // asHuman calls the API as a human forwarded by the gateway with groups.
@@ -129,5 +130,63 @@ func TestApprovalPermissionActorAndContinuation(t *testing.T) {
 	got, _ := f.srv.Tickets.Primary.Tickets().Get(context.Background(), tk.Ref.ID)
 	if got.Status != ticketing.StatusInProgress {
 		t.Fatalf("parent did not continue: %s", got.Status)
+	}
+}
+
+// Delete needs ticket.delete, refuses a parent with children and is
+// audited; known humans come from forwarded requests; a workspace must
+// exist and is stored by id.
+func TestTicketDeleteHumansAndWorkspace(t *testing.T) {
+	f := ticketFixture(t)
+	ctx := context.Background()
+	parent := decodeTicket(t, f.do(t, RoleAdmin, "POST", "/api/v1/tickets", `{"title":"parent"}`).Body.Bytes())
+	child := decodeTicket(t, f.do(t, RoleAdmin, "POST", "/api/v1/tickets", `{"title":"child","parent":{"provider":"native","id":"`+parent.Ref.ID+`"}}`).Body.Bytes())
+	if rec := asHuman(t, f, []string{"dockweave-monitor"}, "DELETE", "/api/v1/tickets/"+child.Ref.ID, ""); rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "ticket.delete") {
+		t.Fatalf("reader delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := f.do(t, RoleAdmin, "DELETE", "/api/v1/tickets/"+parent.Ref.ID, ""); rec.Code != http.StatusConflict {
+		t.Fatalf("delete parent with child: %d", rec.Code)
+	}
+	if rec := asHuman(t, f, []string{"dockweave-admin"}, "DELETE", "/api/v1/tickets/"+child.Ref.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("admin delete: %d %s", rec.Code, rec.Body)
+	}
+	if rec := f.do(t, RoleAdmin, "GET", "/api/v1/tickets/"+child.Ref.ID, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("deleted ticket readable: %d", rec.Code)
+	}
+	evs, _ := f.store.ListEvents(ctx, 100)
+	found := false
+	for _, e := range evs {
+		found = found || (string(e.Type) == "ticket.deleted" && strings.Contains(e.Message, "child"))
+	}
+	if !found {
+		t.Fatal("delete not audited")
+	}
+
+	// Known humans: recorded through the full server (not only the mux).
+	req := httptest.NewRequest("GET", "/api/v1/tickets", nil)
+	req = req.WithContext(ContextWithHuman(ContextWithPeer(req.Context(), "gateway", 1001, RoleAdmin),
+		model.HumanActor{ID: "iss|bob", Name: "bob", Groups: []string{"dockweave-admin"}}))
+	f.srv.ServeHTTP(httptest.NewRecorder(), req)
+	rec := f.do(t, RoleMonitor, "GET", "/api/v1/tickets/humans", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"id":"iss|bob"`) || !strings.Contains(rec.Body.String(), `"name":"bob"`) {
+		t.Fatalf("humans: %d %s", rec.Code, rec.Body)
+	}
+	// A human can be assigned.
+	rec = f.do(t, RoleAdmin, "PATCH", "/api/v1/tickets/"+parent.Ref.ID, `{"assignee":{"kind":"human","id":"iss|bob","name":"bob"}}`)
+	if rec.Code != 200 || decodeTicket(t, rec.Body.Bytes()).Assignee.ID != "iss|bob" {
+		t.Fatalf("human assignee: %d %s", rec.Code, rec.Body)
+	}
+
+	// Workspaces: unknown → 400; by name → stored as id.
+	f.srv.Workspaces = &workspaces.Service{Store: f.store}
+	if err := f.store.CreateWorkspace(ctx, &model.Workspace{ID: "ws_1", Name: "proj", HostPath: f.ws, CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := f.do(t, RoleAdmin, "PATCH", "/api/v1/tickets/"+parent.Ref.ID, `{"workspace_id":"ghost"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown workspace: %d", rec.Code)
+	}
+	rec = f.do(t, RoleAdmin, "PATCH", "/api/v1/tickets/"+parent.Ref.ID, `{"workspace_id":"proj"}`)
+	if rec.Code != 200 || decodeTicket(t, rec.Body.Bytes()).WorkspaceID != "ws_1" {
+		t.Fatalf("workspace by name: %d %s", rec.Code, rec.Body)
 	}
 }

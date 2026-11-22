@@ -122,7 +122,7 @@ func Register(dir AgentDirectory) {
 
 func (p *Provider) Name() string { return Name }
 func (p *Provider) Capabilities() ticketing.Capabilities {
-	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Wake: true}
+	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Wake: true, Delete: true}
 }
 func (p *Provider) Tickets() ticketing.Tickets { return p }
 func (p *Provider) Threads() ticketing.Threads { return p }
@@ -634,6 +634,9 @@ func (p *Provider) Update(ctx context.Context, id string, u ticketing.Update, _ 
 	if u.ClearAssignee {
 		_ = p.assigneeFields(ctx, nil, body)
 	}
+	if u.WorkspaceID != nil && *u.WorkspaceID != "" {
+		return nil, fmt.Errorf("%w: DockWeave workspaces are not stored in Paperclip (use DISPATCH_DEFAULT_WORKSPACE)", ticketing.ErrInvalid)
+	}
 	if u.BlockedBy != nil {
 		ids := []string{}
 		for _, b := range *u.BlockedBy {
@@ -848,4 +851,19 @@ func (p *Provider) Wake(ctx context.Context, agentID string) error {
 	}
 	return p.do(ctx, http.MethodPost, "/api/agents/"+url.PathEscape(pcID)+"/wakeup",
 		map[string]any{"source": "on_demand", "reason": "dockweave", "forceFreshSession": false}, nil)
+}
+
+// Delete implements ticketing.Deleter (DELETE /api/issues/{id}).
+func (p *Provider) Delete(ctx context.Context, id string, _ ticketing.Actor) error {
+	kids, err := p.List(ctx, ticketing.Filter{Parent: &ticketing.Ref{Provider: Name, ID: id}})
+	if err != nil {
+		return err
+	}
+	if len(kids) > 0 {
+		return fmt.Errorf("%w: ticket %s has children", ticketing.ErrConflict, id)
+	}
+	if _, err := p.getIssue(ctx, id); err != nil {
+		return err
+	}
+	return p.do(ctx, http.MethodDelete, "/api/issues/"+url.PathEscape(id), nil, nil)
 }

@@ -478,3 +478,11 @@ func (h HumanActor) Validate() error {
 	}
 	return nil
 }
+
+// KnownHuman is a human seen through the web gateway (assignable in tickets).
+type KnownHuman struct {
+	ID       string    `json:"id"`
+	Name     string    `json:"name,omitempty"`
+	Groups   []string  `json:"groups,omitempty"`
+	LastSeen time.Time `json:"last_seen"`
+}

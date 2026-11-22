@@ -31,6 +31,7 @@ type Store interface {
 	ReleaseTask(ctx context.Context, id, agentID string) error
 	AddTicketComment(ctx context.Context, c *model.TicketComment) error
 	ListTicketComments(ctx context.Context, taskID string) ([]model.TicketComment, error)
+	DeleteTask(ctx context.Context, id string) error
 }
 
 // Provider implements ticketing.Provider on the DockWeave store.
@@ -55,7 +56,7 @@ func (p *Provider) Health(context.Context) ticketing.Health {
 }
 
 func (p *Provider) Capabilities() ticketing.Capabilities {
-	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Authorship: true}
+	return ticketing.Capabilities{Threads: true, Inbox: true, Children: true, Authorship: true, Workspaces: true, HumanAssignee: true, Delete: true}
 }
 func (p *Provider) Tickets() ticketing.Tickets { return p }
 func (p *Provider) Threads() ticketing.Threads { return p }
@@ -308,6 +309,9 @@ func (p *Provider) Update(ctx context.Context, id string, u ticketing.Update, _ 
 	if u.ClearAssignee {
 		setAssignee(t, nil)
 	}
+	if u.WorkspaceID != nil {
+		t.WorkspaceID = *u.WorkspaceID
+	}
 	if u.BlockedBy != nil {
 		t.BlockedBy = nil
 		for _, b := range *u.BlockedBy {
@@ -390,4 +394,20 @@ func (p *Provider) Checkout(ctx context.Context, id, agentID string) error {
 
 func (p *Provider) Release(ctx context.Context, id, agentID string) error {
 	return mapErr(p.store.ReleaseTask(ctx, id, agentID), id)
+}
+
+// Delete implements ticketing.Deleter; a ticket with children is a
+// conflict (delete or re-parent the children first).
+func (p *Provider) Delete(ctx context.Context, id string, _ ticketing.Actor) error {
+	if _, err := p.store.GetTask(ctx, id); err != nil {
+		return mapErr(err, id)
+	}
+	kids, err := p.store.ListTicketTasks(ctx, persistence.TaskQuery{ParentID: id, Limit: 1})
+	if err != nil {
+		return err
+	}
+	if len(kids) > 0 {
+		return fmt.Errorf("%w: ticket %s has children", ticketing.ErrConflict, id)
+	}
+	return mapErr(p.store.DeleteTask(ctx, id), id)
 }

@@ -116,8 +116,12 @@ works on the daemon's provider-neutral API: list (search, status, assignee)
 and board, detail with editable title/description/status, assignment to an
 agent, checkout holder, live work ("● läuft" from `GET /api/v1/live`, keyed by
 `dispatch.IssueKey`), gate runs and review verdict of the ticket, thread with
-reply, "Heartbeat jetzt", "Freigeben" (approval) and "In Tagesplan" (creates
-a productivity task referencing the ticket). Provider and mirror health and
+reply, "Heartbeat jetzt", "Freigeben" (approval), "In Tagesplan" (creates a
+productivity task referencing the ticket) and "Löschen" (with confirmation).
+Tickets can be assigned to agents or to known humans (everyone who signed in
+through Keycloak, `GET /api/v1/tickets/humans`) and bound to a DockWeave
+workspace (gate workspace; otherwise `DISPATCH_DEFAULT_WORKSPACE`) – both on
+the native provider. Provider and mirror health and
 the sync state are shown as chips; "Sync jetzt" runs a pass. Every action is
 shown only if `GET /api/v1/tickets/me` grants its permission; capabilities
 hide what the provider cannot do (e.g. threads). Without `TICKET_PROVIDER` the

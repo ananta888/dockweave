@@ -50,6 +50,20 @@ domain event (`ticket.created`, `.updated`, `.status_changed`, `.assigned`,
 `.comment_added`, `.checked_out`, `.released`) in the hash-chained audit log
 (`ticketing.Observe` decorator).
 
+### Deleting, humans, workspaces
+
+- `DELETE /api/v1/tickets/{id}` (permission `ticket.delete`) removes a ticket
+  with its comments; a parent with children is refused (409). Evidence and
+  measurements stay; tickets that were blocked by it lose that blocker. Audited
+  as `ticket.deleted`. With a mirror the deletion is **not** propagated: the
+  link becomes a tombstone, the other copy stays and is not imported back.
+- `GET /api/v1/tickets/humans` lists humans seen through the gateway
+  (`humans`, migration 24: id `iss|sub`, username, groups, last seen). The
+  native provider accepts them as assignee (`human_assignee` capability);
+  Paperclip only accepts its own users.
+- `workspace_id` (id or name, checked) binds a native ticket to a DockWeave
+  workspace; gates run there instead of `DISPATCH_DEFAULT_WORKSPACE`.
+
 ## Roles and permissions (D-6a)
 
 Humans signed in via Keycloak are authorized by their **groups**:

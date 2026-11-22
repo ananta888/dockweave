@@ -304,6 +304,14 @@ func (s *Store) DeleteTask(ctx context.Context, id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
+	// Tickets blocked by the deleted one would otherwise wait forever (an
+	// unreadable blocker counts as open): drop the reference.
+	if _, err := tx.ExecContext(ctx, `UPDATE tasks SET
+		blocked_by = (SELECT coalesce(json_group_array(value), '[]') FROM json_each(tasks.blocked_by) WHERE value <> ?),
+		version = version + 1, updated_at = ?
+		WHERE EXISTS (SELECT 1 FROM json_each(tasks.blocked_by) WHERE value = ?)`, id, nowString(), id); err != nil {
+		return fmt.Errorf("unlink blocker: %w", err)
+	}
 	return tx.Commit()
 }
 

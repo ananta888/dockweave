@@ -299,6 +299,15 @@ paths:
               schema: { $ref: "#/components/schemas/Ticket" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { $ref: "#/components/responses/TicketingUnavailable" }
+    delete:
+      summary: Delete a ticket (permission ticket.delete; a parent with children is 409; audited ticket.deleted)
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "501": { $ref: "#/components/responses/Unsupported" }
+        "503": { $ref: "#/components/responses/TicketingUnavailable" }
     patch:
       summary: Update a ticket (optimistic with expected_version)
       requestBody:
@@ -504,6 +513,29 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "503": { $ref: "#/components/responses/TicketingUnavailable" }
+
+  /api/v1/tickets/humans:
+    get:
+      summary: Humans seen through the web gateway (assignable)
+      responses:
+        "200":
+          description: Known humans, most recently seen first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [humans]
+                properties:
+                  humans:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, last_seen]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        groups: { type: array, items: { type: string } }
+                        last_seen: { type: string, format: date-time }
 
   /api/v1/tickets/me:
     get:
@@ -972,6 +1004,8 @@ components:
         priority: { type: string, enum: [critical, high, medium, low] }
         assignee: { $ref: "#/components/schemas/TicketActor" }
         clear_assignee: { type: boolean }
+        blocked_by: { type: array, items: { $ref: "#/components/schemas/TicketRef" } }
+        workspace_id: { type: string, description: "workspace id or name; empty clears" }
         expected_version: { type: string }
     TicketComment:
       type: object
@@ -1020,6 +1054,9 @@ components:
             approvals: { type: boolean }
             wake: { type: boolean }
             authorship: { type: boolean }
+            workspaces: { type: boolean }
+            human_assignee: { type: boolean }
+            delete: { type: boolean }
 
     LiveWork:
       type: object

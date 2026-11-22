@@ -125,6 +125,15 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case sub == "" && r.Method == http.MethodGet:
 			writeJSON(w, 200, is)
+		case sub == "" && r.Method == http.MethodDelete:
+			delete(f.Issues, seg[2])
+			for i, id := range f.order {
+				if id == seg[2] {
+					f.order = append(f.order[:i], f.order[i+1:]...)
+					break
+				}
+			}
+			writeJSON(w, 200, map[string]any{"ok": true})
 		case sub == "" && r.Method == http.MethodPatch:
 			if ev, ok := body["expectedStatusVersion"]; ok && int(ev.(float64)) != is["statusVersion"].(int) {
 				writeJSON(w, 409, map[string]any{"error": "Issue status changed"})

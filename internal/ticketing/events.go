@@ -15,6 +15,7 @@ const (
 	EventCommentAdded  = "ticket.comment_added"
 	EventCheckedOut    = "ticket.checked_out"
 	EventReleased      = "ticket.released"
+	EventDeleted       = "ticket.deleted"
 )
 
 // Event is a domain event about a ticket.
@@ -125,6 +126,24 @@ func (t *obsTickets) Update(ctx context.Context, id string, u Update, by Actor) 
 		t.o.emit(ctx, EventAssigned, tk.Ref, by, d)
 	}
 	return tk, nil
+}
+
+// Delete forwards to the provider when it can delete and emits the event.
+func (t *obsTickets) Delete(ctx context.Context, id string, by Actor) error {
+	d, ok := t.Tickets.(Deleter)
+	if !ok {
+		return fmt.Errorf("%w: delete", ErrUnsupported)
+	}
+	before, _ := t.Tickets.Get(ctx, id)
+	if err := d.Delete(ctx, id, by); err != nil {
+		return err
+	}
+	detail := map[string]any{}
+	if before != nil {
+		detail["title"] = before.Title
+	}
+	t.o.emit(ctx, EventDeleted, Ref{Provider: t.o.Name(), ID: id}, by, detail)
+	return nil
 }
 
 func sameActor(a, b *Actor) bool {

@@ -88,6 +88,12 @@ func TestRecordPipelineResponsesForOpenAPI(t *testing.T) {
 	rec(RoleAdmin, "POST", one+"/checkout", "/api/v1/tickets/{id}/checkout", `{"agent":"alpha"}`, 409)
 	rec(RoleAdmin, "POST", one+"/release", "/api/v1/tickets/{id}/release", `{"agent":"beta"}`, 200)
 	rec(RoleMonitor, "GET", "/api/v1/tickets/me", "/api/v1/tickets/me", "", 200)
+	rec(RoleMonitor, "GET", "/api/v1/tickets/humans", "/api/v1/tickets/humans", "", 200)
+	parentT := f.do(t, RoleAdmin, "POST", "/api/v1/tickets", `{"title":"parent"}`)
+	var pt ticketing.Ticket
+	_ = json.Unmarshal(parentT.Body.Bytes(), &pt)
+	_ = f.do(t, RoleAdmin, "POST", "/api/v1/tickets", `{"title":"kid","parent":{"provider":"native","id":"`+pt.Ref.ID+`"}}`)
+	rec(RoleAdmin, "DELETE", "/api/v1/tickets/"+pt.Ref.ID, "/api/v1/tickets/{id}", "", 409)
 	f.srv.Dispatcher = f.srv.NewDispatcher(DispatchSettings{}, f.srv.Tickets.Primary, nil)
 	rec(RoleAdmin, "POST", "/api/v1/tickets/run", "/api/v1/tickets/run", `{"agent":"alpha"}`, 200)
 	rec(RoleAdmin, "POST", "/api/v1/tickets/run", "/api/v1/tickets/run", `{"agent":"ghost"}`, 400)

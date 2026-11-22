@@ -270,6 +270,52 @@ func Run(t *testing.T, newProvider func(t *testing.T) ticketing.Provider) {
 		}
 	})
 
+	t.Run("delete", func(t *testing.T) {
+		p := newProvider(t)
+		del, ok := p.Tickets().(ticketing.Deleter)
+		if !p.Capabilities().Delete || !ok {
+			t.Skip("no delete capability")
+		}
+		parent := mustCreate(t, p, ticketing.NewTicket{Title: "parent"}, human)
+		child := mustCreate(t, p, ticketing.NewTicket{Title: "child", Parent: &parent.Ref}, human)
+		if err := del.Delete(ctx, parent.Ref.ID, human); !errors.Is(err, ticketing.ErrConflict) {
+			t.Fatalf("delete with children: %v", err)
+		}
+		if err := del.Delete(ctx, child.Ref.ID, human); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Tickets().Get(ctx, child.Ref.ID); !errors.Is(err, ticketing.ErrNotFound) {
+			t.Fatalf("deleted ticket still there: %v", err)
+		}
+		if err := del.Delete(ctx, "nope", human); !errors.Is(err, ticketing.ErrNotFound) {
+			t.Fatalf("delete missing: %v", err)
+		}
+	})
+
+	t.Run("workspace_and_human_assignee", func(t *testing.T) {
+		p := newProvider(t)
+		caps := p.Capabilities()
+		tk := mustCreate(t, p, ticketing.NewTicket{Title: "w"}, human)
+		if caps.Workspaces {
+			ws := "ws_1"
+			got, err := p.Tickets().Update(ctx, tk.Ref.ID, ticketing.Update{WorkspaceID: &ws}, human)
+			if err != nil || got.WorkspaceID != "ws_1" {
+				t.Fatalf("workspace: %+v %v", got, err)
+			}
+		}
+		if caps.HumanAssignee {
+			bob := ticketing.Actor{Kind: ticketing.ActorHuman, ID: "iss|bob", Name: "bob"}
+			got, err := p.Tickets().Update(ctx, tk.Ref.ID, ticketing.Update{Assignee: &bob}, human)
+			if err != nil || got.Assignee == nil || got.Assignee.ID != "iss|bob" || got.Assignee.Kind != ticketing.ActorHuman {
+				t.Fatalf("human assignee: %+v %v", got, err)
+			}
+			mine, _ := p.Tickets().List(ctx, ticketing.Filter{Assignee: &bob})
+			if len(mine) != 1 {
+				t.Fatalf("list by human: %d", len(mine))
+			}
+		}
+	})
+
 	t.Run("checkout_race_has_one_winner", func(t *testing.T) {
 		p := newProvider(t)
 		if !p.Capabilities().Inbox || p.Inbox() == nil {

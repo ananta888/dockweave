@@ -93,3 +93,23 @@ func TestNativeCheckoutAcrossConnections(t *testing.T) {
 		t.Fatal("second process stole the checkout")
 	}
 }
+
+// Deleting a blocker frees the tickets that waited for it.
+func TestNativeDeleteUnlinksBlockers(t *testing.T) {
+	ctx := context.Background()
+	p := New(openStore(t))
+	sys := ticketing.Actor{Kind: ticketing.ActorSystem}
+	dep, _ := p.Create(ctx, ticketing.NewTicket{Title: "dep"}, sys)
+	other, _ := p.Create(ctx, ticketing.NewTicket{Title: "other"}, sys)
+	tk, err := p.Create(ctx, ticketing.NewTicket{Title: "after", BlockedBy: []ticketing.Ref{dep.Ref, other.Ref}}, sys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Delete(ctx, dep.Ref.ID, sys); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := p.Get(ctx, tk.Ref.ID)
+	if len(got.BlockedBy) != 1 || got.BlockedBy[0] != other.Ref || got.Version == tk.Version {
+		t.Fatalf("blockers after delete: %+v (version %s→%s)", got.BlockedBy, tk.Version, got.Version)
+	}
+}

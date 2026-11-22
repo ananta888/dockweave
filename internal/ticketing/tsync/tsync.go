@@ -51,6 +51,7 @@ type Report struct {
 	CreatedOnPrim int        `json:"created_on_primary"`
 	CreatedOnMirr int        `json:"created_on_mirror"`
 	Updated       int        `json:"updated"`
+	Unlinked      []string   `json:"unlinked,omitempty"` // deleted on one side; never propagated
 	Comments      int        `json:"comments"`
 	Conflicts     []Conflict `json:"conflicts,omitempty"`
 	Errors        []string   `json:"errors,omitempty"`
@@ -423,7 +424,14 @@ func (s *Syncer) create(ctx context.Context, src *ticketing.Ticket, dst ticketin
 
 // pair merges a linked ticket pair (either side may be given; the other is
 // loaded).
+// tombstone marks a link whose ticket was deleted on one side.
+const tombstone = `{"deleted":true}`
+
 func (s *Syncer) pair(ctx context.Context, p, m *ticketing.Ticket, l *persistence.TicketLink, rep *Report) {
+	if l.Base == tombstone {
+		return
+	}
+	gone := false
 	load := func(prov ticketing.Provider, ref string) *ticketing.Ticket {
 		r, err := ticketing.ParseRef(ref, "")
 		if err != nil {
@@ -431,6 +439,10 @@ func (s *Syncer) pair(ctx context.Context, p, m *ticketing.Ticket, l *persistenc
 			return nil
 		}
 		t, err := prov.Tickets().Get(ctx, r.ID)
+		if errors.Is(err, ticketing.ErrNotFound) {
+			gone = true
+			return nil
+		}
 		if err != nil {
 			rep.Errors = append(rep.Errors, fmt.Sprintf("load %s: %v", ref, err))
 			return nil
@@ -442,6 +454,19 @@ func (s *Syncer) pair(ctx context.Context, p, m *ticketing.Ticket, l *persistenc
 	}
 	if m == nil {
 		m = load(s.Mirror, l.MirrorRef)
+	}
+	if gone {
+		// Deleted on one side: the link becomes a tombstone, reported once.
+		// A deletion is never propagated, and the remaining copy is never
+		// imported back (the delete would otherwise "come back").
+		rep.Unlinked = append(rep.Unlinked, l.PrimaryRef+" <-> "+l.MirrorRef)
+		if !rep.DryRun {
+			l.Base = tombstone
+			if err := s.Links.PutTicketLink(ctx, *l); err != nil {
+				rep.Errors = append(rep.Errors, err.Error())
+			}
+		}
+		return
 	}
 	if p == nil || m == nil {
 		return

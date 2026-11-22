@@ -203,8 +203,11 @@ type Update struct {
 	Assignee      *Actor `json:"assignee,omitempty"`
 	ClearAssignee bool   `json:"clear_assignee,omitempty"`
 	// BlockedBy replaces the blockers when non-nil (empty slice clears).
-	BlockedBy       *[]Ref `json:"blocked_by,omitempty"`
-	ExpectedVersion string `json:"expected_version,omitempty"`
+	BlockedBy *[]Ref `json:"blocked_by,omitempty"`
+	// WorkspaceID sets the DockWeave workspace ("" clears); needs the
+	// Workspaces capability.
+	WorkspaceID     *string `json:"workspace_id,omitempty"`
+	ExpectedVersion string  `json:"expected_version,omitempty"`
 }
 
 // Validate checks the update.
@@ -263,6 +266,11 @@ type Threads interface {
 	AddComment(ctx context.Context, id, body string, by Actor) (*Comment, error)
 }
 
+// Deleter removes a ticket; a ticket with children is ErrConflict.
+type Deleter interface {
+	Delete(ctx context.Context, id string, by Actor) error
+}
+
 // OriginCommenter adds a comment that keeps the origin it had in another
 // system (live sync, ADR 0003 D-8); optional for adapters.
 type OriginCommenter interface {
@@ -295,6 +303,12 @@ type Capabilities struct {
 	Children  bool `json:"children"`
 	Approvals bool `json:"approvals"`
 	Wake      bool `json:"wake"`
+	// Workspaces: tickets carry a DockWeave workspace (gate workspace).
+	Workspaces bool `json:"workspaces"`
+	// HumanAssignee: any DockWeave human (iss|sub) can be the assignee.
+	HumanAssignee bool `json:"human_assignee"`
+	// Delete: tickets can be deleted (Deleter).
+	Delete bool `json:"delete"`
 	// Authorship: the provider stores the DockWeave actor as ticket author.
 	// Without it the author is the provider's API identity; the DockWeave
 	// audit trail keeps the real actor either way.
