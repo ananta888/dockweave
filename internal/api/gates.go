@@ -48,6 +48,9 @@ func (s *Server) runGate(w http.ResponseWriter, r *http.Request) {
 		body.UpstreamAgentID = a.ID
 	}
 	timeout := time.Duration(body.TimeoutSec) * time.Second
+	done := s.live.begin(model.LiveWork{Kind: model.LiveGateRun, UpstreamAgentID: body.UpstreamAgentID,
+		Workspace: body.Workspace, IssueID: strings.TrimSpace(body.IssueID)})
+	defer done()
 	run, err := s.Gates.Run(r.Context(), gateexec.Request{
 		Workspace: body.Workspace,
 		IssueID:   body.IssueID,

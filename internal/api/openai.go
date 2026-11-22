@@ -91,6 +91,10 @@ func (s *Server) openAIChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	done := s.live.begin(model.LiveWork{Kind: model.LiveEndpointJob, AgentID: agent.ID,
+		IssueID: strings.TrimSpace(r.Header.Get(issueHeader))})
+	defer done()
+
 	id := "chatcmpl-" + time.Now().UTC().Format("20060102150405.000000000")
 	created := time.Now().Unix()
 

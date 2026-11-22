@@ -110,6 +110,7 @@ type Server struct {
 	Pipeline *pipeline.Evaluator
 
 	blocked blockedAudit
+	live    liveRegistry
 	mux     *http.ServeMux
 }
 
@@ -234,6 +235,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/v1/reviews", s.createReview)
 	s.mux.HandleFunc("GET /api/v1/activity", s.activity)
 	s.mux.HandleFunc("GET /api/v1/conflicts", s.conflicts)
+	s.mux.HandleFunc("GET /api/v1/live", s.liveWork)
 	s.mux.HandleFunc("GET /api/v1/events", s.events)
 	s.mux.HandleFunc("GET /api/v1/events/stream", s.eventStream)
 	s.mux.HandleFunc("GET /api/v1/monitor/providers", s.providers)

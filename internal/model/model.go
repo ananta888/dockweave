@@ -433,3 +433,22 @@ type AgentTypeSkill struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// LiveWork is one unit of work the daemon is executing right now: an
+// endpoint job driving an agent or a sandboxed gate run. It is in-memory
+// only (lost on restart) and drives the live status of the web graph.
+type LiveWork struct {
+	ID              string    `json:"id"`
+	Kind            string    `json:"kind"` // endpoint_job | gate_run
+	AgentID         string    `json:"agent_id,omitempty"`
+	UpstreamAgentID string    `json:"upstream_agent_id,omitempty"`
+	Workspace       string    `json:"workspace,omitempty"`
+	IssueID         string    `json:"issue_id,omitempty"`
+	StartedAt       time.Time `json:"started_at"`
+}
+
+// Live work kinds.
+const (
+	LiveEndpointJob = "endpoint_job"
+	LiveGateRun     = "gate_run"
+)

@@ -225,6 +225,27 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/FileConflict" }
 
+  /api/v1/live:
+    get:
+      summary: Work in flight (endpoint jobs, gate runs)
+      description: >
+        In-memory list of work the daemon is executing right now; entries
+        disappear when the request finishes and are lost on restart. Requests
+        refused by pipeline admission never appear. Read-only (admin, monitor).
+      responses:
+        "200":
+          description: Live work
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, now]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/LiveWork" }
+                  now: { type: string, format: date-time }
+
   /api/v1/events:
     get:
       summary: Recent audit events
@@ -575,6 +596,18 @@ components:
         agent_ids: { type: array, items: { type: string } }
         writers: { type: array, items: { type: string } }
         detected_at: { type: string, format: date-time }
+
+    LiveWork:
+      type: object
+      required: [id, kind, started_at]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [endpoint_job, gate_run] }
+        agent_id: { type: string, description: "Agent driven by an endpoint job (stable ID)" }
+        upstream_agent_id: { type: string, description: "Agent whose work a gate run checks (stable ID)" }
+        workspace: { type: string }
+        issue_id: { type: string }
+        started_at: { type: string, format: date-time }
 
     Event:
       type: object
