@@ -43,8 +43,9 @@ type Config struct {
 	WebDir       string // empty = embedded assets
 	Token        string // required
 	Logger       *slog.Logger
-	// AllowedOrigins for WebSocket Origin checks. Empty disables the check
-	// (the listener is loopback and every request needs the token).
+	// AllowedOrigins for WebSocket Origin checks. Empty accepts only
+	// same-host origins (Origin host == Host header); behind the LAN proxy the
+	// Host header is preserved, so no extra configuration is needed.
 	AllowedOrigins []string
 	// BrowseRoots limits the admin directory browser. Empty uses defaults.
 	BrowseRoots []string
@@ -113,13 +114,23 @@ func (l *loginLimiter) fail(addr string) {
 	l.attempts[addr] = append(l.attempts[addr], time.Now())
 }
 
+// clientAddr returns the address the login limiter counts. X-Forwarded-For is
+// honoured only when the direct peer is a loopback reverse proxy (e.g. the
+// LAN TLS proxy in deployments/lan-access), and then only its last entry, the
+// one that proxy appended. A client talking to the gateway directly cannot
+// spoof its address to escape the limiter.
 func clientAddr(r *http.Request) string {
-	if h := r.Header.Get("X-Forwarded-For"); h != "" {
-		return strings.TrimSpace(strings.Split(h, ",")[0])
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		if h := r.Header.Get("X-Forwarded-For"); h != "" {
+			parts := strings.Split(h, ",")
+			if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+				return last
+			}
+		}
 	}
 	return host
 }
