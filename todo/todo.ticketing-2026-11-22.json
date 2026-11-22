@@ -1,0 +1,432 @@
+{
+  "$schema": "./todo.track.schema.json",
+  "version": "1.0",
+  "owner": "dockweave",
+  "track": "ticketing",
+  "created": "2026-11-22",
+  "updated": "2026-11-22",
+  "language": "de",
+  "purpose": "Ticket-System als Port mit austauschbaren Adaptern (Paperclip, nativ im Paperclip-Stil, später weitere); DockWeave-Kern (Gates, Admission, Nachweise, Monitoring) für jeden Anbieter.",
+  "goal": "ADR 0003 umgesetzt: anbieterneutraler Kern, Adapter native und paperclip, Dispatcher im Daemon, Ticket-UI für Agenten und Menschen.",
+  "status_scale": [
+    "todo",
+    "in_progress",
+    "partial",
+    "blocked",
+    "done"
+  ],
+  "priority_scale": [
+    "P0",
+    "P1",
+    "P2",
+    "P3"
+  ],
+  "risk_scale": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "milestones": [
+    {
+      "id": "M0",
+      "title": "Entscheidung",
+      "task_ids": [
+        "TK-001"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "M1",
+      "title": "Port und Adapter",
+      "task_ids": [
+        "TK-002",
+        "TK-003",
+        "TK-004",
+        "TK-005"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "M2",
+      "title": "API und Akteure",
+      "task_ids": [
+        "TK-006",
+        "TK-007"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "M3",
+      "title": "Dispatcher",
+      "task_ids": [
+        "TK-008",
+        "TK-009"
+      ],
+      "status": "todo"
+    },
+    {
+      "id": "M4",
+      "title": "UI, Migration, Doku",
+      "task_ids": [
+        "TK-010",
+        "TK-011",
+        "TK-012"
+      ],
+      "status": "todo"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "TK-001",
+      "milestone": "M0",
+      "type": "docs",
+      "title": "ADR 0003 entscheiden (offene Fragen 1–4 klären, Status accepted)",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "Nutzerentscheidungen zu Menschen/Rollen, Rechten an Agenten-Tickets, Scheduler und Migration einholen und im ADR festhalten.",
+      "components": [
+        "docs/adr"
+      ],
+      "acceptance_criteria": [
+        "ADR 0003 (DE/EN) hat Status accepted und beantwortet die vier offenen Fragen."
+      ],
+      "depends_on": [],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-002",
+      "milestone": "M1",
+      "type": "feature",
+      "title": "Port internal/ticketing: kanonische Typen, Statussatz, getrennte Schnittstellen, Capabilities, Registry",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "Tickets/Threads/Inbox/Approvals/Waker + Provider; TicketRef{provider,id}; Registry/Factory nach Konfiguration; ticketing_unavailable fail-closed.",
+      "components": [
+        "internal/ticketing",
+        "internal/model"
+      ],
+      "acceptance_criteria": [
+        "Kern-Pakete importieren keinen Adapter (Import-Guard-Test).",
+        "Contract-Testsuite, die jeder Adapter bestehen muss (gleiche Tests für native und paperclip).",
+        "Unbekannter oder nicht erreichbarer Anbieter → ticketing_unavailable, nie stilles Umschalten."
+      ],
+      "depends_on": [
+        "TK-001"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-003",
+      "milestone": "M1",
+      "type": "feature",
+      "title": "Adapter native: Tickets im Paperclip-Stil auf Basis der tasks-Tabelle",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Migration: Threads/Kommentare, parent_id, Zuweisung human/agent, Checkout-Lock, Statusabbildung; behält evidence/work_events/focus.",
+      "components": [
+        "internal/ticketing/native",
+        "internal/persistence"
+      ],
+      "acceptance_criteria": [
+        "Besteht die Contract-Testsuite.",
+        "Checkout ist exklusiv (zweiter Checkout → conflict), auch über Prozesse (SQLite-Constraint).",
+        "Bestehende Productivity-Daten bleiben unverändert nutzbar."
+      ],
+      "depends_on": [
+        "TK-002"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-004",
+      "milestone": "M1",
+      "type": "feature",
+      "title": "Adapter paperclip über die HTTP-API statt CLI",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Client gegen Paperclip-OpenAPI (Version geprüft), Statusabbildung, Inbox/Checkout/Kommentare/Unteraufgaben/Freigaben/Wake; Anti-Corruption-Layer.",
+      "components": [
+        "internal/ticketing/paperclip"
+      ],
+      "acceptance_criteria": [
+        "Besteht die Contract-Testsuite gegen einen Paperclip-Fake und optional gegen eine echte Test-Instanz (paperclipai test-drive).",
+        "Inkompatible Paperclip-Version wird erkannt und als unhealthy gemeldet."
+      ],
+      "depends_on": [
+        "TK-002"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-005",
+      "milestone": "M1",
+      "type": "feature",
+      "title": "Anbieterwahl: Konfiguration, Einrichtungsvorschlag auto, Health, CLI dockweave ticket provider",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "TICKET_PROVIDER in dockweaved.conf; auto nur bei Einrichtung; GET /api/v1/tickets/provider (Name, Health, Capabilities).",
+      "components": [
+        "cmd/dockweaved",
+        "cmd/dockweave",
+        "internal/api"
+      ],
+      "acceptance_criteria": [
+        "Laufzeit-Umschaltung findet nie statt.",
+        "Provider-Status ist per API, CLI und UI sichtbar."
+      ],
+      "depends_on": [
+        "TK-003",
+        "TK-004"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-006",
+      "milestone": "M2",
+      "type": "feature",
+      "title": "Ticket-API v1 im Daemon + OpenAPI",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "/api/v1/tickets (list/get/create/update), /comments, /checkout, /approvals; Rollen: Monitor lesend, Admin schreibend; Ereignisse auf dem Event-Bus (Observer).",
+      "components": [
+        "internal/api",
+        "docs/api/openapi.yaml"
+      ],
+      "acceptance_criteria": [
+        "validate_openapi besteht mit echten Antworten.",
+        "Jede Mutation erzeugt ein Audit-Ereignis ticket.*."
+      ],
+      "depends_on": [
+        "TK-005"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-007",
+      "milestone": "M2",
+      "type": "security",
+      "title": "Menschliche Akteure: Principal vom Gateway an den Daemon (nur vom Gateway-Peer akzeptiert)",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Header mit iss/sub/Rolle; Daemon akzeptiert ihn nur vom konfigurierten Gateway-Peer; Eintrag in security-decisions.md.",
+      "components": [
+        "internal/api",
+        "internal/webui",
+        "docs/security-decisions.md"
+      ],
+      "acceptance_criteria": [
+        "Ein anderer Peer kann keinen Akteur vortäuschen (Test).",
+        "Kommentare/Freigaben tragen den menschlichen Akteur; Monitor-Nutzer bleiben lesend."
+      ],
+      "depends_on": [
+        "TK-006"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-008",
+      "milestone": "M3",
+      "type": "refactor",
+      "title": "Dispatcher im Daemon: Arbeitsschleife als Template Method, Routing als Strategien",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Ablauf aus dockweave-run.sh/pipeline.py nach internal/dispatch; anbieterneutral; STATUS-Vertrag, Gates, Admission, Routing, Retry-Notizen.",
+      "components": [
+        "internal/dispatch"
+      ],
+      "acceptance_criteria": [
+        "Die bisherige Wrapper-Testmatrix (deployments/paperclip/tests, wrapper_e2e_test) läuft gegen den Dispatcher grün.",
+        "Kein Turn bei blockierter Admission oder nicht erreichbarem Anbieter."
+      ],
+      "depends_on": [
+        "TK-006"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-009",
+      "milestone": "M3",
+      "type": "feature",
+      "title": "Ausführung: dockweave ticket run <agent> für Paperclip, Scheduler für native",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "high",
+      "progress_percent": 0,
+      "description": "Paperclip-process-Adapter ruft den dünnen Befehl; nativer Heartbeat-Scheduler je Agent mit Parallelitätsgrenze; Legacy-Wrapper bleibt bis zur Gleichwertigkeit.",
+      "components": [
+        "cmd/dockweave",
+        "internal/dispatch",
+        "deployments/paperclip"
+      ],
+      "acceptance_criteria": [
+        "Gleiches Verhalten für beide Anbieter in einem Ende-zu-Ende-Test.",
+        "Legacy-Wrapper und neuer Pfad sind umschaltbar, Standard erst nach Abnahme."
+      ],
+      "depends_on": [
+        "TK-008"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-010",
+      "milestone": "M4",
+      "type": "frontend",
+      "title": "Angular: TicketService und Ansicht Tickets (Liste/Board, Detail, Thread, Zuweisung, Freigaben)",
+      "status": "todo",
+      "priority": "P1",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "Anbieterneutral gegen /api/v1/tickets; Capabilities blenden aus; Gate-Status, Nachweise, Live-Status je Ticket; Paperclip-Panel wird Anbieter-Einstellung.",
+      "components": [
+        "ui/web"
+      ],
+      "acceptance_criteria": [
+        "e2e-Tests für beide Anbieter-Capability-Profile (gemocktes Backend).",
+        "Productivity-Aufgabe kann auf ein Ticket verweisen."
+      ],
+      "depends_on": [
+        "TK-006",
+        "TK-007"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-011",
+      "milestone": "M4",
+      "type": "feature",
+      "title": "Migration: dockweave ticket migrate (native ↔ paperclip) und Altdaten paperclip:<id>",
+      "status": "todo",
+      "priority": "P3",
+      "risk": "medium",
+      "progress_percent": 0,
+      "description": "Bestehende issue_id-Werte in Gate-Läufen/Reviews/Freigaben als paperclip:<id> lesbar; ausdrücklicher Kopierbefehl zwischen Anbietern.",
+      "components": [
+        "internal/persistence",
+        "cmd/dockweave"
+      ],
+      "acceptance_criteria": [
+        "Keine bestehende Gate-/Review-Historie geht verloren.",
+        "Migration ist idempotent und trocken testbar (--dry-run)."
+      ],
+      "depends_on": [
+        "TK-003",
+        "TK-004"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    },
+    {
+      "id": "TK-012",
+      "milestone": "M4",
+      "type": "docs",
+      "title": "Doku DE/EN: Ticketing, Anbieterwahl, Paperclip-Delegation aktualisiert",
+      "status": "todo",
+      "priority": "P2",
+      "risk": "low",
+      "progress_percent": 0,
+      "description": "docs/ticketing{,.de}.md neu; paperclip-delegation und web-ui angepasst.",
+      "components": [
+        "docs"
+      ],
+      "acceptance_criteria": [
+        "Zweisprachig, mit Anbieterwahl, Capabilities und Migrationsweg."
+      ],
+      "depends_on": [
+        "TK-009",
+        "TK-010"
+      ],
+      "verification_files": [],
+      "verification_commands": []
+    }
+  ],
+  "critical_path_tasks": [
+    "TK-001",
+    "TK-002",
+    "TK-003",
+    "TK-005",
+    "TK-006",
+    "TK-008",
+    "TK-009",
+    "TK-010"
+  ],
+  "tasks_status_summary": {
+    "total": 12,
+    "by_status": {
+      "todo": 12,
+      "in_progress": 0,
+      "partial": 0,
+      "blocked": 0,
+      "done": 0
+    },
+    "progress_percent_done": 0.0,
+    "by_priority": {
+      "P0": 0,
+      "P1": 9,
+      "P2": 2,
+      "P3": 1
+    },
+    "by_risk": {
+      "low": 1,
+      "medium": 6,
+      "high": 5,
+      "critical": 0
+    },
+    "critical_path": {
+      "total": 8,
+      "done": 0,
+      "remaining": 8
+    },
+    "milestones": {
+      "total": 5,
+      "todo": 5,
+      "in_progress": 0,
+      "blocked": 0,
+      "done": 0
+    }
+  },
+  "tasks_type_summary": {
+    "total": 12,
+    "by_type": {
+      "docs": 2,
+      "feature": 7,
+      "security": 1,
+      "refactor": 1,
+      "frontend": 1
+    }
+  },
+  "progress_summary": {
+    "state": "todo",
+    "todo_remaining": 12,
+    "in_progress": 0,
+    "partial": 0,
+    "blocked": 0,
+    "done": 0
+  }
+}
