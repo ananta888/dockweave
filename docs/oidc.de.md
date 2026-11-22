@@ -17,6 +17,17 @@ Session-Cookie (`dockweave_oidc`, HttpOnly, SameSite=Lax) wird gesetzt.
 Die Daemon-API bleibt unverändert (`SO_PEERCRED`); der OIDC-Principal wirkt
 nur am Web-Gateway.
 
+### IdP beim Gateway-Start nicht erreichbar
+
+Die Discovery blockiert das Gateway nie. Ist der IdP beim Start des Gateways
+nicht erreichbar (etwa weil Keycloak beim Booten erst danach startet), bleibt
+der IdP-Button auf der Anmeldeseite, das Gateway wiederholt die Discovery im
+Hintergrund (5 s, verdoppelnd bis 1 min; einmal als `oidc issuer
+unreachable…` geloggt, danach `oidc ready`), und ein Anmeldeversuch in der
+Zwischenzeit antwortet mit `503` und `Retry-After`, statt still zu scheitern.
+Sobald der IdP läuft, ist kein Gateway-Neustart nötig; der statische Token
+funktioniert durchgehend.
+
 ## Mitgeliefertes Keycloak (Standard)
 
 Ein startfertiges Keycloak mit `dockweave`-Realm liegt bei:
@@ -56,6 +67,8 @@ Zufallsschlüssel (Session überlebt dann keinen Gateway-Neustart).
 - `internal/oidc/domain.go` – reine Domäne (`Principal`, `Session`, `Role`).
 - `internal/oidc/provider.go` – `Provider`-Port + go-oidc-Adapter.
 - `internal/oidc/session.go` – `SessionStore`-Port + AES-GCM-Cookie-Adapter.
+- `internal/oidc/lazy.go` – `LazyProvider`: Discovery bei Bedarf mit
+  gedrosselten Wiederholungen und Hintergrund-Warm-up.
 - `internal/oidc/service.go` – Anwendungsdienst für den Login-Fluss.
 
 ## Audit

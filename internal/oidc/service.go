@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -92,6 +93,14 @@ func (s *Service) BeginLogin(w http.ResponseWriter, r *http.Request) {
 
 	url, err := s.prov.AuthURL(state, nonce, s.challenge(verifier))
 	if err != nil {
+		s.mu.Lock()
+		delete(s.states, state)
+		s.mu.Unlock()
+		if errors.Is(err, ErrProviderUnavailable) {
+			w.Header().Set("Retry-After", "5")
+			http.Error(w, "Der Identity-Provider ist noch nicht erreichbar; bitte in einigen Sekunden erneut versuchen. (identity provider not reachable yet, retry shortly)", http.StatusServiceUnavailable)
+			return
+		}
 		http.Error(w, "auth url", http.StatusInternalServerError)
 		return
 	}

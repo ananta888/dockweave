@@ -58,6 +58,8 @@ type Config struct {
 	PaperclipWrapper string
 	// OIDC (optional) enables OpenID Connect sign-in via internal/oidc.
 	OIDC *oidc.Config
+	// OIDCDiscover overrides OIDC discovery (tests); nil uses oidc.NewProvider.
+	OIDCDiscover oidc.DiscoverFunc
 }
 
 // Server is the browser-facing HTTP handler.
@@ -159,22 +161,32 @@ func New(cfg Config) (*Server, error) {
 		return err
 	}
 	if cfg.OIDC != nil && cfg.OIDC.Issuer != "" {
-		// Discovery must never block the whole gateway: bound it and fall back
-		// to the static token if the IdP is unreachable.
-		dctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		prov, err := oidc.NewProvider(dctx, *cfg.OIDC)
-		cancel()
-		if err != nil {
-			if cfg.Logger != nil {
-				cfg.Logger.Warn("oidc disabled (issuer unreachable)", "issuer", cfg.OIDC.Issuer, "error", err)
-			}
-		} else {
-			store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
-			s.oidcSvc = oidc.NewService(prov, store, *cfg.OIDC)
-			s.oidcSvc.SetAuditor(func(event string, p oidc.Principal) {
-				s.auditOIDC(event, p)
-			})
+		// Discovery must never block the gateway, and an IdP that starts after
+		// the gateway (e.g. after a reboot) must be picked up without a restart:
+		// the provider discovers lazily, a background loop keeps retrying with
+		// backoff, and logins while the IdP is down get a 503 instead of the
+		// IdP button silently disappearing.
+		discover := cfg.OIDCDiscover
+		if discover == nil {
+			discover = oidc.NewProvider
 		}
+		lazy := oidc.NewLazyProvider(*cfg.OIDC, discover)
+		store := oidc.CookieStore{Name: "dockweave_oidc", Key: cfg.OIDC.SessionKey, Secure: false}
+		s.oidcSvc = oidc.NewService(lazy, store, *cfg.OIDC)
+		s.oidcSvc.SetAuditor(func(event string, p oidc.Principal) {
+			s.auditOIDC(event, p)
+		})
+		issuer := cfg.OIDC.Issuer
+		logger := cfg.Logger
+		warned := false
+		go lazy.Warm(context.Background(), time.Minute, func(err error) {
+			if !warned {
+				warned = true
+				logger.Warn("oidc issuer unreachable; retrying in the background", "issuer", issuer, "error", err)
+			}
+		}, func() {
+			logger.Info("oidc ready", "issuer", issuer)
+		})
 	}
 	s.handler = s.securityHeaders(s.auth(s.routes()))
 	return s, nil

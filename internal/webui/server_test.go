@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -380,5 +381,46 @@ func TestGatewayTokenHolderIsAdmin(t *testing.T) {
 	srv.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("bearer POST = %d, want 200", rec.Code)
+	}
+}
+
+// With the IdP down at gateway start the login page still offers the IdP
+// (the gateway keeps retrying discovery) and the login answers 503.
+func TestOIDCLoginSurvivesIdPStartingAfterGateway(t *testing.T) {
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("x"), 0o644)
+	srv, err := New(Config{DaemonSocket: "/nonexistent", TermSocket: "/nonexistent", WebDir: webDir, Token: "t",
+		OIDC: &oidc.Config{Issuer: "http://idp.invalid", SessionTTL: time.Hour},
+		OIDCDiscover: func(context.Context, oidc.Config) (oidc.Provider, error) {
+			return nil, errors.New("connection refused")
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), "/oauth/login") {
+		t.Fatalf("IdP link missing while the IdP is down: %s", rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("login while IdP down = %d, want 503", rec.Code)
+	}
+}
+
+func TestOIDCLoginRedirectsOnceDiscovered(t *testing.T) {
+	webDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(webDir, "index.html"), []byte("x"), 0o644)
+	srv, err := New(Config{DaemonSocket: "/nonexistent", TermSocket: "/nonexistent", WebDir: webDir, Token: "t",
+		OIDC:         &oidc.Config{Issuer: "http://idp", SessionTTL: time.Hour},
+		OIDCDiscover: func(context.Context, oidc.Config) (oidc.Provider, error) { return stubProvider{}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth/login", nil))
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://idp/auth" {
+		t.Fatalf("login = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
 }

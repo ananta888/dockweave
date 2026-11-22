@@ -22,6 +22,16 @@ Authorization-code with PKCE and nonce:
 The daemon API remains unchanged: it still authorizes by `SO_PEERCRED`. The
 OIDC principal is only used at the web gateway.
 
+### IdP not reachable at gateway start
+
+Discovery never blocks the gateway. If the IdP is not reachable when the
+gateway starts (for example Keycloak starting after it on boot), the IdP
+button stays on the login page, the gateway retries discovery in the
+background (5 s, doubling up to 1 min; logged once as `oidc issuer
+unreachable…`, then `oidc ready`), and a login attempt in the meantime answers
+`503` with `Retry-After` instead of failing silently. No gateway restart is
+needed once the IdP is up; the static token keeps working throughout.
+
 ## Bundled Keycloak (standard)
 
 A ready-to-run Keycloak with a `dockweave` realm is included:
@@ -70,6 +80,8 @@ mapped to the `admin`/`monitor` capabilities.
   (discovery, authorization URL, exchange, role mapping).
 - `internal/oidc/session.go` – the `SessionStore` port plus the AES-GCM cookie
   adapter.
+- `internal/oidc/lazy.go` – `LazyProvider`: on-demand discovery with
+  rate-limited retries and a background warm-up.
 - `internal/oidc/service.go` – the application service that orchestrates the
   flow (state/nonce/PKCE, callback, logout).
 
