@@ -56,7 +56,14 @@ func TestCookieStoreRoundTripAndTamper(t *testing.T) {
 
 	// Tampered cookie -> invalid.
 	tampered := *cookie
-	tampered.Value = tampered.Value[:len(tampered.Value)-2] + "AA"
+	// Flip one character in the middle (always a real change; the last
+	// base64 characters may only carry padding bits).
+	mid := len(tampered.Value) / 2
+	flip := byte('A')
+	if tampered.Value[mid] == 'A' {
+		flip = 'B'
+	}
+	tampered.Value = tampered.Value[:mid] + string(flip) + tampered.Value[mid+1:]"
 	req = httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&tampered)
 	if _, err := store.Get(req); err == nil {
