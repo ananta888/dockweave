@@ -134,10 +134,10 @@
       "milestone": "M1",
       "type": "feature",
       "title": "Adapter native: Tickets im Paperclip-Stil auf Basis der tasks-Tabelle",
-      "status": "todo",
+      "status": "done",
       "priority": "P1",
       "risk": "high",
-      "progress_percent": 0,
+      "progress_percent": 100,
       "description": "Migration: Threads/Kommentare, parent_id, Zuweisung human/agent, Checkout-Lock, Statusabbildung; behält evidence/work_events/focus.",
       "components": [
         "internal/ticketing/native",
@@ -152,7 +152,10 @@
         "TK-002"
       ],
       "verification_files": [],
-      "verification_commands": []
+      "verification_commands": [],
+      "resolved": [
+        "2026-11-22: migration 21 (parent, human assignee, created_by, version, exclusive checkout, ticket_seq DW-<n>, ticket_comments); persistence ListTicketTasks/CheckoutTask/ReleaseTask/UpdateTaskIfVersion/comments; internal/ticketing/native passes contracttest; TestNativeKeepsProductivitySemantics (partial kept, verified never downgraded), TestNativeCheckoutAcrossConnections (two connections, one winner), TestTicketMigrationKeepsExistingTasks; productivity export schema knows in_review."
+      ]
     },
     {
       "id": "TK-004",
@@ -425,13 +428,13 @@
   "tasks_status_summary": {
     "total": 13,
     "by_status": {
-      "todo": 11,
+      "todo": 10,
       "in_progress": 0,
       "partial": 0,
       "blocked": 0,
-      "done": 2
+      "done": 3
     },
-    "progress_percent_done": 15.3846,
+    "progress_percent_done": 23.0769,
     "by_priority": {
       "P0": 0,
       "P1": 11,
@@ -446,8 +449,8 @@
     },
     "critical_path": {
       "total": 11,
-      "done": 2,
-      "remaining": 9
+      "done": 3,
+      "remaining": 8
     },
     "milestones": {
       "total": 5,
@@ -469,10 +472,10 @@
   },
   "progress_summary": {
     "state": "in_progress",
-    "todo_remaining": 11,
+    "todo_remaining": 10,
     "in_progress": 0,
     "partial": 0,
     "blocked": 0,
-    "done": 2
+    "done": 3
   }
 }

@@ -81,6 +81,7 @@ const (
 	TaskPartial    TaskStatus = "partial"
 	TaskFailed     TaskStatus = "failed"
 	TaskBlocked    TaskStatus = "blocked"
+	TaskInReview   TaskStatus = "in_review"
 	TaskVerified   TaskStatus = "verified"
 	TaskCancelled  TaskStatus = "cancelled"
 )
@@ -111,9 +112,18 @@ type Task struct {
 	OrderIndex    int          `json:"order_index"`
 	BlockedBy     []string     `json:"blocked_by,omitempty"`
 	Attempts      int          `json:"attempts"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
-	CompletedAt   *time.Time   `json:"completed_at,omitempty"`
+	// Ticket fields (native ticketing adapter, ADR 0003).
+	ParentID     string     `json:"parent_id,omitempty"`
+	AssigneeID   string     `json:"assignee_id,omitempty"` // human principal ("iss|sub"); agents use AgentID
+	AssigneeName string     `json:"assignee_name,omitempty"`
+	CreatedBy    string     `json:"created_by,omitempty"` // JSON-encoded ticketing actor
+	Version      int        `json:"version"`
+	CheckedOutBy string     `json:"checked_out_by,omitempty"`
+	CheckedOutAt *time.Time `json:"checked_out_at,omitempty"`
+	TicketSeq    int        `json:"ticket_seq,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 }
 
 // Validate checks the task before it is stored.
@@ -137,7 +147,7 @@ func (t *Task) Validate() error {
 	}
 	switch t.Status {
 	case TaskBacklog, TaskTodo, TaskInProgress, TaskDone, TaskPartial,
-		TaskFailed, TaskBlocked, TaskVerified, TaskCancelled:
+		TaskFailed, TaskBlocked, TaskVerified, TaskCancelled, TaskInReview:
 	default:
 		return fmt.Errorf("unsupported task status %q", t.Status)
 	}
@@ -395,4 +405,16 @@ type TodayPlan struct {
 	Tasks       []*Task       `json:"tasks"`
 	Focus       *FocusSession `json:"focus,omitempty"`
 	ActiveAgent int           `json:"active_agents"`
+}
+
+// TicketComment is one append-only entry in a native ticket thread.
+type TicketComment struct {
+	ID         string    `json:"id"`
+	TaskID     string    `json:"task_id"`
+	AuthorKind string    `json:"author_kind"`
+	AuthorID   string    `json:"author_id,omitempty"`
+	AuthorName string    `json:"author_name,omitempty"`
+	Body       string    `json:"body"`
+	Origin     string    `json:"origin,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }

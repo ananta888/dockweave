@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("not found")
 // ErrConflict is returned on uniqueness violations (duplicate names, double grants).
 var ErrConflict = errors.New("conflict")
 
-const schemaVersion = 20
+const schemaVersion = 21
 
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS agents (
@@ -389,6 +389,32 @@ var migrations = []string{
 	 WHERE r.status IN ('failed','error') AND NOT EXISTS (
 	  SELECT 1 FROM json_each(r.detail,'$.results') j
 	  WHERE json_extract(j.value,'$.status') IN ('failed','error'));`,
+	// 21: native ticketing (ADR 0003): tasks become tickets with parent,
+	// human assignee, author, optimistic version, exclusive checkout and a
+	// human-friendly sequence (DW-<n>); append-only comment threads.
+	`ALTER TABLE tasks ADD COLUMN parent_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN assignee_id TEXT NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN assignee_name TEXT NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+	ALTER TABLE tasks ADD COLUMN checked_out_by TEXT NOT NULL DEFAULT '';
+	ALTER TABLE tasks ADD COLUMN checked_out_at TEXT;
+	ALTER TABLE tasks ADD COLUMN ticket_seq INTEGER;
+	UPDATE tasks SET ticket_seq = rowid;
+	CREATE UNIQUE INDEX idx_tasks_ticket_seq ON tasks(ticket_seq);
+	CREATE INDEX idx_tasks_parent ON tasks(parent_id);
+	CREATE INDEX idx_tasks_inbox ON tasks(assignee_kind, agent_id, status, checked_out_by);
+	CREATE TABLE ticket_comments (
+		id TEXT PRIMARY KEY,
+		task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		author_kind TEXT NOT NULL,
+		author_id TEXT NOT NULL DEFAULT '',
+		author_name TEXT NOT NULL DEFAULT '',
+		body TEXT NOT NULL,
+		origin TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX idx_ticket_comments_task ON ticket_comments(task_id, created_at, id);`,
 }
 
 // Store is the DockWeave registry.

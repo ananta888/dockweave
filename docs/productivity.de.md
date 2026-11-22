@@ -106,3 +106,16 @@ wie die CLI.
 - Jede Ziellaenderung wird in `objective_revisions` gesnapshottet;
   `GET /api/v1/objectives/{id}/revisions` und
   `dockweave objective revisions ID` zeigen die Historie.
+
+## Aufgaben als native Tickets (Migration 21, ADR 0003)
+
+Der native Ticket-Adapter (`internal/ticketing/native`) nutzt dieselben
+`tasks`-Zeilen. Migration 21 ergänzt `parent_id`, eine menschliche Zuweisung
+(`assignee_id`/`assignee_name`), `created_by`, eine optimistische `version`,
+einen exklusiven Checkout (`checked_out_by`/`checked_out_at`, ein bedingtes
+UPDATE) und `ticket_seq` (Kennung `DW-<n>`; bestehende Aufgaben werden in
+Einfügereihenfolge nummeriert) sowie nur anhängbare `ticket_comments`. Der
+neue Status `in_review` kommt zu den Aufgabenzuständen hinzu. Die
+Produktivitätssemantik bleibt: Ein Ticket-Update behält `partial`/`failed`,
+solange sich der kanonische Zustand nicht ändert, und stuft `verified` nie
+herunter.

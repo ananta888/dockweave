@@ -64,6 +64,7 @@ func TestGateTimestampMigrationPreservesNanosecondsAndRetention(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	undoTicketMigration(t, s)
 	if _, err := s.db.ExecContext(ctx, `DROP TABLE gate_run_relevance; DROP INDEX idx_gate_runs_chronological; UPDATE meta SET value='18' WHERE key='schema_version'`); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +111,7 @@ func TestMigrationMarksExistingPolicyFailuresGlobal(t *testing.T) {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM gate_run_relevance WHERE run_id='policy' AND gate_id=''`); err != nil {
 		t.Fatal(err)
 	}
+	undoTicketMigration(t, s)
 	if _, err := s.db.ExecContext(ctx, `UPDATE meta SET value='19' WHERE key='schema_version'`); err != nil {
 		t.Fatal(err)
 	}
@@ -122,5 +124,60 @@ func TestMigrationMarksExistingPolicyFailuresGlobal(t *testing.T) {
 	runs, err := reopened.RelevantGateRuns(ctx, "/ws", "lint")
 	if err != nil || len(runs) != 1 || runs[0].ID != "policy" {
 		t.Fatalf("policy failure not relevant to other gates after migration: %+v %v", runs, err)
+	}
+}
+
+// undoTicketMigration reverts migration 21 so a test can replay the
+// migrations after an older schema version.
+func undoTicketMigration(t *testing.T, s *Store) {
+	t.Helper()
+	stmts := []string{"DROP TABLE ticket_comments", "DROP INDEX idx_tasks_ticket_seq", "DROP INDEX idx_tasks_parent", "DROP INDEX idx_tasks_inbox"}
+	for _, c := range []string{"parent_id", "assignee_id", "assignee_name", "created_by", "version", "checked_out_by", "checked_out_at", "ticket_seq"} {
+		stmts = append(stmts, "ALTER TABLE tasks DROP COLUMN "+c)
+	}
+	for _, q := range stmts {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+}
+
+// Migration 21 turns existing productivity tasks into tickets without
+// touching their data: each gets a unique sequence and version 1.
+func TestTicketMigrationKeepsExistingTasks(t *testing.T) {
+	s, path := openPipelineStore(t)
+	ctx := context.Background()
+	var ids []string
+	for _, title := range []string{"one", "two"} {
+		tk := &model.Task{Title: title, Priority: 60, Day: "2026-11-22", Status: model.TaskPartial}
+		if err := s.CreateTask(ctx, tk); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, tk.ID)
+	}
+	undoTicketMigration(t, s)
+	if _, err := s.db.ExecContext(ctx, `UPDATE meta SET value='20' WHERE key='schema_version'`); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	seen := map[int]bool{}
+	for _, id := range ids {
+		tk, err := s.GetTask(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tk.TicketSeq == 0 || seen[tk.TicketSeq] || tk.Version != 1 || tk.Status != model.TaskPartial || tk.Priority != 60 || tk.Day != "2026-11-22" {
+			t.Fatalf("migrated task: %+v", tk)
+		}
+		seen[tk.TicketSeq] = true
+	}
+	fresh := &model.Task{Title: "three"}
+	if err := s.CreateTask(ctx, fresh); err != nil || seen[fresh.TicketSeq] || fresh.TicketSeq == 0 {
+		t.Fatalf("new task seq %d after migration: %v", fresh.TicketSeq, err)
 	}
 }

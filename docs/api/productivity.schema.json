@@ -35,7 +35,7 @@
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
-        "status": { "enum": ["backlog", "todo", "in_progress", "done", "partial", "failed", "blocked", "verified", "cancelled"] },
+        "status": { "enum": ["backlog", "todo", "in_progress", "in_review", "done", "partial", "failed", "blocked", "verified", "cancelled"] },
         "assignee_kind": { "enum": ["human", "agent"] },
         "agent_id": { "type": "string" },
         "day": { "type": "string", "format": "date" },

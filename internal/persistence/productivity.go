@@ -133,17 +133,21 @@ func (s *Store) CreateTask(ctx context.Context, t *model.Task) error {
 	if t.ID == "" {
 		t.ID = model.NewID("tk")
 	}
-	now := time.Now().UTC()
-	t.CreatedAt, t.UpdatedAt = now, now
-	_, err := s.db.ExecContext(ctx, `
+	stamp := nowString()
+	t.CreatedAt, t.UpdatedAt = parseTime(stamp), parseTime(stamp)
+	t.Version = 1
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO tasks (id, title, description, notes, objective_ids,
 			assignee_kind, agent_id, workspace_id, day, status, priority, risk,
-			effort_minutes, order_index, blocked_by, attempts, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			effort_minutes, order_index, blocked_by, attempts, created_at, updated_at,
+			parent_id, assignee_id, assignee_name, created_by, version, ticket_seq)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,
+			(SELECT COALESCE(MAX(ticket_seq),0)+1 FROM tasks))
+		RETURNING ticket_seq`,
 		t.ID, t.Title, t.Description, t.Notes, encodeJSON(t.ObjectiveIDs),
 		t.AssigneeKind, t.AgentID, t.WorkspaceID, t.Day, t.Status, t.Priority,
 		t.Risk, t.EffortMinutes, t.OrderIndex, encodeJSON(t.BlockedBy),
-		t.Attempts, nowString(), nowString())
+		t.Attempts, stamp, stamp, t.ParentID, t.AssigneeID, t.AssigneeName, t.CreatedBy).Scan(&t.TicketSeq)
 	if err != nil {
 		return fmt.Errorf("create task: %w", err)
 	}
@@ -153,13 +157,18 @@ func (s *Store) CreateTask(ctx context.Context, t *model.Task) error {
 func scanTask(scan func(dest ...any) error) (*model.Task, error) {
 	var t model.Task
 	var objectives, blocked, created, updated string
-	var completed sql.NullString
+	var completed, checkedOutAt sql.NullString
+	var seq sql.NullInt64
 	if err := scan(&t.ID, &t.Title, &t.Description, &t.Notes, &objectives,
 		&t.AssigneeKind, &t.AgentID, &t.WorkspaceID, &t.Day, &t.Status,
 		&t.Priority, &t.Risk, &t.EffortMinutes, &t.OrderIndex, &blocked,
-		&t.Attempts, &created, &updated, &completed); err != nil {
+		&t.Attempts, &created, &updated, &completed,
+		&t.ParentID, &t.AssigneeID, &t.AssigneeName, &t.CreatedBy, &t.Version,
+		&t.CheckedOutBy, &checkedOutAt, &seq); err != nil {
 		return nil, err
 	}
+	t.CheckedOutAt = parseTimePtr(checkedOutAt)
+	t.TicketSeq = int(seq.Int64)
 	t.ObjectiveIDs = decodeStrings(objectives)
 	t.BlockedBy = decodeStrings(blocked)
 	t.CreatedAt, t.UpdatedAt = parseTime(created), parseTime(updated)
@@ -169,7 +178,9 @@ func scanTask(scan func(dest ...any) error) (*model.Task, error) {
 
 const taskColumns = `id, title, description, notes, objective_ids, assignee_kind,
 	agent_id, workspace_id, day, status, priority, risk, effort_minutes,
-	order_index, blocked_by, attempts, created_at, updated_at, completed_at`
+	order_index, blocked_by, attempts, created_at, updated_at, completed_at,
+	parent_id, assignee_id, assignee_name, created_by, version, checked_out_by,
+	checked_out_at, ticket_seq`
 
 // GetTask returns one task or ErrNotFound.
 func (s *Store) GetTask(ctx context.Context, id string) (*model.Task, error) {
@@ -221,7 +232,21 @@ func (s *Store) ListTasks(ctx context.Context, day, status, assignee string, lim
 }
 
 // UpdateTask rewrites a task and stamps completed_at when it is finished.
+// Every update increments the version.
 func (s *Store) UpdateTask(ctx context.Context, t *model.Task) error {
+	return s.updateTask(ctx, t, 0)
+}
+
+// UpdateTaskIfVersion is UpdateTask with optimistic locking: ErrConflict when
+// the stored version is not expected, ErrNotFound when the task is gone.
+func (s *Store) UpdateTaskIfVersion(ctx context.Context, t *model.Task, expected int) error {
+	if expected <= 0 {
+		return fmt.Errorf("%w: expected version must be positive", ErrConflict)
+	}
+	return s.updateTask(ctx, t, expected)
+}
+
+func (s *Store) updateTask(ctx context.Context, t *model.Task, expected int) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
@@ -233,22 +258,32 @@ func (s *Store) UpdateTask(ctx context.Context, t *model.Task) error {
 		}
 		completed = t.CompletedAt.UTC().Format(time.RFC3339Nano)
 	}
-	res, err := s.db.ExecContext(ctx, `
+	stamp := nowString()
+	err := s.db.QueryRowContext(ctx, `
 		UPDATE tasks SET title=?, description=?, notes=?, objective_ids=?,
 			assignee_kind=?, agent_id=?, workspace_id=?, day=?, status=?,
 			priority=?, risk=?, effort_minutes=?, order_index=?, blocked_by=?,
-			attempts=?, updated_at=?, completed_at=?
-		WHERE id = ?`,
+			attempts=?, updated_at=?, completed_at=?,
+			parent_id=?, assignee_id=?, assignee_name=?, version=version+1
+		WHERE id = ? AND (? = 0 OR version = ?)
+		RETURNING version`,
 		t.Title, t.Description, t.Notes, encodeJSON(t.ObjectiveIDs),
 		t.AssigneeKind, t.AgentID, t.WorkspaceID, t.Day, t.Status, t.Priority,
 		t.Risk, t.EffortMinutes, t.OrderIndex, encodeJSON(t.BlockedBy),
-		t.Attempts, nowString(), completed, t.ID)
+		t.Attempts, stamp, completed, t.ParentID, t.AssigneeID, t.AssigneeName,
+		t.ID, expected, expected).Scan(&t.Version)
+	if errors.Is(err, sql.ErrNoRows) {
+		if expected > 0 {
+			if _, gerr := s.GetTask(ctx, t.ID); gerr == nil {
+				return fmt.Errorf("%w: task %s changed (expected version %d)", ErrConflict, t.ID, expected)
+			}
+		}
+		return ErrNotFound
+	}
 	if err != nil {
 		return fmt.Errorf("update task: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
+	t.UpdatedAt = parseTime(stamp)
 	return nil
 }
 

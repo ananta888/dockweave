@@ -124,3 +124,15 @@ deterministic review report and a rollover button. It calls the same
 - Every objective change is snapshotted in `objective_revisions`;
   `GET /api/v1/objectives/{id}/revisions` and
   `dockweave objective revisions ID` show the history.
+
+## Tasks as native tickets (migration 21, ADR 0003)
+
+The native ticketing adapter (`internal/ticketing/native`) uses the same
+`tasks` rows. Migration 21 adds `parent_id`, a human assignee
+(`assignee_id`/`assignee_name`), `created_by`, an optimistic `version`, an
+exclusive checkout (`checked_out_by`/`checked_out_at`, one conditional
+UPDATE) and `ticket_seq` (identifier `DW-<n>`; existing tasks are numbered
+by insertion order), plus append-only `ticket_comments`. The new status
+`in_review` joins the task states. Productivity semantics stay: a ticket
+update keeps `partial`/`failed` while the canonical state is unchanged and
+never downgrades `verified`.
