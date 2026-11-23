@@ -14,11 +14,32 @@ import (
 	"github.com/ananta888/dockweave/internal/persistence"
 )
 
+// ContainerEngine is the part of the Docker client recovery needs.
+type ContainerEngine interface {
+	FindByAgent(ctx context.Context, agentID string) (string, error)
+	State(ctx context.Context, containerID string) (string, error)
+}
+
+// MountReconciler is the part of the mount manager recovery needs.
+// It deliberately has no Remove/Teardown: recovery never removes mounts
+// (AGENTS.md rule 7), and the narrow interface makes that a compile-time
+// guarantee rather than a convention.
+type MountReconciler interface {
+	PrepareAgentTree(agentID string) error
+	Reconcile(agentID string, desired []model.MountState) (*mounts.ReconcileResult, error)
+	List(agentID string) ([]model.MountState, error)
+}
+
+var (
+	_ ContainerEngine = (*dockerclient.Client)(nil)
+	_ MountReconciler = (*mounts.Manager)(nil)
+)
+
 // Supervisor reconciles registry state with kernel and engine reality.
 type Supervisor struct {
 	Store  *persistence.Store
-	Mounts *mounts.Manager
-	Docker *dockerclient.Client
+	Mounts MountReconciler
+	Docker ContainerEngine
 }
 
 // Recover runs once at daemon start:
