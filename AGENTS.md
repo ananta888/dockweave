@@ -15,13 +15,21 @@ Jeder Agent erhält drei getrennte Bereiche:
 | `/memory` | Persistentes Langzeitgedächtnis (rw) | `/var/lib/dockweave/memories/<mem-id>` |
 | `/workspace` | Dynamische Projektfreigaben (`rslave`) | `/var/lib/dockweave/agents/<id>/workspace` |
 
-Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
-`/run/dockweave/dockweaved.sock`), CLI `dockweave` und TUI.
+Verwaltung durch den Daemon `dockweaved` (unprivilegierter User
+`dockweave`, Unix-Socket `/run/dockweave/dockweaved.sock`), CLI `dockweave`,
+TUI und Angular-Web-UI (über das Gateway `dockweave web`). Die
+Mount-Syscalls führt ausschließlich der kleine privilegierte Helfer
+`dockweave-mountd` aus (root, nur `CAP_SYS_ADMIN`, FD-basiertes Protokoll
+über `/run/dockweave/mountd.sock`; siehe `docs/mount-helper.md`).
 
 ## Verbindliche Sicherheitsregeln
 
-1. **Mount-Rechte nur im Daemon.** CLI/TUI/API führen niemals selbst
-   `mount(2)` aus; sie sprechen ausschließlich mit `dockweaved`.
+1. **Mount-Rechte nur im Daemon-Pfad.** CLI/TUI/Web/API führen niemals
+   selbst `mount(2)` aus; sie sprechen ausschließlich mit `dockweaved`.
+   Der Daemon entscheidet und prüft (Allowlist, Pfade, Policy); den
+   Syscall setzt nur `dockweave-mountd` auf übergebenen FDs unterhalb von
+   `/var/lib/dockweave` um. Der Helfer trifft keine fachlichen
+   Entscheidungen und bekommt keine weiteren Operationen.
 2. **RO-Staging-Regel (Phase-1-validiert):** Read-only-Binds werden niemals
    direkt mit `-o ro` in den Shared-Baum gemountet. Korrekte Sequenz:
    privat binden → `remount,bind,ro` → `mount --move` in den Shared-Baum.
@@ -47,6 +55,10 @@ Verwaltung durch den Daemon `dockweaved` (root, Unix-Socket
 8. **Socket-Zugriff ist zweistufig:** SO_PEERCRED identifiziert den Peer,
    die UID→Rollen-Policy (`ADMIN_UIDS`/`MONITOR_UIDS`) autorisiert;
    unbekannte UIDs sind gesperrt, die Monitor-Rolle ist nur lesend.
+9. **Keine Zugangsdaten im Repo.** Das Repository ist öffentlich. Tokens,
+   Secrets, Passwörter und installationsspezifische IDs gehören in lokale
+   Dateien (`~/.config/dockweave/*.env`, Rechte 0600), nie in Code, Tests,
+   `HANDOFF.md` oder Doku — auch nicht als Fallback-Default in Tests.
 
 ## Build & Test
 
@@ -84,18 +96,55 @@ statt zu scheitern).
 
 ## Struktur
 
-- `cmd/dockweave` — CLI (cobra), `cmd/dockweaved` — Daemon
-- `internal/model` — zentrale Datenmodelle (Agent, Workspace, Grant, Mount, Event)
-- `internal/persistence` — SQLite (modernc.org/sqlite, pure Go, WAL)
-- `internal/mounts` — Mount-Manager (sicherheitskritisch; Änderungen nur
-  mit erweiterten Tests + Review)
-- `internal/dockerclient` — Docker Engine API Wrapper (Labels s. unten)
-- `internal/agents`, `internal/workspaces` — Fachlogik
-- `internal/monitor` — Provider: `docker`, `procfs` (tetragon: geplant)
-- `internal/api` — versionierte REST-API (v1) über Unix-Socket/TCP
-- `internal/supervisor` — Recovery/Soll-Ist-Abgleich
+Programme (`cmd/`):
+
+- `dockweave` — CLI (cobra), inkl. `dockweave web` (Web-Gateway)
+- `dockweaved` — Daemon (unprivilegiert)
+- `dockweave-mountd` — privilegierter Mount-Helfer (nur `CAP_SYS_ADMIN`)
+- `dockweave-broker` — unprivilegierter Credential-Broker
+- `dockweave-ssh` — SSH-Wrapper für kurzlebige Broker-Zertifikate
+- `dockweave-aimonitor` — optionaler KI-Monitor-Agent
+- `dockweave-tui` — TUI-Einstieg
+
+Kern (`internal/`):
+
+- `model` — zentrale Datenmodelle (Agent, Workspace, Grant, Mount, Event)
+- `persistence` — SQLite (modernc.org/sqlite, pure Go, WAL), Migrationen
+- `mounts` — Mount-Manager (sicherheitskritisch; Änderungen nur mit
+  erweiterten Tests + Review)
+- `mounthelper` — FD-Protokoll zwischen Daemon und `dockweave-mountd`
+  (sicherheitskritisch, wie `mounts`)
+- `dockerclient` — Docker Engine API Wrapper (Labels s. unten)
+- `agents`, `workspaces` — Fachlogik Lebenszyklus und Grants
+- `agentsession`, `nativeagent` — laufende interaktive Sitzungen bzw.
+  strukturierte Harness-Protokolle der Agenten
+- `agentconfig`, `skillcatalog`, `mcp` — MCP-/Skill-Konfiguration pro
+  Agent, Skill-Katalog, minimaler MCP-Server
+- `memory`, `knowledge` — Snapshots/Restore des Gedächtnisses, geteilter
+  Wissensspeicher
+- `supervisor` — Recovery/Soll-Ist-Abgleich (entfernt nie Mounts, Regel 7)
+- `monitor` — Provider: `docker`, `procfs`, `tetragon` (optional über
+  `DOCKWEAVE_TETRAGON_EVENTS`); `aimonitor` — optionaler KI-Monitor
+- `credentialvault`, `credentialbroker`, `brokerclient`, `egress`,
+  `sshbroker` — verschlüsselter Vault, Credential-Broker, Egress-Durchsetzung,
+  SSH-Zertifikate
+- `gateexec`, `gatesync`, `pipeline` — Gate-Ausführung in gehärteten
+  Containern, Gate-Sync aus dem 2D-Graphen, Pipeline-Admission (ADR 0002)
+- `ticketing`, `dispatch` — anbieterneutraler Ticket-Port mit Adaptern
+  `native`/`paperclip` und Dispatcher (ADR 0003)
+- `productivity` — deterministischer Produktivitäts-Collector
+- `oidc`, `webui` — OIDC-Login und Web-Gateway für die Angular-UI
+- `api` — versionierte REST-API (v1) über Unix-Socket/TCP
+- `config`, `configio` — Daemon-Konfiguration, Export/Import
+
+Weitere:
+
 - `pkg/sdk` — öffentlicher Go-Client
-- `ui/tui` — Bubble Tea TUI
+- `ui/tui` — Bubble Tea TUI; `ui/web` — Angular-UI (Playwright-E2E: gemockt
+  über `npm run e2e:pipeline`, live über `npm run e2e` mit
+  `DOCKWEAVE_WEB_TOKEN` aus der Umgebung)
+- `deployments/` — systemd-Units, Keycloak, Paperclip-Wrapper, LAN-Zugang
+- `integrations/` — Agenten-Integrationen, Tetragon
 - `scripts/` — Install-/Uninstall-Skripte (`install.sh`, `uninstall.sh`)
 - `todo/todo.schema.json`, `todo/todo.track.schema.json` — JSON-Schema
   (Draft 2020-12) für Aufgabenstände; aus dem Ananta-Projekt übernommen
