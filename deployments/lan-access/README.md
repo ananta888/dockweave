@@ -26,12 +26,17 @@ you do not need (`user`, `monitor`) in the admin console
    Keycloak issuer to `https://LAN_HOST:8444/realms/dockweave`, registers the
    new callback URL on client `dockweave` and writes the gateway drop-in
    `~/.config/systemd/user/dockweave-web.service.d/zz-lan-access.conf`.
-2. WSL: trust the CA and restart the gateway (it verifies Keycloak over TLS):
-   ```bash
-   sudo cp ~/.local/share/dockweave/lan-root-ca.crt /usr/local/share/ca-certificates/dockweave-lan-root-ca.crt
-   sudo update-ca-certificates
-   systemctl --user restart dockweave-web
-   ```
+2. WSL: restart the gateway: `systemctl --user restart dockweave-web`. No
+   sudo is needed. The drop-in makes only the gateway trust the proxy CA
+   (`SSL_CERT_FILE` = system roots + `lan-root-ca.crt`) and sends the
+   gateway's own Keycloak calls to the local proxy
+   (`DOCKWEAVE_OIDC_CONNECT_TO=LAN_HOST:8444=127.0.0.1:8444`; TLS is still
+   verified against `LAN_HOST`). From WSL the LAN name is often not
+   routable: the Windows port proxy is not reachable from inside WSL, and a
+   Docker bridge whose subnet overlaps the home LAN (e.g. `192.168.176.0/20`
+   vs. `192.168.178.0/24`) swallows the traffic. Check with
+   `ip route get <LAN_IP>`; the durable fix for the overlap is
+   `default-address-pools` in `/etc/docker/daemon.json`.
 3. Windows, PowerShell **as administrator** (WSL2 in NAT mode):
    ```powershell
    Set-NetConnectionProfile -InterfaceAlias WLAN -NetworkCategory Private

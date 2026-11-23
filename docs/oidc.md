@@ -80,6 +80,11 @@ dockweave web \
 ```
 
 The same settings are available as `DOCKWEAVE_OIDC_*` environment variables.
+`--oidc-connect-to host:port=addr:port[,…]` (`DOCKWEAVE_OIDC_CONNECT_TO`)
+redirects only the gateway's own IdP connections (discovery, JWKS, token
+exchange), like `curl --connect-to`; TLS is still verified against the issuer
+host. Use it when the public issuer name is not routable from the gateway
+host (LAN access from WSL, see `deployments/lan-access`).
 `--oidc-session-key` encrypts the session cookie; when empty a random key is
 generated, so sessions do not survive a gateway restart.
 

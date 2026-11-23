@@ -42,7 +42,8 @@ func NewProvider(ctx context.Context, cfg Config) (Provider, error) {
 	if len(scopes) == 0 {
 		scopes = []string{oidc.ScopeOpenID, "profile"}
 	}
-	p, err := oidc.NewProvider(ctx, cfg.Issuer)
+	// The provider keeps this client for JWKS fetches as well.
+	p, err := oidc.NewProvider(cfg.withClient(ctx), cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("oidc discovery: %w", err)
 	}
@@ -75,6 +76,7 @@ func (p *idpProvider) AuthURL(state, nonce, codeChallenge string) (string, error
 }
 
 func (p *idpProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (*Principal, error) {
+	ctx = p.cfg.withClient(ctx)
 	tok, err := p.oauth.Exchange(ctx, code, oauth2.VerifierOption(codeVerifier))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrTokenExchange, err)

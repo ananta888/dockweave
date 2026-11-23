@@ -15,6 +15,10 @@ KC_DIR="$HERE/deployments/keycloak"
 DROPIN_DIR="$HOME/.config/systemd/user/dockweave-web.service.d"
 DROPIN="$DROPIN_DIR/zz-lan-access.conf"
 CA_OUT="$HOME/.local/share/dockweave/lan-root-ca.crt"
+# System roots + proxy CA, trusted only by the gateway (SSL_CERT_FILE), so
+# no sudo/update-ca-certificates is needed and nothing else trusts the CA.
+CA_BUNDLE="$HOME/.local/share/dockweave/lan-ca-bundle.pem"
+SYS_BUNDLE="${SYS_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}"
 STATE="$HOME/.config/dockweave/lan-access.env"
 
 cmd="${1:-status}"
@@ -86,6 +90,8 @@ up)
 		sleep 1
 	done
 	[ -s "$CA_OUT" ] || { echo "error: proxy root CA not found" >&2; exit 1; }
+	chmod 644 "$CA_OUT"
+	cat "$SYS_BUNDLE" "$CA_OUT" >"$CA_BUNDLE.tmp" && mv "$CA_BUNDLE.tmp" "$CA_BUNDLE"
 
 	echo "==> Gateway drop-in $DROPIN"
 	mkdir -p "$DROPIN_DIR" "$(dirname "$STATE")"
@@ -94,6 +100,11 @@ up)
 [Service]
 Environment=DOCKWEAVE_OIDC_ISSUER=https://$LAN_HOST:8444/realms/dockweave
 Environment=DOCKWEAVE_OIDC_REDIRECT_URL=https://$LAN_HOST:8443/oauth/callback
+Environment=SSL_CERT_FILE=$CA_BUNDLE
+# The gateway reaches Keycloak through the local proxy: from WSL the LAN name
+# may not be routable (Windows port proxy, or a Docker bridge overlapping the
+# LAN subnet). TLS is still verified against $LAN_HOST.
+Environment=DOCKWEAVE_OIDC_CONNECT_TO=$LAN_HOST:8444=127.0.0.1:8444
 EOF
 	printf 'LAN_HOST=%s\nLAN_IP=%s\n' "$LAN_HOST" "$LAN_IP" >"$STATE"
 	systemctl --user daemon-reload
@@ -102,8 +113,7 @@ EOF
 
 WSL side is ready. Remaining steps (see deployments/lan-access/README.de.md):
 
-1) Trust the proxy CA inside WSL (the gateway verifies Keycloak over TLS), then restart the gateway:
-     sudo cp $CA_OUT /usr/local/share/ca-certificates/dockweave-lan-root-ca.crt && sudo update-ca-certificates
+1) Restart the gateway (it trusts the proxy CA through SSL_CERT_FILE=$CA_BUNDLE):
      systemctl --user restart dockweave-web
 
 2) Windows, PowerShell as administrator:
@@ -125,7 +135,7 @@ down)
 	(cd "$KC_DIR" && docker compose up -d --wait)
 	echo "==> Stopping TLS proxy"
 	(cd "$PROXY_DIR" && LAN_HOST=x LAN_IP=x docker compose down)
-	rm -f "$DROPIN" "$STATE"
+	rm -f "$DROPIN" "$STATE" "$CA_BUNDLE"
 	systemctl --user daemon-reload
 	systemctl --user restart dockweave-web
 	cat <<EOF

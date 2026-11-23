@@ -25,13 +25,17 @@ nicht. Nicht benötigte Benutzer (`user`, `monitor`) in der Admin-Konsole
    Keycloak-Issuer auf `https://LAN_HOST:8444/realms/dockweave` um, trägt die
    neue Callback-URL im Client `dockweave` ein und schreibt das Gateway-Drop-in
    `~/.config/systemd/user/dockweave-web.service.d/zz-lan-access.conf`.
-2. WSL: der CA vertrauen und Gateway neu starten (das Gateway prüft Keycloak
-   per TLS):
-   ```bash
-   sudo cp ~/.local/share/dockweave/lan-root-ca.crt /usr/local/share/ca-certificates/dockweave-lan-root-ca.crt
-   sudo update-ca-certificates
-   systemctl --user restart dockweave-web
-   ```
+2. WSL: Gateway neu starten: `systemctl --user restart dockweave-web`. sudo
+   ist nicht nötig. Das Drop-in lässt nur das Gateway der Proxy-CA vertrauen
+   (`SSL_CERT_FILE` = System-Wurzeln + `lan-root-ca.crt`) und leitet die
+   eigenen Keycloak-Aufrufe des Gateways an den lokalen Proxy
+   (`DOCKWEAVE_OIDC_CONNECT_TO=LAN_HOST:8444=127.0.0.1:8444`; TLS wird
+   weiterhin gegen `LAN_HOST` geprüft). Aus WSL ist der LAN-Name oft nicht
+   routbar: Der Windows-Portproxy ist von WSL aus nicht erreichbar, und eine
+   Docker-Bridge, deren Subnetz das Heimnetz überdeckt (z. B.
+   `192.168.176.0/20` gegenüber `192.168.178.0/24`), schluckt den Verkehr.
+   Prüfen mit `ip route get <LAN_IP>`; dauerhafte Abhilfe für die
+   Überschneidung ist `default-address-pools` in `/etc/docker/daemon.json`.
 3. Windows, PowerShell **als Administrator** (WSL2 im NAT-Modus):
    ```powershell
    Set-NetConnectionProfile -InterfaceAlias WLAN -NetworkCategory Private

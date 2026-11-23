@@ -74,6 +74,11 @@ dockweave web \
 ```
 
 Dieselben Werte gibt es als `DOCKWEAVE_OIDC_*`-Umgebungsvariablen.
+`--oidc-connect-to host:port=addr:port[,…]` (`DOCKWEAVE_OIDC_CONNECT_TO`)
+leitet nur die eigenen IdP-Verbindungen des Gateways um (Discovery, JWKS,
+Token-Austausch), wie `curl --connect-to`; TLS wird weiterhin gegen den
+Issuer-Host geprüft. Nötig, wenn der öffentliche Issuer-Name vom Gateway-Host
+aus nicht routbar ist (LAN-Zugang aus WSL, siehe `deployments/lan-access`).
 `--oidc-session-key` verschlüsselt das Session-Cookie; leer erzeugt einen
 Zufallsschlüssel (Session überlebt dann keinen Gateway-Neustart).
 

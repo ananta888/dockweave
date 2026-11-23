@@ -80,4 +80,11 @@ type Config struct {
 	SessionTTL time.Duration
 	// SessionKey encrypts the session cookie (32 bytes).
 	SessionKey [32]byte
+	// ConnectTo redirects the gateway's own connections to the IdP
+	// ("host:port" -> "addr:port", like curl --connect-to): discovery, JWKS
+	// and token exchange dial the mapped address while TLS is still verified
+	// against the original host name. Browsers are unaffected. Used when the
+	// public issuer name is not routable from the gateway host (e.g. WSL
+	// behind a LAN proxy). Empty: normal resolution.
+	ConnectTo map[string]string
 }

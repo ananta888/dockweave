@@ -103,13 +103,28 @@ Zugangsdaten. Das Gateway lädt das Secret per `EnvironmentFile=` aus
 `oidc.env` (Drop-in `override.conf` angepasst) und schreibt konfigurierte
 Tokens nicht mehr ins Journal; der Web-Token wurde danach nochmals rotiert.
 
-**Offen (vorbestehend, nicht durch die Härtung verursacht):** Der
-OIDC-Login ist derzeit nicht nutzbar (`/oauth/login` → 503). Der
-LAN-Modus ist aktiv, der Issuer `https://<LAN_HOST>:8444` löst in WSL aber
-auf IPv6-Adressen von Windows auf, und Windows leitet 8443/8444 nicht
-weiter (`netsh interface portproxy` enthält nur 22 und 8766). Entweder die
-Windows-Schritte aus `scripts/lan-access.sh up` nachholen oder
-`scripts/lan-access.sh down`. Der Token-Login funktioniert unabhängig davon.
+**LAN-Login repariert (2026-11-23):** OIDC lief nicht (`/oauth/login` →
+503), weil das Gateway den Issuer `https://<LAN_HOST>:8444` aus WSL nicht
+erreichte. Gründe: Windows leitete 8443/8444 nicht weiter, das WLAN-Profil
+war „Öffentlich“, WSL vertraute der Proxy-CA nicht, und Docker-Bridges mit
+`192.168.176.0/20` (u. a. `keycloak_default` und eine Bridge außerhalb dieses
+Docker-Daemons) überdecken das Heimnetz `192.168.178.0/24` — WSL routet
+`192.168.178.x` in die Bridge. Behoben durch: Windows-Portproxy
+`192.168.178.88:8443/8444 → 127.0.0.1`, WLAN-Profil „Privat“, Firewall-Regel
+„DockWeave LAN (TLS)“ (Privat, lokales Subnetz); im Gateway
+`SSL_CERT_FILE` (System-Wurzeln + Proxy-CA, kein sudo) und die neue Option
+`DOCKWEAVE_OIDC_CONNECT_TO=<LAN_HOST>:8444=127.0.0.1:8444`. Beides schreibt
+`scripts/lan-access.sh up`. Verifiziert: Browser-Login als `krusty` → Angular
+→ API 200; von Windows über `192.168.178.88` 8443 → 200, 8444-Realm → 200,
+8444 `/admin/` → 403.
+
+Hinweise: Eine überflüssige zweite Firewall-Regel „DockWeave LAN (TLS) from
+WSL“ wurde beim Eingrenzen angelegt und kann gelöscht werden. Die
+Docker-Subnetz-Überschneidung bleibt für andere WSL→LAN-Verbindungen
+bestehen; dauerhafte Abhilfe ist `default-address-pools` in
+`/etc/docker/daemon.json` (sudo, Docker-Neustart). Der Rechner sollte in der
+Fritzbox eine feste IPv4 (`192.168.178.88`) bekommen, sonst passt der
+Portproxy nicht mehr.
 
 ### 3.0 Gate-Pipeline (2026-11-21)
 

@@ -66,6 +66,7 @@ func webCmd() *cobra.Command {
 		paperclipCLI      string
 		paperclipWrapper  string
 		oidcIssuer        string
+		oidcConnectTo     string
 		oidcClientID      string
 		oidcClientSecret  string
 		oidcRedirect      string
@@ -141,7 +142,12 @@ func webCmd() *cobra.Command {
 				if redirect == "" {
 					redirect = fmt.Sprintf("http://%s/oauth/callback", listen)
 				}
+				connectTo, err := oidc.ParseConnectTo(oidcConnectTo)
+				if err != nil {
+					fail(err)
+				}
 				oidcCfg = &oidc.Config{
+					ConnectTo:     connectTo,
 					Issuer:        oidcIssuer,
 					ClientID:      oidcClientID,
 					ClientSecret:  oidcClientSecret,
@@ -232,6 +238,8 @@ func webCmd() *cobra.Command {
 	f.StringVar(&mcpToken, "mcp-token", envOr("DOCKWEAVE_UI_MCP_TOKEN", ""),
 		"UI MCP bearer token (default: random when --mcp-listen is set)")
 	f.StringVar(&oidcIssuer, "oidc-issuer", envOr("DOCKWEAVE_OIDC_ISSUER", ""), "OIDC issuer URL (enables OpenID Connect sign-in)")
+	f.StringVar(&oidcConnectTo, "oidc-connect-to", envOr("DOCKWEAVE_OIDC_CONNECT_TO", ""),
+		"gateway-to-IdP connection override host:port=addr:port[,...] (like curl --connect-to; TLS still verified against host)")
 	f.StringVar(&oidcClientID, "oidc-client-id", envOr("DOCKWEAVE_OIDC_CLIENT_ID", ""), "OIDC client id")
 	f.StringVar(&oidcClientSecret, "oidc-client-secret", envOr("DOCKWEAVE_OIDC_CLIENT_SECRET", ""), "OIDC client secret")
 	f.StringVar(&oidcRedirect, "oidc-redirect-url", envOr("DOCKWEAVE_OIDC_REDIRECT_URL", ""), "OIDC redirect URL (default http://<listen>/oauth/callback)")
