@@ -473,3 +473,43 @@ is already an admin peer, so this is attribution spoofing, not privilege
 escalation. Recommended: run the gateway as a dedicated user and list only
 that UID in `GATEWAY_UIDS`.
 
+## SD-023 — No credentials in the repository; Keycloak loopback-only (2026-11-23)
+
+**Context:** The repository is public. It contained the live web-gateway
+token (as a fallback in a Playwright test and in `HANDOFF.md`), the
+Keycloak client secret `dockweave-dev-secret`, demo passwords equal to the
+user names, and a compose default `admin/admin` for the Keycloak master
+realm. Keycloak was published on `0.0.0.0:8080`. Agent containers reach the
+host through the Docker bridge, so any agent could open the admin console,
+sign in as `admin/admin`, put itself into `dockweave-admin` and act as a
+DockWeave admin through the gateway. The LAN proxy's restriction to the
+login flow (`deployments/lan-access/Caddyfile`) was bypassed by the direct
+port. The gateway also printed its configured login token and the UI MCP
+token to stdout, i.e. into the journal under systemd.
+
+**Decision:**
+
+1. The repository carries no credentials (AGENTS.md rule 9), not even as test
+   fallbacks. `realm-dockweave.json` has no user passwords and no client
+   secret; the compose file has no default admin password (`:?` fails).
+2. `scripts/keycloak-up.sh` generates the master-admin password, random
+   realm-user passwords and a Keycloak-generated client secret into 0600
+   files under `~/.config/dockweave/`, passing secrets to `kcadm` on stdin
+   rather than the host command line. `--rotate` rotates all of them.
+3. Keycloak is published on `127.0.0.1` only. Network access goes solely
+   through the TLS proxy, which exposes only the `dockweave` realm login.
+4. The password grant (`directAccessGrantsEnabled`) is off on client
+   `dockweave`; the gateway uses only the authorization code flow with PKCE.
+5. The gateway never prints a configured login token or the UI MCP token;
+   only an ephemeral random login token (no `DOCKWEAVE_WEB_TOKEN`) is shown.
+6. The client secret reaches the systemd user unit through
+   `EnvironmentFile=` (0600), not an `Environment=` line in a world-readable
+   drop-in.
+
+**Residual risk:** Old values remain in the Git history; they are rotated
+and invalid. Keycloak still runs in `start-dev` mode (H2, no production
+hardening) — acceptable for a single-host install behind loopback, not for
+a shared IdP. The UI MCP listener (`--mcp-listen 0.0.0.0:8791`) stays
+reachable from agent containers by design and is protected by its bearer
+token, which agents hold in their own MCP configuration.
+

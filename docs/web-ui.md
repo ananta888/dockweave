@@ -16,7 +16,10 @@ make build
 #         Login-Token: …
 ```
 
-Open the printed URL and enter the Login-Token in the login page. The
+Open the printed URL and enter the Login-Token in the login page. Only a
+randomly generated token is printed; a token set via `DOCKWEAVE_WEB_TOKEN`
+(e.g. from `~/.config/dockweave/web.env` under systemd) is never written to
+stdout or the journal, and neither is the UI MCP token (see its token file). The
 token is stored as an HttpOnly cookie; subsequent requests work without it
 in the URL or history. API clients can send `Authorization: Bearer <token>`
 instead of a cookie. Failed logins are rate limited (5/minute per address),

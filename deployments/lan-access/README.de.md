@@ -10,11 +10,13 @@ TLS mit eigener lokaler CA und ist nur im Heimnetz erreichbar:
 
 ## Vorher (Pflicht)
 
-Die mitgelieferten Keycloak-Demo-Passwörter (`krusty/krusty`, `user/user`,
-`monitor/monitor`) sind im Netz ein offenes Tor: in der Admin-Konsole
-(`http://127.0.0.1:8080/admin`, nur lokal) starke Passwörter setzen oder die
-Demo-User deaktivieren. Das Gateway-Token (`~/.config/dockweave/web.env`)
-gibt volle Admin-Rechte – nicht weitergeben.
+Einmal `scripts/keycloak-up.sh` ausführen: Es erzeugt Zufallspasswörter für
+den Keycloak-Admin und die Realm-Benutzer sowie das Client-Secret in
+0600-Dateien unter `~/.config/dockweave/` (siehe `docs/oidc.de.md`); das
+Repository enthält keine Zugangsdaten, und `lan-access.sh` startet ohne sie
+nicht. Nicht benötigte Benutzer (`user`, `monitor`) in der Admin-Konsole
+(`http://127.0.0.1:8080/admin`, nur lokal) deaktivieren. Das Gateway-Token
+(`~/.config/dockweave/web.env`) gibt volle Admin-Rechte – nicht weitergeben.
 
 ## Einrichten
 

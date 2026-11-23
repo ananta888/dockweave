@@ -1,8 +1,15 @@
 import { test, expect } from '@playwright/test';
 
-const TOKEN = process.env.DOCKWEAVE_WEB_TOKEN || 'dw-7607e59342eadecabb561e7d13594797e69a6b35762d1924';
+// Live test against a running gateway: the token must come from the
+// environment (e.g. `set -a; . ~/.config/dockweave/web.env; set +a`).
+// Never hard-code a fallback — this file is in a public repository.
+// Checked inside the test so the mocked specs in the same run still execute.
+const TOKEN = process.env.DOCKWEAVE_WEB_TOKEN ?? '';
 
 test('every layout mode completes and never leaves the spinner stuck', async ({ page }) => {
+  if (!TOKEN) {
+    throw new Error('DOCKWEAVE_WEB_TOKEN is not set; source ~/.config/dockweave/web.env before running this live E2E test');
+  }
   const errors: string[] = [];
   page.on('console', m => { if (m.type() === 'error' && !m.text().includes('ResizeObserver loop')) errors.push(m.text()); });
   page.on('pageerror', e => errors.push(String(e)));

@@ -14,7 +14,7 @@
       "protocol": "openid-connect",
       "publicClient": false,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://127.0.0.1:8790/oauth/callback",
@@ -24,7 +24,6 @@
         "http://127.0.0.1:8790",
         "http://localhost:8790"
       ],
-      "secret": "dockweave-dev-secret",
       "protocolMappers": [
         {
           "name": "groups",
@@ -63,13 +62,6 @@
       "emailVerified": true,
       "firstName": "Krusty",
       "lastName": "Hauptadmin",
-      "credentials": [
-        {
-          "type": "password",
-          "value": "krusty",
-          "temporary": false
-        }
-      ],
       "groups": [
         "dockweave-admin"
       ]
@@ -79,13 +71,6 @@
       "enabled": true,
       "email": "user@dockweave.local",
       "emailVerified": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "user",
-          "temporary": false
-        }
-      ],
       "groups": [],
       "firstName": "Standard",
       "lastName": "User"
@@ -95,13 +80,6 @@
       "enabled": true,
       "email": "monitor@dockweave.local",
       "emailVerified": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "monitor",
-          "temporary": false
-        }
-      ],
       "groups": [
         "dockweave-monitor"
       ],

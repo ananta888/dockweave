@@ -1,17 +1,23 @@
 # DockWeave — Session Handoff
 
-Stand: 2026-11-21, Branch `main` (lokal, noch nicht gepusht). Gate-Pipeline
-A → Gate → B vollständig umgesetzt (Track `todo/archive/gate-pipeline.json`).
+Stand: 2026-11-23, Branch `main`. Ticketing (ADR 0003, Track
+`todo/todo.ticketing-2026-11-22.json`) ist bis auf die Abnahme TK-015
+umgesetzt; davor Gate-Pipeline A → Gate → B (`todo/archive/gate-pipeline.json`).
 
 Diese Datei fasst den Stand so zusammen, dass ein anderer Agent nahtlos
-weiterarbeiten kann. Abschnitt 3.0 beschreibt die Pipeline-Session; 3.1–3.4
-sind der vorherige Stand (Graph/Gates, Security-Hardening).
+weiterarbeiten kann. Abschnitt 3.00 beschreibt Ticketing und die
+Bereinigung vom 2026-11-23, 3.0 die Pipeline-Session; 3.1–3.4 sind älter
+(Graph/Gates, Security-Hardening).
+
+> **Regel:** Keine Zugangsdaten (Tokens, Secrets, Passwörter,
+> installationsspezifische IDs) in diese Datei — das Repo ist öffentlich
+> (AGENTS.md, Regel 9).
 
 ---
 
 ## 1. Was das ist
 
-`/home/krusty/dockweave` — Go-Backend + Angular-Web-UI + TUI. DockWeave führt
+`~/dockweave` — Go-Backend + Angular-Web-UI + TUI. DockWeave führt
 KI-Agenten in isolierten Docker-Containern aus und verwaltet Mounts,
 Credentials und den Agenten-Lebenszyklus. Zusätzlich: Produktivitätsschicht,
 OIDC-Login, privilegierter Mount-Helper (`dockweave-mountd`) und eine
@@ -30,14 +36,16 @@ Paperclip-Anbindung für Goal-Delegation inkl. **sandboxed Gate-Ausführung**.
 | `dockweave-mountd` (system) | root, nur `CAP_SYS_ADMIN` | Mount-Syscalls per FD-Protokoll |
 | `dockweave-web` (user) | krusty | Angular-UI + API-Proxy auf `127.0.0.1:8790` |
 | `dockweave-broker` (user) | krusty | Credential-Vault/Broker, Sockets unter `~/.local/share/dockweave/broker/`, TCP `172.17.0.1:8787` |
-| `dockweave-keycloak` (docker) | Container | IdP `http://127.0.0.1:8080`, Realm `dockweave` |
-| Paperclip (user) | krusty | `http://127.0.0.1:3100`, Company `43b81f94-5079-4e24-8500-2e9cd78732a6` |
+| `dockweave-keycloak` (docker) | Container | IdP nur `127.0.0.1:8080`, Realm `dockweave`; Zugangsdaten in `~/.config/dockweave/keycloak*.env` |
+| Paperclip (user) | krusty | `http://127.0.0.1:3100`, Company-ID lokal (`paperclipai company list`) |
 
 Sockets: `/run/dockweave/dockweaved.sock`, `dockweaved.term.sock`,
 `mountd.sock` (Gruppe `dockweave`, 0660).
 
-**Web-Zugang:** stabiler Token `dw-7607e59342eadecabb561e7d13594797e69a6b35762d1924`
-in `~/.config/dockweave/web.env`. Alternativ OIDC-Login.
+**Web-Zugang:** Gateway-Token in `~/.config/dockweave/web.env`
+(`DOCKWEAVE_WEB_TOKEN`, Rechte 0600) oder OIDC-Login. **Zugangsdaten
+(Tokens, Secrets, IDs) gehören nie in diese Datei — das Repo ist öffentlich.**
+Der früher hier eingetragene Token wurde am 2026-11-23 rotiert.
 
 **Deploy-Stand (verifiziert):** `dockweaved` in `/usr/local/bin` ist der Build
 mit `3b8ce2c`; `gate approve`, `gate run`, `gate runs`, `gate reviews`
@@ -46,6 +54,62 @@ funktionieren live. Web + CLI sind deployt.
 ---
 
 ## 3. Letzte Sessions — was gebaut wurde
+
+### 3.00 Ticketing und Bereinigung (2026-11-22/23)
+
+**Ticketing (ADR 0003, `docs/ticketing.md`):** Port `internal/ticketing` mit
+Adaptern `native` (auf der `tasks`-Tabelle) und `paperclip` (HTTP-API),
+führender Anbieter + optionaler Spiegel mit Live-Sync (Feld-Merge,
+auditierte Konflikte, Tombstones beim Löschen), Ticket-API v1 + OpenAPI,
+menschliche Akteure über das Gateway, Rollen/Rechte aus Keycloak-Gruppen,
+Dispatcher `internal/dispatch` (inkl. Lead-Modus mit Unteraufgaben),
+`dockweave ticket run`, Angular-Ansicht „Tickets“, Workspace pro Ticket.
+TK-001 … TK-014 und TK-016 sind `done`.
+
+**Offen: TK-015 — Abnahme auf der echten Installation.** Stand 2026-11-23:
+Der installierte `dockweaved` ist vom 2026-11-22 22:14, also vor dem Commit
+`db277ef` (TK-016, 22:20) gebaut — vor der Abnahme neu bauen und
+installieren. Ticketing ist im Daemon **nicht konfiguriert** (`/api/v1/tickets`
+→ 503 `ticketing_unavailable`); `TICKET_PROVIDER=native|paperclip` in
+`dockweaved.conf` setzen. Danach Wrapper auf `DOCKWEAVE_DISPATCH=daemon`,
+ein echtes Paperclip-Ticket bis DONE (Gate + Routing), Checkout/Release/Next
+gegen echtes Paperclip prüfen, ein natives Ticket ohne Paperclip. Erst dann
+`DOCKWEAVE_DISPATCH=daemon` zum Standard machen. Braucht sudo und
+Entscheidungen des Nutzers.
+
+**Bereinigung 2026-11-23:**
+
+- Der Web-Gateway-Token stand im öffentlichen Repo (diese Datei und
+  `ui/web/e2e/graph-layout.spec.ts`). Er wurde **rotiert** (alter Token →
+  401) und aus beiden Dateien entfernt; der Live-E2E scheitert jetzt ohne
+  `DOCKWEAVE_WEB_TOKEN` mit klarer Meldung. In der Git-Historie steht der
+  alte Wert weiterhin, er ist aber ungültig.
+- `internal/supervisor`: schmale Interfaces `ContainerEngine` /
+  `MountReconciler` (ohne Remove — Regel 7 als Compile-Zeit-Garantie) und
+  erstmals Unit-Tests (Zustandsabbildung, Engine-Ausfall, Prepare-Fehler,
+  Reconcile inkl. Orphans und Registry-Status).
+- AGENTS.md: Rechtetrennung Daemon/`dockweave-mountd`, vollständige
+  Paketstruktur, Regel 9 (keine Zugangsdaten im Repo).
+- `make lint` (staticcheck v0.8.2) lokal installiert: keine Befunde.
+
+**Keycloak gehärtet (SD-023):** Master-Admin hatte `admin/admin`, die
+Demo-Logins galten live, das Client-Secret war der öffentliche Dev-Default,
+und Port 8080 war auf `0.0.0.0` veröffentlicht (aus Agent-Containern über
+die Docker-Bridge erreichbar → Admin-Konsole → DockWeave-Admin). Jetzt:
+Port nur `127.0.0.1`, alle Zugangsdaten per `scripts/keycloak-up.sh --rotate`
+rotiert und lokal in `~/.config/dockweave/{keycloak,keycloak-users,oidc}.env`
+(0600), Passwort-Grant am Client aus, Realm-Datei und Compose ohne
+Zugangsdaten. Das Gateway lädt das Secret per `EnvironmentFile=` aus
+`oidc.env` (Drop-in `override.conf` angepasst) und schreibt konfigurierte
+Tokens nicht mehr ins Journal; der Web-Token wurde danach nochmals rotiert.
+
+**Offen (vorbestehend, nicht durch die Härtung verursacht):** Der
+OIDC-Login ist derzeit nicht nutzbar (`/oauth/login` → 503). Der
+LAN-Modus ist aktiv, der Issuer `https://<LAN_HOST>:8444` löst in WSL aber
+auf IPv6-Adressen von Windows auf, und Windows leitet 8443/8444 nicht
+weiter (`netsh interface portproxy` enthält nur 22 und 8766). Entweder die
+Windows-Schritte aus `scripts/lan-access.sh up` nachholen oder
+`scripts/lan-access.sh down`. Der Token-Login funktioniert unabhängig davon.
 
 ### 3.0 Gate-Pipeline (2026-11-21)
 
@@ -199,7 +263,7 @@ Wichtige Commits dieser Session:
 ## 4. Bauen & Deployen
 
 ```bash
-cd /home/krusty/dockweave
+cd ~/dockweave
 go build ./... && go test ./... && go vet ./...
 
 # Web (Angular in Go-Binary einbetten) + CLI
@@ -228,7 +292,7 @@ sleep 1; ls -l /run/dockweave/dockweaved.sock
 
 ```bash
 # Sandbox-Lauf (echtes Projekt)
-dockweave gate run /home/krusty/projects/crystal-run --issue DOC-63 --json
+dockweave gate run ~/projects/crystal-run --issue DOC-63 --json
 dockweave gate runs --limit 5
 
 # Review + Freigabe (admin)
@@ -247,7 +311,7 @@ Tests:
 go test ./...
 go test -race ./internal/memory
 DOCKWEAVE_GATE_INTEGRATION=1 go test ./internal/gateexec -run TestRun -v
-DOCKWEAVE_GATE_INTEGRATION=1 DOCKWEAVE_GATE_WORKSPACE=/home/krusty/projects/crystal-run \
+DOCKWEAVE_GATE_INTEGRATION=1 DOCKWEAVE_GATE_WORKSPACE=~/projects/crystal-run \
   go test ./internal/gateexec -run TestRunRealWorkspace -v
 cd ui/web && npm run e2e
 ```
@@ -309,7 +373,7 @@ ein realer Lauf für `crystal-run`. Unkritisch, ggf. später aufräumen.
 - **Skill-Katalog:** Daemon kann `/var/lib/dockweave/skills` nicht schreiben
   („skill catalog disabled"). Optional:
   `sudo chown -R dockweave:dockweave /var/lib/dockweave/skills`.
-- **Broker-Permission:** `/home/krusty/.local/share` braucht `o+x`, sonst
+- **Broker-Permission:** `~/.local/share` braucht `o+x`, sonst
   erreicht der Daemon den Broker-Socket nicht.
 - **Drift:** Wird `.paperclip/gates.json` manuell verändert, zeigt die UI
   „Drift"; der nächste Sync überschreibt die Datei (bewusst).
@@ -371,7 +435,7 @@ dockweave gate runs
 # Keycloak / Paperclip
 docker ps --filter name=dockweave-keycloak
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/realms/dockweave/.well-known/openid-configuration
-/home/krusty/.local/bin/paperclipai issue list -C 43b81f94-5079-4e24-8500-2e9cd78732a6 --json
+paperclipai issue list -C "$PAPERCLIP_COMPANY_ID" --json   # ID lokal setzen, nicht einchecken
 
 # Logs
 journalctl -u dockweaved -n 50 --no-pager

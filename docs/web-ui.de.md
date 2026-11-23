@@ -17,6 +17,10 @@ make build
 ```
 
 Die ausgegebene URL öffnen und den Login-Token auf der Anmeldeseite eingeben.
+Ausgegeben wird nur ein zufällig erzeugter Token; ein über
+`DOCKWEAVE_WEB_TOKEN` gesetzter (z. B. aus `~/.config/dockweave/web.env` unter
+systemd) landet nie auf stdout oder im Journal, ebenso wenig der
+UI-MCP-Token (siehe dessen Token-Datei).
 Das Token wird als HttpOnly-Cookie gespeichert; weitere Requests brauchen es
 nicht mehr in URL oder Verlauf. API-Clients können stattdessen
 `Authorization: Bearer <token>` senden. Fehlversuche werden begrenzt

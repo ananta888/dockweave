@@ -19,6 +19,19 @@ STATE="$HOME/.config/dockweave/lan-access.env"
 
 cmd="${1:-status}"
 
+# Keycloak compose needs the locally generated admin password
+# (scripts/keycloak-up.sh); there is deliberately no default.
+KC_ENV="$HOME/.config/dockweave/keycloak.env"
+if [ "$cmd" != status ]; then
+	if [ ! -f "$KC_ENV" ]; then
+		echo "error: $KC_ENV missing; run scripts/keycloak-up.sh first" >&2
+		exit 1
+	fi
+	# shellcheck disable=SC1090
+	. "$KC_ENV"
+	export KC_ADMIN_USER KC_ADMIN_PASSWORD
+fi
+
 kc_admin() {
 	# Credentials stay inside the container (bootstrap admin from its env).
 	docker exec dockweave-keycloak sh -c '/opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 --realm master --user "$KC_BOOTSTRAP_ADMIN_USERNAME" --password "$KC_BOOTSTRAP_ADMIN_PASSWORD" >/dev/null'

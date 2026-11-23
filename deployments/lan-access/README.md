@@ -11,11 +11,13 @@ network:
 
 ## Before you start (mandatory)
 
-The bundled Keycloak demo passwords (`krusty/krusty`, `user/user`,
-`monitor/monitor`) are an open door on a network: set strong passwords or
-disable the demo users in the admin console (`http://127.0.0.1:8080/admin`,
-local only). The gateway token (`~/.config/dockweave/web.env`) grants full
-admin rights – do not share it.
+Run `scripts/keycloak-up.sh` once: it generates random passwords for the
+Keycloak admin and the realm users plus the client secret into 0600 files
+under `~/.config/dockweave/` (see `docs/oidc.md`); the repository ships no
+credentials and `lan-access.sh` refuses to start without them. Disable users
+you do not need (`user`, `monitor`) in the admin console
+(`http://127.0.0.1:8080/admin`, local only). The gateway token
+(`~/.config/dockweave/web.env`) grants full admin rights – do not share it.
 
 ## Setup
 

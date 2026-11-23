@@ -36,11 +36,26 @@ Ein startfertiges Keycloak mit `dockweave`-Realm liegt bei:
 ./scripts/keycloak-up.sh
 ```
 
-Es startet Keycloak auf `127.0.0.1:8080`, importiert das `dockweave`-Realm
-(Client `dockweave`, Gruppen `dockweave-admin`/`dockweave-monitor`,
-Demo-User `admin`/`admin` und `monitor`/`monitor`) und druckt die passenden
+Es startet Keycloak auf `127.0.0.1:8080` (nur Loopback, auch aus
+Agent-Containern nicht erreichbar), importiert das `dockweave`-Realm (Client
+`dockweave`, Gruppen `dockweave-admin`/`dockweave-monitor`, Benutzer `krusty`
+(Hauptadmin), `user` (Standard) und `monitor`) und druckt die passenden
 `dockweave web`-OIDC-Einstellungen. Dateien unter `deployments/keycloak/`.
-Vor echter Nutzung das Dev-Client-Secret ändern.
+
+Das Repository enthält **keine Zugangsdaten**. Beim ersten Lauf erzeugt das
+Skript sie in 0600-Dateien unter `~/.config/dockweave/`:
+
+| Datei | Inhalt |
+|---|---|
+| `keycloak.env` | Master-Realm-Admin (`KC_ADMIN_USER`, `KC_ADMIN_PASSWORD`) |
+| `keycloak-users.env` | Zufallspasswörter für `krusty`, `user`, `monitor` |
+| `oidc.env` | `DOCKWEAVE_OIDC_CLIENT_SECRET`, von Keycloak erzeugt |
+
+`./scripts/keycloak-up.sh --rotate` rotiert alle drei. Der Passwort-Grant
+ist am Client `dockweave` abgeschaltet (das Gateway nutzt nur den
+Authorization-Code-Flow mit PKCE). In einer systemd-User-Unit das Secret
+per `EnvironmentFile=%h/.config/dockweave/oidc.env` laden, nicht per
+`Environment=`-Zeile — Drop-ins sind für alle lesbar.
 
 DockWeave braucht nur eine Issuer-URL, daher funktionieren dieselben Flags
 mit jedem IdP. Keycloak kann selbst als Identity-Broker externe IdPs

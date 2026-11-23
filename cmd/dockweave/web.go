@@ -85,6 +85,9 @@ func webCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			token := envOr("DOCKWEAVE_WEB_TOKEN", "")
+			// A configured token is never echoed: under systemd stdout ends
+			// up in the journal. Only an ephemeral random one is printed.
+			tokenConfigured := token != ""
 			if token == "" {
 				var err error
 				token, err = webui.RandomToken()
@@ -103,9 +106,11 @@ func webCmd() *cobra.Command {
 					"web",
 				)
 			}
+			mcpTokenSource := "--mcp-token / DOCKWEAVE_UI_MCP_TOKEN"
 			if mcpListen != "" && mcpToken == "" {
 				home, _ := os.UserHomeDir()
 				tokenPath := filepath.Join(home, ".local", "share", "dockweave", "ui-mcp-token")
+				mcpTokenSource = tokenPath
 				if b, err := os.ReadFile(tokenPath); err == nil {
 					mcpToken = strings.TrimSpace(string(b))
 				}
@@ -173,7 +178,11 @@ func webCmd() *cobra.Command {
 			}
 			url := fmt.Sprintf("http://%s/", ln.Addr())
 			fmt.Printf("DockWeave web UI: %s\n", url)
-			fmt.Printf("Login-Token: %s\n", token)
+			if tokenConfigured {
+				fmt.Println("Login-Token: from DOCKWEAVE_WEB_TOKEN (not printed)")
+			} else {
+				fmt.Printf("Login-Token: %s\n", token)
+			}
 			var mcpSrv *http.Server
 			if mcpListen != "" {
 				mcpLn, err := net.Listen("tcp", mcpListen)
@@ -182,7 +191,9 @@ func webCmd() *cobra.Command {
 				}
 				mcpSrv = &http.Server{Handler: srv.MCPHandler(), ReadHeaderTimeout: 15 * time.Second}
 				go func() { _ = mcpSrv.Serve(mcpLn) }()
-				fmt.Printf("DockWeave UI MCP: http://%s/mcp/ui?token=%s\n", mcpLn.Addr(), mcpToken)
+				// The token itself is never printed (journal); it is in the
+				// 0600 token file or the configured flag/environment.
+				fmt.Printf("DockWeave UI MCP: http://%s/mcp/ui (bearer token: %s)\n", mcpLn.Addr(), mcpTokenSource)
 			}
 			if open {
 				openBrowser(url)
