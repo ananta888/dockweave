@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Store } from '../../core/store';
 import { HerdrService } from '../../core/services/herdr.service';
+import { ApiService } from '../../core/api.service';
 import { HerdrStatus } from '../../core/domain/integrations';
 import { TerminalComponent } from '../terminal.component';
 
@@ -67,7 +68,8 @@ import { TerminalComponent } from '../terminal.component';
 
         <section class="term">
           @if (selected(); as a) {
-            <dw-terminal [agentId]="a.id" [agentName]="a.name" [running]="a.state === 'running'" />
+            <dw-terminal [agentId]="a.id" [agentName]="a.name" [running]="a.state === 'running'"
+                         (start)="startAgent(a.id)" />
           }
         </section>
       </div>
@@ -110,6 +112,7 @@ import { TerminalComponent } from '../terminal.component';
 export class HerdrPanelComponent implements OnInit {
   readonly store = inject(Store);
   private readonly herdr = inject(HerdrService);
+  private readonly api = inject(ApiService);
 
   selectedId = signal('');
   prompt = '';
@@ -135,6 +138,14 @@ export class HerdrPanelComponent implements OnInit {
     this.status.set(null);
     this.answer.set('');
     this.refresh();
+  }
+
+  startAgent(id: string): void {
+    this.error.set('');
+    this.api.startAgent(id).subscribe({
+      next: () => { void this.store.refresh(); this.refresh(); },
+      error: e => this.error.set(e.message ?? String(e)),
+    });
   }
 
   refresh(): void {
