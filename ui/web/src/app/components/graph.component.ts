@@ -15,6 +15,7 @@ import { LayoutEdge, LayoutNode, borderPoint, optimizeLayout } from '../core/gra
 import { RouterRect, routeAroundNodes } from '../core/graph-edge-router';
 import { Agent, AgentActivity, AgentMCP, AgentPaths, AgentSkill, BrokerGrant, FileConflict, Grant, LiveWork, Workspace } from '../core/models';
 import { LIVE_TONE_TEXT, LiveMark, LiveTone, computeLiveStatus } from './graph-live-status';
+import { DirPickerComponent } from './dir-picker.component';
 
 type GraphMode = 'organization' | 'resources';
 type LayoutAlgorithm = 'hierarchy' | 'columns' | 'grid' | 'radial' | 'force' | 'stress' | 'star' | 'free' | 'mixed';
@@ -112,10 +113,17 @@ interface GraphEdge {
   tooltip?: string;
 }
 
+/** Default start command per harness for agents created from the graph. */
+const HARNESS_EXEC: Record<string, string> = {
+  opencode: 'exec "$HOME/.dockweave/opencode-native.sh"',
+  codex: 'exec "$HOME/.dockweave/codex-native.sh"',
+  claude: 'npm install -g --prefix "$HOME/.local" @anthropic-ai/claude-code && exec "$HOME/.local/bin/claude" --dangerously-skip-permissions',
+};
+
 @Component({
   selector: 'dw-graph',
   standalone: true,
-  imports: [FFlowModule, FMinimapComponent, FormsModule],
+  imports: [FFlowModule, FMinimapComponent, FormsModule, DirPickerComponent],
   template: `
     <div class="graph-view" (contextmenu)="openContext($event)" (click)="closeContext()" (window:keydown)="onKeydown($event)">
       <div class="graph-toolbar">
@@ -123,7 +131,12 @@ interface GraphEdge {
           <button [class.active]="mode() === 'organization'" (click)="setMode('organization')">Organisation</button>
           <button [class.active]="mode() === 'resources'" (click)="setMode('resources')">Ressourcen</button>
         </div>
-        <span class="muted">{{ mode() === 'organization' ? 'units · roles · agents' : 'agents · workspaces · memory · credentials · knowledge' }}</span>
+        <span class="muted">{{ mode() === 'organization' ? 'units · roles · agents' : accessOnly() ? 'agents · workspaces (Zugriffe)' : 'agents · workspaces · memory · credentials · knowledge' }}</span>
+        @if (mode() === 'resources') {
+          <label class="inline access-only" title="Memory, Credentials und Knowledge ausblenden">
+            <input type="checkbox" [checked]="accessOnly()" (change)="setAccessOnly($any($event.target).checked)" /> nur Agenten + Workspaces
+          </label>
+        }
         @if (gateCount() > 0) {
           <span class="muted" title="Deterministische Gates aus dem Graph-Dokument">Gates: {{ gateCount() }}</span>
         }
@@ -183,19 +196,27 @@ interface GraphEdge {
         }
         @if (selectedEdge(); as edge) {
           <div class="edge-toolbar" [style.left.px]="edgeToolbarPos()?.x ?? 100" [style.top.px]="edgeToolbarPos()?.y ?? 100">
-            <span>Verbindung: <b>{{ edge.label }}</b> · {{ edge.kind }}</span>
-            <button class="small danger" (click)="deleteEdge(edge)">Löschen</button>
+            @if (isGrantEdge(edge)) {
+              <span>Zugriff: <b>{{ edge.kind }}</b> · {{ grantEdgeTitle(edge) }}</span>
+              <button class="small" [disabled]="accessBusy()" (click)="setGrantMode(edge, edge.kind === 'rw' ? 'ro' : 'rw')">auf {{ edge.kind === 'rw' ? 'ro (nur lesen)' : 'rw (lesen+schreiben)' }} ändern</button>
+              <button class="small danger" [disabled]="accessBusy()" (click)="deleteEdge(edge)">Zugriff entziehen</button>
+            } @else {
+              <span>Verbindung: <b>{{ edge.label }}</b> · {{ edge.kind }}</span>
+              <button class="small danger" (click)="deleteEdge(edge)">Löschen</button>
+            }
             <button class="small" (click)="selectedEdge.set(null)">✕</button>
           </div>
         }
         <aside class="node-palette">
           <h4>Node types</h4>
+          <button class="access" (click)="openNewAgent()"><b>Agent</b><span>Harness + Zugriff</span></button>
+          <button class="access" (click)="openNewWorkspace()"><b>Workspace</b><span>Verzeichnis freigeben</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'mcp')" (dragend)="draggingPalette.set(null)" (click)="palette('mcp')"><b>MCP</b><span>Server + contract</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'skill')" (dragend)="draggingPalette.set(null)" (click)="palette('skill')"><b>Skill</b><span>agent skill</span></button>
           <button class="gate" draggable="true" (dragstart)="onPaletteDragStart($event, 'gate')" (dragend)="draggingPalette.set(null)" (click)="palette('gate')"><b>Gate</b><span>deterministic</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'http')" (dragend)="draggingPalette.set(null)" (click)="palette('http')"><b>HTTP</b><span>API endpoint</span></button>
           <button draggable="true" (dragstart)="onPaletteDragStart($event, 'custom')" (dragend)="draggingPalette.set(null)" (click)="palette('custom')"><b>Custom</b><span>free node</span></button>
-          <p class="muted">Workspace, memory, credential and knowledge come from the agent data.</p>
+          <p class="muted">Zugriff geben: am Agenten „＋“ → ro/rw → Workspace anklicken. Linie anklicken zum Ändern oder Entziehen.</p>
         </aside>
         <f-flow fDraggable fFlowId="dockweave-agent-graph" (fFullRendered)="fit()">
           <f-canvas fZoom [fZoomMinimum]="0.2" [fZoomMaximum]="2">
@@ -803,6 +824,98 @@ interface GraphEdge {
         </div>
       }
 
+      @if (newAgentOpen()) {
+        <div class="settings-backdrop" (click)="newAgentOpen.set(false)">
+          <div class="settings-modal access-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Neuer Agent</h3>
+              <button class="ghost small" (click)="newAgentOpen.set(false)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <label>Name <input [(ngModel)]="na.name" name="naName" placeholder="opencode-02" /></label>
+                <label>Harness
+                  <select [ngModel]="na.type" (ngModelChange)="setNewAgentType($event)" name="naType">
+                    @for (t of harnessTypes; track t) { <option [value]="t">{{ t }}</option> }
+                  </select>
+                </label>
+                <label>Runtime
+                  <select [ngModel]="na.runtime" (ngModelChange)="setNewAgentRuntime($event)" name="naRuntime">
+                    <option value="docker">docker (direkt)</option>
+                    <option value="herdr">herdr (Terminal-Runtime)</option>
+                    <option value="paperclip">paperclip (Heartbeat)</option>
+                  </select>
+                </label>
+                <label>Image <input [(ngModel)]="na.image" name="naImage" /></label>
+                <label>Startbefehl <textarea rows="2" [(ngModel)]="na.exec" name="naExec"></textarea></label>
+                <label>Workspace-Zugriff (optional)
+                  <select [(ngModel)]="na.workspace" name="naWs">
+                    <option value="">– keiner –</option>
+                    @for (w of workspaces; track w.id) { <option [value]="w.name">{{ w.name }} · {{ w.host_path }}</option> }
+                  </select>
+                </label>
+                @if (na.workspace) {
+                  <label>Modus
+                    <select [(ngModel)]="na.mode" name="naMode">
+                      <option value="ro">ro – nur lesen</option>
+                      <option value="rw">rw – lesen und schreiben</option>
+                    </select>
+                  </label>
+                }
+                <div class="settings-row">
+                  <button class="primary" [disabled]="accessBusy() || !na.name.trim() || !na.image.trim()" (click)="createAgentFromGraph()">{{ accessBusy() ? 'Lege an …' : 'Agent anlegen' }}</button>
+                  <button (click)="newAgentOpen.set(false)">Abbrechen</button>
+                </div>
+                @if (accessError()) { <div class="notice error" role="alert">{{ accessError() }}</div> }
+              </section>
+            </div>
+          </div>
+        </div>
+      }
+
+      @if (newWorkspaceOpen()) {
+        <div class="settings-backdrop" (click)="newWorkspaceOpen.set(false)">
+          <div class="settings-modal access-modal" (click)="$event.stopPropagation()">
+            <header>
+              <h3>Workspace freigeben</h3>
+              <button class="ghost small" (click)="newWorkspaceOpen.set(false)">✕</button>
+            </header>
+            <div class="settings-body">
+              <section>
+                <label>Name <input [(ngModel)]="nw.name" name="nwName" placeholder="mein-projekt" /></label>
+                <label>Verzeichnis (Host-Pfad)
+                  <span class="settings-row">
+                    <input [(ngModel)]="nw.path" name="nwPath" placeholder="/home/…/projekt" />
+                    <button type="button" class="small" (click)="nwBrowserOpen.set(true)">Browse…</button>
+                  </span>
+                </label>
+                <label>Zugriff für Agent (optional)
+                  <select [(ngModel)]="nw.agent" name="nwAgent">
+                    <option value="">– keiner –</option>
+                    @for (a of agents; track a.id) { <option [value]="a.id">{{ a.display_name || a.name }} ({{ a.type }})</option> }
+                  </select>
+                </label>
+                @if (nw.agent) {
+                  <label>Modus
+                    <select [(ngModel)]="nw.mode" name="nwMode">
+                      <option value="ro">ro – nur lesen</option>
+                      <option value="rw">rw – lesen und schreiben</option>
+                    </select>
+                  </label>
+                }
+                <div class="settings-row">
+                  <button class="primary" [disabled]="accessBusy() || !nw.name.trim() || !nw.path.trim()" (click)="createWorkspaceFromGraph()">{{ accessBusy() ? 'Registriere …' : 'Registrieren' }}</button>
+                  <button (click)="newWorkspaceOpen.set(false)">Abbrechen</button>
+                </div>
+                @if (accessError()) { <div class="notice error" role="alert">{{ accessError() }}</div> }
+              </section>
+            </div>
+          </div>
+        </div>
+        <dw-dir-picker [open]="nwBrowserOpen()" [startPath]="nw.path" title="Workspace-Verzeichnis"
+          (picked)="onWorkspaceDirPicked($event)" (closed)="nwBrowserOpen.set(false)" />
+      }
+
       @if (connectOpen()) {
         <div class="settings-backdrop floating">
           <div class="settings-modal popover" [style.left.px]="popoverPos()?.x ?? 100" [style.top.px]="popoverPos()?.y ?? 100"  [style.--pop-top.px]="popoverPos()?.y ?? 100" (click)="$event.stopPropagation()">
@@ -817,7 +930,7 @@ interface GraphEdge {
                     @for (t of schema().connectionTypes; track t.id) { <option [value]="t.id">{{ t.label }} ({{ t.id }})</option> }
                   </select>
                 </label>
-                <p class="muted">Nach „Weiter“ nur noch die andere Node anklicken.</p>
+                <p class="muted">Nach „Weiter“ nur noch die andere Node anklicken.@if (connectSource()?.kind === 'agent') { Für Verzeichniszugriff <b>read-only (ro)</b> oder <b>read-write (rw)</b> wählen und einen Workspace anklicken – der Zugriff wird sofort im Daemon angelegt.}</p>
                 <div class="settings-row">
                   <button class="primary" (click)="continueConnect()">Weiter</button>
                   <button (click)="connectOpen.set(false)">Abbrechen</button>
@@ -989,6 +1102,11 @@ interface GraphEdge {
     .node-palette button { display:flex; flex-direction:column; align-items:flex-start; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:.35rem .45rem; color:#c9d1d9; cursor:pointer; text-align:left; }
     .node-palette button:hover { border-color:#58a6ff; }
     .node-palette button.gate { border-left:3px solid #d29922; }
+    .node-palette button.access { border-left:3px solid #3fb950; }
+    .access-only { display:flex; align-items:center; gap:.3rem; font-size:.8rem; color:#8b949e; cursor:pointer; }
+    .access-modal { width:460px; max-width:calc(100vw - 32px); }
+    .access-modal label { display:flex; flex-direction:column; gap:.2rem; margin-bottom:.5rem; }
+    .access-modal .settings-row input { flex:1; }
     .node-palette b { font-size:.75rem; }
     .node-palette span { font-size:.63rem; color:#8b949e; }
     .node-palette p { font-size:.62rem; color:#8b949e; margin:.5rem 0 0; }
@@ -1296,6 +1414,16 @@ export class GraphComponent implements OnChanges, OnDestroy {
   ecWorkspace = '';
   ecContract = '';
   connectOpen = signal(false);
+  // Agent/workspace access editing (grants are real daemon state, not graph drafts).
+  readonly accessOnly = signal(this.loadAccessOnly());
+  readonly accessBusy = signal(false);
+  readonly accessError = signal('');
+  readonly newAgentOpen = signal(false);
+  readonly newWorkspaceOpen = signal(false);
+  readonly nwBrowserOpen = signal(false);
+  readonly harnessTypes = ['opencode', 'codex', 'claude', 'gemini', 'antigravity', 'custom'];
+  na = { name: '', type: 'opencode', runtime: 'docker', image: 'node:22-bookworm', exec: HARNESS_EXEC['opencode'], workspace: '', mode: 'ro' };
+  nw = { name: '', path: '', agent: '', mode: 'ro' };
   connectSource = signal<GraphNode | null>(null);
   connectType = 'custom';
   connectingSource = signal<GraphNode | null>(null);
@@ -2164,6 +2292,13 @@ export class GraphComponent implements OnChanges, OnDestroy {
   }
 
   private createConnection(source: GraphNode, target: GraphNode, kind: string): void {
+    // Agent ↔ workspace is a real grant in the daemon, in either direction.
+    if ((source.kind === 'agent' && target.kind === 'workspace') || (source.kind === 'workspace' && target.kind === 'agent')) {
+      const [agentNode, wsNode] = source.kind === 'agent' ? [source, target] : [target, source];
+      this.grantAccess(agentNode, wsNode, kind === 'rw' ? 'rw' : 'ro');
+      this.cancelConnect();
+      return;
+    }
     this.commit();
     if (!this.compatibleKinds(kind, source.kind, target.kind)) {
       this.connectError.set(`Verbindung ${source.kind} → ${target.kind} ist für Typ "${kind}" nicht erlaubt`);
@@ -2296,6 +2431,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
   }
 
   deleteEdge(edge: GraphEdge): void {
+    if (this.isGrantEdge(edge)) { this.revokeAccess(edge); return; }
     this.commit();
     const custom = this.customEdges().filter(e => e.id !== edge.id);
     if (custom.length !== this.customEdges().length) {
@@ -4287,6 +4423,178 @@ export class GraphComponent implements OnChanges, OnDestroy {
     try { localStorage.setItem('dockweave.orgOverrides', JSON.stringify(v)); } catch { /* ignore */ }
   }
 
+  // ---- agent/workspace access (grants) ----
+
+  isGrantEdge(edge: GraphEdge): boolean {
+    return edge.id.startsWith('grant-');
+  }
+
+  private grantOf(edge: GraphEdge): Grant | undefined {
+    return this.grants.find(g => 'grant-' + g.id === edge.id);
+  }
+
+  grantEdgeTitle(edge: GraphEdge): string {
+    const g = this.grantOf(edge);
+    if (!g) return '';
+    const a = this.agents.find(x => x.id === g.agent_id);
+    const w = this.workspaces.find(x => x.id === g.workspace_id);
+    return `${a?.display_name || a?.name || g.agent_id} → ${w?.name || g.workspace_id}`;
+  }
+
+  setAccessOnly(on: boolean): void {
+    this.accessOnly.set(on);
+    try { localStorage.setItem('dockweave.graph.accessOnly', on ? '1' : '0'); } catch { /* optional */ }
+    this.layoutNonce.update(v => v + 1);
+    this.fit();
+  }
+
+  private loadAccessOnly(): boolean {
+    try { return localStorage.getItem('dockweave.graph.accessOnly') === '1'; } catch { return false; }
+  }
+
+  private accessFailed(e: unknown): void {
+    this.accessBusy.set(false);
+    const msg = (e as { message?: string })?.message ?? String(e);
+    this.accessError.set(msg);
+    this.connectError.set(msg);
+    this.configError.set(msg);
+  }
+
+  private accessDone(message: string): void {
+    this.accessBusy.set(false);
+    this.accessError.set('');
+    this.configError.set('');
+    this.message.set(message);
+    this.changed.emit();
+  }
+
+  private grantAccess(agentNode: GraphNode, wsNode: GraphNode, mode: 'ro' | 'rw'): void {
+    const agentId = this.agentIdOf(agentNode);
+    const ws = this.workspaces.find(w => 'workspace-' + w.id === wsNode.id);
+    if (!ws) { this.configError.set('Workspace nicht gefunden'); return; }
+    const existing = this.grants.find(g => g.agent_id === agentId && g.workspace_id === ws.id && g.status !== 'revoked');
+    if (existing) {
+      if (existing.mode === mode) { this.configError.set(`${agentNode.title} hat bereits ${mode}-Zugriff auf ${ws.name}`); return; }
+      this.changeGrant(existing, mode);
+      return;
+    }
+    this.accessBusy.set(true);
+    this.api.createGrant(ws.name, agentId, mode).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: () => this.accessDone(`${agentNode.title}: ${mode}-Zugriff auf ${ws.name}`),
+      error: e => this.accessFailed(e),
+    });
+  }
+
+  setGrantMode(edge: GraphEdge, mode: 'ro' | 'rw'): void {
+    const g = this.grantOf(edge);
+    if (g) this.changeGrant(g, mode);
+    this.selectedEdge.set(null);
+  }
+
+  // The daemon has no in-place mode change: revoke, then grant again.
+  private changeGrant(g: Grant, mode: 'ro' | 'rw'): void {
+    const ws = this.workspaces.find(w => w.id === g.workspace_id);
+    if (!ws) return;
+    this.accessBusy.set(true);
+    this.api.revokeGrant(g.id).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: () => this.api.createGrant(ws.name, g.agent_id, mode).pipe(takeUntil(this.destroyed$)).subscribe({
+        next: () => this.accessDone(`Zugriff auf ${ws.name} ist jetzt ${mode}`),
+        error: e => { this.accessFailed(e); this.changed.emit(); },
+      }),
+      error: e => this.accessFailed(e),
+    });
+  }
+
+  private revokeAccess(edge: GraphEdge): void {
+    const g = this.grantOf(edge);
+    if (!g) return;
+    if (!confirm(`Zugriff entziehen: ${this.grantEdgeTitle(edge)} (${g.mode})?`)) return;
+    this.accessBusy.set(true);
+    this.api.revokeGrant(g.id).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: () => { this.selectedEdge.set(null); this.accessDone('Zugriff entzogen'); },
+      error: e => this.accessFailed(e),
+    });
+    this.closeContext();
+  }
+
+  openNewAgent(): void {
+    this.na = { name: '', type: 'opencode', runtime: 'docker', image: 'node:22-bookworm', exec: HARNESS_EXEC['opencode'], workspace: '', mode: 'ro' };
+    this.accessError.set('');
+    this.newAgentOpen.set(true);
+  }
+
+  setNewAgentType(t: string): void {
+    this.na.type = t;
+    if (this.na.runtime !== 'herdr') this.na.exec = HARNESS_EXEC[t] ?? '';
+  }
+
+  setNewAgentRuntime(r: string): void {
+    this.na.runtime = r;
+    if (r === 'herdr') {
+      this.na.type = 'codex';
+      this.na.image = 'dockweave/herdr-agent';
+      this.na.exec = 'codex --dangerously-bypass-approvals-and-sandbox';
+    } else {
+      if (this.na.image === 'dockweave/herdr-agent') this.na.image = 'node:22-bookworm';
+      this.na.exec = HARNESS_EXEC[this.na.type] ?? '';
+    }
+  }
+
+  createAgentFromGraph(): void {
+    const f = this.na;
+    const exec = f.exec.trim();
+    const command = !exec ? [] : f.runtime === 'herdr' ? exec.split(/\s+/) : ['sh', '-c', exec];
+    this.accessBusy.set(true);
+    this.accessError.set('');
+    this.api.createAgent({
+      name: f.name.trim(), type: f.type, image: f.image.trim(), command, runtime: f.runtime,
+      env_file: '', uid: 1000, gid: 1000, agent_ro: true, network_mode: 'bridge', network_profile: '',
+    }).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: a => {
+        const done = (): void => {
+          this.newAgentOpen.set(false);
+          this.accessDone(`Agent ${a.name} angelegt`);
+          this.agentSelected.emit(a.id);
+        };
+        if (!f.workspace) { done(); return; }
+        this.api.createGrant(f.workspace, a.id, f.mode).pipe(takeUntil(this.destroyed$)).subscribe({
+          next: done,
+          error: e => { this.accessFailed(e); this.changed.emit(); },
+        });
+      },
+      error: e => this.accessFailed(e),
+    });
+  }
+
+  openNewWorkspace(): void {
+    this.nw = { name: '', path: '', agent: this.selectedAgentId || '', mode: 'ro' };
+    this.accessError.set('');
+    this.newWorkspaceOpen.set(true);
+  }
+
+  onWorkspaceDirPicked(path: string): void {
+    this.nw.path = path;
+    if (!this.nw.name.trim()) this.nw.name = path.split('/').filter(Boolean).pop() ?? '';
+    this.nwBrowserOpen.set(false);
+  }
+
+  createWorkspaceFromGraph(): void {
+    const f = this.nw;
+    this.accessBusy.set(true);
+    this.accessError.set('');
+    this.api.registerWorkspace(f.name.trim(), f.path.trim()).pipe(takeUntil(this.destroyed$)).subscribe({
+      next: w => {
+        const done = (): void => { this.newWorkspaceOpen.set(false); this.accessDone(`Workspace ${w.name} registriert`); };
+        if (!f.agent) { done(); return; }
+        this.api.createGrant(w.name, f.agent, f.mode).pipe(takeUntil(this.destroyed$)).subscribe({
+          next: done,
+          error: e => { this.accessFailed(e); this.changed.emit(); },
+        });
+      },
+      error: e => this.accessFailed(e),
+    });
+  }
+
   private buildNodes(): GraphNode[] {
     const nodes = this.mode() === 'organization' ? this.buildOrgNodes() : this.buildResourceNodes();
     return this.applyLayout(nodes);
@@ -4336,7 +4644,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
         detail: `egress ${a.network_profile || 'unrestricted-legacy'}${act?.available ? ` · cpu ${act.cpu_percent.toFixed(0)}%` : ''}`,
         position: { x: 0, y: i * 190 }, state: a.state, role: a.role, unit: a.org_unit, avatar: a.avatar, avatarSvg: a.avatar_svg,
       });
-      if (p?.memory_id) {
+      if (p?.memory_id && !this.accessOnly()) {
         nodes.push({
           id: `memory-${a.id}`, kind: 'memory', title: p.memory_id,
           subtitle: 'memory store', detail: p.memory_dir,
@@ -4350,6 +4658,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
       subtitle: 'workspace', detail: w.host_path,
       position: { x: -430, y: i * 150 },
     }));
+    if (this.accessOnly()) return nodes;
     let ci = 0;
     for (const g of this.brokerGrants) {
       nodes.push({
@@ -4417,6 +4726,7 @@ export class GraphComponent implements OnChanges, OnDestroy {
       const inn = this.pickPort(`workspace-${ws.id}`, 'in', 'right');
       if (out && inn) edges.push({ id: `grant-${g.id}`, source: `agent-${g.agent_id}`, target: `workspace-${ws.id}`, sourcePort: out.id, targetPort: inn.id, label: g.mode, kind: g.mode === 'rw' ? 'rw' : 'ro', sourceSide: out.side, targetSide: inn.side, type: 'bezier' });
     }
+    if (this.accessOnly()) return edges;
     let ki = 0;
     for (const a of this.agents) {
       const p = this.paths[a.id];
