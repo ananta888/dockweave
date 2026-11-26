@@ -19,10 +19,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Separate jobs: deploy-pages lists the run's artifacts right away, and in
+  # the same job it ran before the upload was visible ("Found 0 artifact(s)").
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -30,5 +29,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5
